@@ -1,12 +1,12 @@
 {
     "theme": "dracula",
     "serial": {
-        "baud_rate": 9600,
+        "baud_rate": 115200,
         "data_bits": 8,
         "parity": "N",
         "stop_bits": 1,
         "flow_control": null,
-        "last_port": "",
+        "last_port": "COM4",
         "auto_connect": false,
         "reconnect_attempts": 3
     },

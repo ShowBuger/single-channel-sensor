@@ -9,7 +9,7 @@ from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QPushButton, QLabel, QComboBox, QTextEdit,
-    QGroupBox, QCheckBox, QFrame, QFileDialog, QMessageBox, QSizePolicy
+    QGroupBox, QCheckBox, QFrame, QFileDialog, QMessageBox, QSizePolicy, QLineEdit
 )
 
 
@@ -135,16 +135,9 @@ class SerialPage(QWidget):
         self.flag_layout.setContentsMargins(5, 5, 5, 5)
         self.flag_layout.setSpacing(5)
 
-        # SCAN / START/STOP 行
+        # START/STOP 行
         command_ctrl_layout = QHBoxLayout()
         command_ctrl_layout.addStretch()  # 左侧弹性空间
-
-        self.scan_btn = QPushButton("SCAN")
-        self.scan_btn.setObjectName("secondaryButton")
-        self.scan_btn.setMinimumWidth(100)
-        self.scan_btn.setMinimumHeight(35)
-        self.scan_btn.setToolTip("扫描所有I2C通道，检测连接的传感器")
-        command_ctrl_layout.addWidget(self.scan_btn)
 
         # 合并的 START/STOP 按钮
         self.start_stop_btn = QPushButton("START")
@@ -158,24 +151,70 @@ class SerialPage(QWidget):
         command_ctrl_layout.addStretch()  # 右侧弹性空间
         self.flag_layout.addLayout(command_ctrl_layout)
 
-        # GET / SET 行
-        flag_ctrl_layout = QHBoxLayout()
-        flag_ctrl_layout.addStretch()  # 左侧弹性空间
+        # 映射值配置区域 (ML SETMAP)
+        mapping_layout = QVBoxLayout()
+        mapping_layout.setSpacing(8)
 
-        self.flag_get_btn = QPushButton("GET")
-        self.flag_get_btn.setObjectName("secondaryButton")
-        self.flag_get_btn.setMinimumWidth(80)
-        self.flag_get_btn.setMinimumHeight(30)
-        flag_ctrl_layout.addWidget(self.flag_get_btn)
+        # 映射值输入行
+        mapping_input_layout = QHBoxLayout()
+        mapping_input_layout.setSpacing(10)
+        mapping_input_layout.addStretch()  # 左侧弹性空间
 
-        self.flag_set_btn = QPushButton("SET")
-        self.flag_set_btn.setObjectName("primaryButton")
-        self.flag_set_btn.setMinimumWidth(80)
-        self.flag_set_btn.setMinimumHeight(30)
-        flag_ctrl_layout.addWidget(self.flag_set_btn)
+        # X轴映射值
+        x_label = QLabel("X:")
+        x_label.setStyleSheet("background-color: transparent; font-weight: bold;")
+        mapping_input_layout.addWidget(x_label)
+        self.mapping_x_input = QLineEdit()
+        self.mapping_x_input.setPlaceholderText("0.1")
+        self.mapping_x_input.setMaximumWidth(80)
+        self.mapping_x_input.setText("0.1")
+        mapping_input_layout.addWidget(self.mapping_x_input)
 
-        flag_ctrl_layout.addStretch()  # 右侧弹性空间
-        self.flag_layout.addLayout(flag_ctrl_layout)
+        # Y轴映射值
+        y_label = QLabel("Y:")
+        y_label.setStyleSheet("background-color: transparent; font-weight: bold;")
+        mapping_input_layout.addWidget(y_label)
+        self.mapping_y_input = QLineEdit()
+        self.mapping_y_input.setPlaceholderText("0.1")
+        self.mapping_y_input.setMaximumWidth(80)
+        self.mapping_y_input.setText("0.1")
+        mapping_input_layout.addWidget(self.mapping_y_input)
+
+        # Z轴映射值
+        z_label = QLabel("Z:")
+        z_label.setStyleSheet("background-color: transparent; font-weight: bold;")
+        mapping_input_layout.addWidget(z_label)
+        self.mapping_z_input = QLineEdit()
+        self.mapping_z_input.setPlaceholderText("-0.1")
+        self.mapping_z_input.setMaximumWidth(80)
+        self.mapping_z_input.setText("-0.1")
+        mapping_input_layout.addWidget(self.mapping_z_input)
+
+        mapping_input_layout.addStretch()  # 右侧弹性空间
+        mapping_layout.addLayout(mapping_input_layout)
+
+        # GET / SET 按钮行
+        mapping_ctrl_layout = QHBoxLayout()
+        mapping_ctrl_layout.addStretch()  # 左侧弹性空间
+
+        self.mapping_get_btn = QPushButton("GET")
+        self.mapping_get_btn.setObjectName("secondaryButton")
+        self.mapping_get_btn.setMinimumWidth(80)
+        self.mapping_get_btn.setMinimumHeight(30)
+        self.mapping_get_btn.setToolTip("获取当前映射值 (ML MAPPING)")
+        mapping_ctrl_layout.addWidget(self.mapping_get_btn)
+
+        self.mapping_set_btn = QPushButton("SET")
+        self.mapping_set_btn.setObjectName("secondaryButton")
+        self.mapping_set_btn.setMinimumWidth(80)
+        self.mapping_set_btn.setMinimumHeight(30)
+        self.mapping_set_btn.setToolTip("设置映射值 (ML SETMAP X/Y/Z)")
+        mapping_ctrl_layout.addWidget(self.mapping_set_btn)
+
+        mapping_ctrl_layout.addStretch()  # 右侧弹性空间
+        mapping_layout.addLayout(mapping_ctrl_layout)
+
+        self.flag_layout.addLayout(mapping_layout)
 
         # 标志按钮（可切换），与 FLAG_RES 各位一一对应
         self.flag_buttons = []
@@ -289,12 +328,11 @@ class SerialPage(QWidget):
         # 按钮事件
         self.refresh_btn.clicked.connect(self.initialize_ports)
         self.connect_btn.clicked.connect(self.toggle_connection)
-        self.scan_btn.clicked.connect(self.send_scan_command)
         self.start_stop_btn.clicked.connect(self.toggle_start_stop)
         self.clear_receive_btn.clicked.connect(self.clear_receive)
         self.send_btn.clicked.connect(self.send_from_ui)
-        self.flag_get_btn.clicked.connect(self.send_flag_get)
-        self.flag_set_btn.clicked.connect(self.send_flag_set)
+        self.mapping_get_btn.clicked.connect(self.send_mapping_get)
+        self.mapping_set_btn.clicked.connect(self.send_mapping_set)
 
         # 串口管理器信号
         self.serial_manager.connected_signal.connect(self.on_connection_changed)
@@ -315,13 +353,6 @@ class SerialPage(QWidget):
             port_description = f"{port_name} - {port.description}"
             self.port_combo.addItem(port_description, port_name)
 
-    def send_scan_command(self):
-        """发送SCAN命令"""
-        if not self.serial_manager.is_connected():
-            self.add_status_message("错误: 串口未连接", is_error=True)
-            return
-        self.serial_manager.send_data("ML SCAN\r\n")
-        self.add_status_message("已发送: ML SCAN")
 
     def toggle_start_stop(self):
         """切换启动/停止状态"""
@@ -352,23 +383,42 @@ class SerialPage(QWidget):
             self.start_stop_btn.setToolTip("停止所有运行中的传感器")
             self.is_running = True
 
-    def send_flag_get(self):
-        """发送获取FLAG命令"""
+    def send_mapping_get(self):
+        """发送获取映射值命令"""
         if not self.serial_manager.is_connected():
-            self.on_error("串口未连接，无法获取FLAG")
+            self.on_error("串口未连接，无法获取映射值")
             return
-        self.serial_manager.send_data("ML FLAG\r\n")
-        self.add_status_message("已发送: ML FLAG")
+        self.serial_manager.send_data("ML MAPPING\r\n")
+        self.add_status_message("已发送: ML MAPPING")
 
-    def send_flag_set(self):
-        """根据按钮状态发送设置FLAG命令"""
+    def send_mapping_set(self):
+        """发送设置映射值命令"""
         if not self.serial_manager.is_connected():
-            self.on_error("串口未连接，无法设置FLAG")
+            self.on_error("串口未连接，无法设置映射值")
             return
-        flag_val = self.collect_flag_value()
-        cmd = f"ML CHFLAG 0x{flag_val:02X}\r\n"
-        self.serial_manager.send_data(cmd)
-        self.add_status_message(f"已发送: {cmd.strip()}")
+
+        # 获取输入框的值
+        try:
+            x_val = float(self.mapping_x_input.text())
+            y_val = float(self.mapping_y_input.text())
+            z_val = float(self.mapping_z_input.text())
+        except ValueError:
+            self.on_error("映射值格式错误，请输入有效的数字")
+            return
+
+        # 发送三个设置命令
+        cmd_x = f"ML SETMAP X {x_val}\r\n"
+        cmd_y = f"ML SETMAP Y {y_val}\r\n"
+        cmd_z = f"ML SETMAP Z {z_val}\r\n"
+
+        self.serial_manager.send_data(cmd_x)
+        self.add_status_message(f"已发送: {cmd_x.strip()}")
+
+        self.serial_manager.send_data(cmd_y)
+        self.add_status_message(f"已发送: {cmd_y.strip()}")
+
+        self.serial_manager.send_data(cmd_z)
+        self.add_status_message(f"已发送: {cmd_z.strip()}")
 
     def toggle_connection(self):
         """切换连接状态"""
@@ -479,6 +529,25 @@ class SerialPage(QWidget):
 
         # 更新接收区（文本显示）
         self.receive_text.append(data_str)
+
+        # 解析映射值响应（格式: X: 0.100 或 Mapping values: 等）
+        if data_str and ("X:" in data_str or "Y:" in data_str or "Z:" in data_str):
+            try:
+                # 解析 "X: 0.100" 格式
+                if "X:" in data_str and "Y:" not in data_str and "Z:" not in data_str:
+                    x_val = float(data_str.split(":")[1].strip())
+                    self.mapping_x_input.setText(f"{x_val:.3f}")
+                    self.add_status_message(f"X映射值更新: {x_val:.3f}")
+                elif "Y:" in data_str and "X:" not in data_str and "Z:" not in data_str:
+                    y_val = float(data_str.split(":")[1].strip())
+                    self.mapping_y_input.setText(f"{y_val:.3f}")
+                    self.add_status_message(f"Y映射值更新: {y_val:.3f}")
+                elif "Z:" in data_str and "X:" not in data_str and "Y:" not in data_str:
+                    z_val = float(data_str.split(":")[1].strip())
+                    self.mapping_z_input.setText(f"{z_val:.3f}")
+                    self.add_status_message(f"Z映射值更新: {z_val:.3f}")
+            except Exception:
+                pass
 
         # 解析 FLAG_RES 响应（格式: FLAG_RES: 0x1B）
         if data_str and "FLAG_RES" in data_str:
