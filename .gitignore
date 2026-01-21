@@ -1,1 +1,61 @@
+# Keil uVision 项目文件
+*.uvguix.*
+*.uvopt
+*.bak
+*.ddk
+*.edk
+*.lst
+*.lnp
+*.mpf
+*.mpj
+*.omf
+*.plg
+*.prevddk
+*.prvddk
+*.rpt
+*.scvd
+*.__i
+*.crf
+*.o
+*.d
+*.axf
+*.htm
+*.iex
+*.map
+*.dep
+*.fed
+
+# Keil 输出目录
+Objects/
+Listings/
+DebugConfig/
+RTE/
+
+# Proteus 备份文件
+*.pdsbak
+*.PWI
+Backup*/
+
+# Python 虚拟环境和缓存（上位机）
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+env/
+
+# IDE 配置文件
+.vscode/
+.idea/
+.claude/
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 日志文件
+*.log
 nul
