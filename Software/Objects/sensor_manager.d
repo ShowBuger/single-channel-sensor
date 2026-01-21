@@ -1,0 +1,10 @@
+.\objects\sensor_manager.o: Hardware\sensor_manager.c
+.\objects\sensor_manager.o: Hardware\sensor_manager.h
+.\objects\sensor_manager.o: E:\Keil5\ARM\ARMCC\Bin\..\include\stdint.h
+.\objects\sensor_manager.o: Hardware\mlx90393.h
+.\objects\sensor_manager.o: Hardware\TCA9548A.h
+.\objects\sensor_manager.o: .\System\Delay.h
+.\objects\sensor_manager.o: E:\Keil5\ARM\ARMCC\Bin\..\include\math.h
+.\objects\sensor_manager.o: Hardware\serial.h
+.\objects\sensor_manager.o: E:\Keil5\ARM\ARMCC\Bin\..\include\stdio.h
+.\objects\sensor_manager.o: Hardware\config_storage.h
