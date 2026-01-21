@@ -19,10 +19,10 @@ class DataLogger(QObject):
         self.is_logging = False
         self.log_path = ""
         self.start_time = None
-        
-        # 创建日志目录
-        self.ensure_log_directory()
-        
+
+        # 日志目录（不自动创建）
+        self.log_dir = None
+
         # 监听设置变更
         self.settings.settings_changed.connect(self.on_settings_changed)
 

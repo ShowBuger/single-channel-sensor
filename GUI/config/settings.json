@@ -1,12 +1,12 @@
 {
     "theme": "dracula",
     "serial": {
-        "baud_rate": 115200,
+        "baud_rate": 9600,
         "data_bits": 8,
         "parity": "N",
         "stop_bits": 1,
         "flow_control": null,
-        "last_port": "COM4",
+        "last_port": "",
         "auto_connect": false,
         "reconnect_attempts": 3
     },
@@ -20,8 +20,8 @@
     },
     "logging": {
         "enabled": false,
-        "log_dir": "D:/HuaweiMoveData/Users/Caibinbin/Desktop/data",
-        "log_format": "csv",
+        "log_dir": "",
+        "log_format": "txt",
         "auto_filename": true,
         "include_timestamp": true
     },
@@ -30,7 +30,7 @@
         "x_max": 10.0,
         "y_min": -10.0,
         "y_max": 10.0,
-        "z_min": -50.0,
-        "z_max": 50.0
+        "z_min": -10.0,
+        "z_max": 10.0
     }
 }

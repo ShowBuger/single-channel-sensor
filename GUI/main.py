@@ -7,11 +7,6 @@ from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtWidgets import QApplication
 # 导入应用设置
 from core.app_settings import Settings
-import logging
-import datetime
-import time
-from typing import List
-from serial import Serial
 
 
 # 确保可以找到资源文件
@@ -25,29 +20,6 @@ else:
 # 将APP_ROOT_PATH添加到全局作用域，以便其他模块可以导入
 import builtins
 builtins.APP_ROOT_PATH = APP_ROOT_PATH
-
-# 创建日志目录
-logs_dir = os.path.join(APP_ROOT_PATH, "logs")
-if not os.path.exists(logs_dir):
-    os.makedirs(logs_dir)
-
-# 生成日志文件名
-log_filename = os.path.join(logs_dir, f"debug_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
-
-# 配置日志系统
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
-    handlers=[
-        logging.FileHandler(log_filename),
-        logging.StreamHandler()  # 同时输出到控制台
-    ]
-)
-
-# 创建根日志记录器
-root_logger = logging.getLogger()
-root_logger.info(f"应用程序启动，日志文件: {log_filename}")
-print(f"日志文件路径: {log_filename}")
 
 # 应用程序主入口
 if __name__ == "__main__":
@@ -107,12 +79,6 @@ if __name__ == "__main__":
         
         # 直接创建并初始化主窗口
         window = MainWindow(initialize_immediately=True)
-
-        # 检查日志设置并启动记录
-        logging_settings = settings.get_setting("logging")
-        if logging_settings and logging_settings.get("enabled", False):
-            if hasattr(window, "data_logger"):
-                window.data_logger.start_logging()
 
         # 直接显示主窗口（普通尺寸并置顶）
         window.maximize_and_raise()

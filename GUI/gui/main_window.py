@@ -16,7 +16,6 @@ from core.serial_manager import SerialManager
 from core.data_logger import DataLogger
 from core.app_settings import Settings
 from gui.ui_functions import UIFunctions
-from gui.widgets.left_menu import LeftMenu
 from gui.widgets.title_bar import TitleBar
 from gui.pages.serial_page import SerialPage
 from gui.widgets.custom_grips import CustomGrip
@@ -103,10 +102,6 @@ class MainWindow(QMainWindow):
         """初始化UI相关组件"""
         # 如果已经创建了基本结构，跳过
         if hasattr(self, 'content_area'):
-            # 创建左侧菜单
-            self.left_menu = LeftMenu(self)
-            self.content_area_layout.addWidget(self.left_menu)
-
             # 创建右侧内容区域
             self.right_content = QWidget()
             self.right_content_layout = QVBoxLayout(self.right_content)
@@ -155,9 +150,6 @@ class MainWindow(QMainWindow):
 
     def connect_signals(self):
         """连接信号和槽"""
-        # 连接左侧菜单按钮点击事件
-        self.left_menu.serial_btn.clicked.connect(self.show_serial_page)
-
         # 连接标题栏按钮事件
         self.title_bar.minimize_btn.clicked.connect(self.showMinimized)
         self.title_bar.maximize_btn.clicked.connect(self.maximize_and_raise)
@@ -176,7 +168,6 @@ class MainWindow(QMainWindow):
     def show_serial_page(self):
         """显示串口页面"""
         self.pages.setCurrentWidget(self.serial_page)
-        self.left_menu.select_menu_button(self.left_menu.serial_btn)
         self.title_bar.title_label.setText("串口通信")
     
 
@@ -201,10 +192,6 @@ class MainWindow(QMainWindow):
         # 关闭串口连接
         if self.serial_manager.is_connected():
             self.serial_manager.disconnect()
-            
-        # 停止数据记录
-        if hasattr(self, "data_logger"):
-            self.data_logger.stop_logging()
 
         # 保存设置
         if hasattr(self, "settings"):

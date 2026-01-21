@@ -62,26 +62,14 @@ class SerialPage(QWidget):
         """设置UI布局"""
         # 创建主布局
         self.main_layout = QVBoxLayout(self)
-        self.main_layout.setContentsMargins(5, 5, 5, 5)
-        self.main_layout.setSpacing(5)
-
-        # 创建标题和退出按钮区域
-        title_frame = QFrame()
-        title_layout = QHBoxLayout(title_frame)
-        title_layout.setContentsMargins(0, 0, 0, 0)
-        title_layout.setSpacing(10)
-        
-        self.title_label = QLabel("串口通信")
-        self.title_label.setObjectName("pageTitle")
-        title_layout.addWidget(self.title_label)
-        
-        title_layout.addStretch()
-        
-        self.main_layout.addWidget(title_frame)
+        self.main_layout.setContentsMargins(20, 20, 20, 20)
+        self.main_layout.setSpacing(15)
+        self.main_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # 创建连接设置区域（仅保留端口号、波特率、刷新、连接）
         self.connection_group = QGroupBox("串口连接")
         self.connection_group.setObjectName("connectionGroup")
+        self.connection_group.setMaximumWidth(900)
         self.connection_layout = QGridLayout(self.connection_group)
         self.connection_layout.setContentsMargins(5, 5, 5, 5)
         self.connection_layout.setHorizontalSpacing(8)
@@ -110,11 +98,19 @@ class SerialPage(QWidget):
         self.baudrate_combo.setCurrentText("115200")
         self.connection_layout.addWidget(self.baudrate_combo, row, 1)
 
+        # 刷新按钮
+        self.refresh_btn = QPushButton("刷新")
+        self.refresh_btn.setObjectName("secondaryButton")
+        self.refresh_btn.setMinimumHeight(28)
+        self.refresh_btn.setMinimumWidth(60)
+        self.connection_layout.addWidget(self.refresh_btn, row, 2)
+
         # 连接按钮
         self.connect_btn = QPushButton("连接")
         self.connect_btn.setObjectName("primaryButton")
         self.connect_btn.setMinimumHeight(28)
-        self.connection_layout.addWidget(self.connect_btn, row, 2)
+        self.connect_btn.setMinimumWidth(60)
+        self.connection_layout.addWidget(self.connect_btn, row, 3)
 
         row += 1
         # 连接状态指示器
@@ -127,30 +123,58 @@ class SerialPage(QWidget):
         status_layout.addWidget(self.connection_indicator)
         status_layout.addWidget(self.connection_status_text)
         status_layout.addStretch()
-        self.connection_layout.addLayout(status_layout, row, 0, 1, 3)
+        self.connection_layout.addLayout(status_layout, row, 0, 1, 4)
 
         self.main_layout.addWidget(self.connection_group)
 
-        # 功能使能区域：GET/SET + FLAG 使能按钮
-        self.flag_group = QGroupBox("功能使能 (FLAG)")
+        # 串口指令区域：SCAN/START/STOP + FLAG 使能按钮
+        self.flag_group = QGroupBox("串口指令")
         self.flag_group.setObjectName("flagGroup")
+        self.flag_group.setMaximumWidth(900)
         self.flag_layout = QVBoxLayout(self.flag_group)
         self.flag_layout.setContentsMargins(5, 5, 5, 5)
         self.flag_layout.setSpacing(5)
 
+        # SCAN / START/STOP 行
+        command_ctrl_layout = QHBoxLayout()
+        command_ctrl_layout.addStretch()  # 左侧弹性空间
+
+        self.scan_btn = QPushButton("SCAN")
+        self.scan_btn.setObjectName("secondaryButton")
+        self.scan_btn.setMinimumWidth(100)
+        self.scan_btn.setMinimumHeight(35)
+        self.scan_btn.setToolTip("扫描所有I2C通道，检测连接的传感器")
+        command_ctrl_layout.addWidget(self.scan_btn)
+
+        # 合并的 START/STOP 按钮
+        self.start_stop_btn = QPushButton("START")
+        self.start_stop_btn.setObjectName("primaryButton")
+        self.start_stop_btn.setMinimumWidth(100)
+        self.start_stop_btn.setMinimumHeight(35)
+        self.start_stop_btn.setToolTip("启动所有检测到的传感器并进行自动标定")
+        self.is_running = False  # 运行状态标志
+        command_ctrl_layout.addWidget(self.start_stop_btn)
+
+        command_ctrl_layout.addStretch()  # 右侧弹性空间
+        self.flag_layout.addLayout(command_ctrl_layout)
+
         # GET / SET 行
         flag_ctrl_layout = QHBoxLayout()
+        flag_ctrl_layout.addStretch()  # 左侧弹性空间
+
         self.flag_get_btn = QPushButton("GET")
         self.flag_get_btn.setObjectName("secondaryButton")
-        self.flag_get_btn.setMinimumWidth(60)
-        self.flag_get_btn.setMinimumHeight(28)
+        self.flag_get_btn.setMinimumWidth(80)
+        self.flag_get_btn.setMinimumHeight(30)
+        flag_ctrl_layout.addWidget(self.flag_get_btn)
+
         self.flag_set_btn = QPushButton("SET")
         self.flag_set_btn.setObjectName("primaryButton")
-        self.flag_set_btn.setMinimumWidth(60)
-        self.flag_set_btn.setMinimumHeight(28)
-        flag_ctrl_layout.addWidget(self.flag_get_btn)
+        self.flag_set_btn.setMinimumWidth(80)
+        self.flag_set_btn.setMinimumHeight(30)
         flag_ctrl_layout.addWidget(self.flag_set_btn)
-        flag_ctrl_layout.addStretch()
+
+        flag_ctrl_layout.addStretch()  # 右侧弹性空间
         self.flag_layout.addLayout(flag_ctrl_layout)
 
         # 标志按钮（可切换），与 FLAG_RES 各位一一对应
@@ -165,6 +189,7 @@ class SerialPage(QWidget):
         ]
         flags_layout = QHBoxLayout()
         flags_layout.setSpacing(8)
+        flags_layout.addStretch()  # 左侧弹性空间
         for text, bit in flags_info:
             btn = QPushButton(text)
             btn.setCheckable(True)
@@ -173,7 +198,7 @@ class SerialPage(QWidget):
             btn.clicked.connect(lambda checked, b=btn: self.update_flag_button_style(b, checked))
             self.flag_buttons.append((btn, bit))
             flags_layout.addWidget(btn)
-        flags_layout.addStretch()
+        flags_layout.addStretch()  # 右侧弹性空间
         self.flag_layout.addLayout(flags_layout)
 
         # 初始化按钮显示
@@ -183,6 +208,7 @@ class SerialPage(QWidget):
         # 创建发送区域（紧凑水平）
         self.send_frame = QFrame()
         self.send_frame.setObjectName("sendFrame")
+        self.send_frame.setMaximumWidth(900)
         self.send_layout = QHBoxLayout(self.send_frame)
         self.send_layout.setContentsMargins(5, 3, 5, 3)
         self.send_layout.setSpacing(5)
@@ -219,6 +245,7 @@ class SerialPage(QWidget):
 
         # 接收区域
         self.receive_group = QGroupBox("数据监视")
+        self.receive_group.setMaximumWidth(900)
         self.receive_layout = QVBoxLayout(self.receive_group)
         self.receive_layout.setContentsMargins(5, 5, 5, 5)
         self.receive_layout.setSpacing(5)
@@ -256,39 +283,14 @@ class SerialPage(QWidget):
         self.status_label = QLabel("未连接")
         self.status_label.setObjectName("statusLabel")
         self.main_layout.addWidget(self.status_label)
-        
-        # 数据记录状态指示器
-        if self.data_logger:
-            self.logging_status_layout = QHBoxLayout()
-            self.logging_status_layout.setContentsMargins(0, 5, 0, 0)
-            
-            self.logging_indicator = QLabel("●")
-            self.logging_indicator.setObjectName("loggingIndicator")
-            self.logging_indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.logging_indicator.setFixedWidth(20)
-            # 默认为灰色(未记录)
-            self.logging_indicator.setStyleSheet("color: gray;")
-            
-            self.logging_status_text = QLabel("数据记录：未启用")
-            
-            self.logging_status_layout.addWidget(self.logging_indicator)
-            self.logging_status_layout.addWidget(self.logging_status_text)
-            self.logging_status_layout.addStretch()
-            
-            self.main_layout.addLayout(self.logging_status_layout)
-            
-            # 更新记录状态指示器
-            self.update_logging_status()
-            
-            # 定时更新记录状态
-            self.logging_status_timer = QTimer(self)
-            self.logging_status_timer.timeout.connect(self.update_logging_status)
-            self.logging_status_timer.start(2000)  # 每2秒更新一次
 
     def connect_signals(self):
         """连接信号和槽"""
         # 按钮事件
+        self.refresh_btn.clicked.connect(self.initialize_ports)
         self.connect_btn.clicked.connect(self.toggle_connection)
+        self.scan_btn.clicked.connect(self.send_scan_command)
+        self.start_stop_btn.clicked.connect(self.toggle_start_stop)
         self.clear_receive_btn.clicked.connect(self.clear_receive)
         self.send_btn.clicked.connect(self.send_from_ui)
         self.flag_get_btn.clicked.connect(self.send_flag_get)
@@ -298,10 +300,6 @@ class SerialPage(QWidget):
         self.serial_manager.connected_signal.connect(self.on_connection_changed)
         self.serial_manager.error_signal.connect(self.on_error)
         self.serial_manager.received_data_signal.connect(self.on_data_received)
-        
-        # 如果有数据记录器，将接收数据信号连接到记录器
-        if self.data_logger:
-            self.serial_manager.received_data_signal.connect(self.data_logger.log_data)
 
     def initialize_ports(self):
         """初始化串口列表"""
@@ -316,6 +314,43 @@ class SerialPage(QWidget):
             port_name = port.device
             port_description = f"{port_name} - {port.description}"
             self.port_combo.addItem(port_description, port_name)
+
+    def send_scan_command(self):
+        """发送SCAN命令"""
+        if not self.serial_manager.is_connected():
+            self.add_status_message("错误: 串口未连接", is_error=True)
+            return
+        self.serial_manager.send_data("ML SCAN\r\n")
+        self.add_status_message("已发送: ML SCAN")
+
+    def toggle_start_stop(self):
+        """切换启动/停止状态"""
+        if not self.serial_manager.is_connected():
+            self.add_status_message("错误: 串口未连接", is_error=True)
+            return
+
+        if self.is_running:
+            # 当前正在运行,发送停止命令
+            self.serial_manager.send_data("ML STOP\r\n")
+            self.add_status_message("已发送: ML STOP")
+
+            # 更新按钮状态为START
+            self.start_stop_btn.setText("START")
+            self.start_stop_btn.setObjectName("primaryButton")
+            self.start_stop_btn.setStyleSheet("")  # 清除自定义样式,使用主题样式
+            self.start_stop_btn.setToolTip("启动所有检测到的传感器并进行自动标定")
+            self.is_running = False
+        else:
+            # 当前已停止,发送启动命令
+            self.serial_manager.send_data("ML START\r\n")
+            self.add_status_message("已发送: ML START")
+
+            # 更新按钮状态为STOP (红色)
+            self.start_stop_btn.setText("STOP")
+            self.start_stop_btn.setObjectName("stopButton")
+            self.start_stop_btn.setStyleSheet("background-color: #ff5555; color: white; font-weight: bold;")
+            self.start_stop_btn.setToolTip("停止所有运行中的传感器")
+            self.is_running = True
 
     def send_flag_get(self):
         """发送获取FLAG命令"""
@@ -497,20 +532,6 @@ class SerialPage(QWidget):
         """添加状态信息到接收区"""
         color = "#FF5555" if is_error else "#55AA55"
         self.receive_text.append(f'<span style="color: {color};">>>> {message}</span>')
-
-    def update_logging_status(self):
-        """更新数据记录状态指示器"""
-        if not self.data_logger:
-            return
-            
-        if self.data_logger.is_logging:
-            # 绿色表示正在记录
-            self.logging_indicator.setStyleSheet("color: #2ecc71; font-weight: bold;")
-            self.logging_status_text.setText(f"数据记录：已启用 ({os.path.basename(self.data_logger.log_path)})")
-        else:
-            # 灰色表示未记录
-            self.logging_indicator.setStyleSheet("color: gray;")
-            self.logging_status_text.setText("数据记录：未启用")
 
     def send_from_ui(self):
         """从UI发送数据"""
