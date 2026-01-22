@@ -21,6 +21,18 @@ else:
 import builtins
 builtins.APP_ROOT_PATH = APP_ROOT_PATH
 
+def _show_main_window(window, splash):
+    """显示主窗口并关闭启动画面"""
+    try:
+        # 显示主窗口（普通尺寸并置顶）
+        window.maximize_and_raise()
+        # 关闭启动画面
+        splash.close_immediately()
+    except Exception as e:
+        print(f"显示主窗口时出错: {e}")
+        splash.close_immediately()
+
+
 # 应用程序主入口
 if __name__ == "__main__":
     # 创建应用程序实例
@@ -69,20 +81,36 @@ if __name__ == "__main__":
     # 在显示启动画面前先处理所有事件，确保Qt环境准备好
     app.processEvents()
 
+    # 显示启动画面
+    from gui.splash_screen import SplashScreen
+    splash = SplashScreen(duration=2500)  # 显示2.5秒
+    splash.show()
+
+    # 居中显示启动画面
+    screen_geometry = app.primaryScreen().availableGeometry()
+    splash_geometry = splash.geometry()
+    splash.move(
+        (screen_geometry.width() - splash_geometry.width()) // 2,
+        (screen_geometry.height() - splash_geometry.height()) // 2
+    )
+
+    # 处理启动画面显示事件
+    app.processEvents()
+
     # 创建应用设置（轻量级，可以在主线程中初始化）
     settings = Settings()
     settings.load_settings()
-    
+
     try:
         # 直接导入主窗口，确保APP_ROOT_PATH已设置
         from gui.main_window import MainWindow
-        
+
         # 直接创建并初始化主窗口
         window = MainWindow(initialize_immediately=True)
 
-        # 直接显示主窗口（普通尺寸并置顶）
-        window.maximize_and_raise()
-    
+        # 等待一小段时间确保主窗口完全初始化
+        QTimer.singleShot(500, lambda: _show_main_window(window, splash))
+
     except Exception as e:
         print(f"启动程序时出错: {e}")
         import traceback
@@ -91,6 +119,8 @@ if __name__ == "__main__":
         from gui.main_window import MainWindow
         window = MainWindow()
         window.show()
+        # 立即关闭启动画面
+        splash.close_immediately()
     
     # 执行应用程序
     sys.exit(app.exec())
