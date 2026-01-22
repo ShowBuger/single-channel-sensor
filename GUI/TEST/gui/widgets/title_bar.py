@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import sys
 from PyQt6.QtCore import Qt, QPoint
 from PyQt6.QtGui import QIcon, QPixmap
 from PyQt6.QtWidgets import (
@@ -74,22 +75,46 @@ class TitleBar(QWidget):
 
     def load_system_buttons(self):
         """加载系统按钮图标"""
+        # 获取资源路径（支持打包环境）
+        try:
+            # PyInstaller 创建临时文件夹，并将路径存储在 _MEIPASS 中
+            base_path = sys._MEIPASS
+        except AttributeError:
+            # 如果不是打包环境，使用正常的路径
+            base_path = APP_ROOT_PATH
+
         # 图标路径
-        icons_path = os.path.join(APP_ROOT_PATH, "resources", "images")
+        icons_path = os.path.join(base_path, "resources", "images")
 
         # 尝试加载图标
         min_icon_path = os.path.join(icons_path, "minimize.png")
         max_icon_path = os.path.join(icons_path, "maximize.png")
         close_icon_path = os.path.join(icons_path, "close.png")
 
-        if os.path.exists(min_icon_path):
-            self.minimize_btn.setIcon(QIcon(min_icon_path))
+        try:
+            if os.path.exists(min_icon_path):
+                self.minimize_btn.setIcon(QIcon(min_icon_path))
+            else:
+                print(f"警告: 最小化图标文件不存在: {min_icon_path}")
 
-        if os.path.exists(max_icon_path):
-            self.maximize_btn.setIcon(QIcon(max_icon_path))
+            if os.path.exists(max_icon_path):
+                self.maximize_btn.setIcon(QIcon(max_icon_path))
+            else:
+                print(f"警告: 最大化图标文件不存在: {max_icon_path}")
 
-        if os.path.exists(close_icon_path):
-            self.close_btn.setIcon(QIcon(close_icon_path))
+            if os.path.exists(close_icon_path):
+                self.close_btn.setIcon(QIcon(close_icon_path))
+            else:
+                print(f"警告: 关闭图标文件不存在: {close_icon_path}")
+        except Exception as e:
+            print(f"加载图标时出错: {e}")
+            # 如果图标加载失败，至少设置文字提示
+            if not self.minimize_btn.icon().isNull():
+                self.minimize_btn.setText("-")
+            if not self.maximize_btn.icon().isNull():
+                self.maximize_btn.setText("□")
+            if not self.close_btn.icon().isNull():
+                self.close_btn.setText("×")
 
     def toggle_maximize(self):
         """切换最大化/还原窗口"""

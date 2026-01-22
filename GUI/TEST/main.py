@@ -4,7 +4,7 @@ import sys
 import os
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QGuiApplication
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QLabel
 # 导入应用设置
 from core.app_settings import Settings
 
@@ -69,25 +69,43 @@ if __name__ == "__main__":
     # 在显示启动画面前先处理所有事件，确保Qt环境准备好
     app.processEvents()
 
+    # 显示动画启动画面
+    from gui.splash_screen import SplashScreen
+    splash = SplashScreen(duration=3000)  # 显示3秒
+    splash.show()
+
+    # 居中显示启动画面
+    screen_geometry = app.primaryScreen().availableGeometry()
+    splash_geometry = splash.geometry()
+    splash.move(
+        (screen_geometry.width() - splash_geometry.width()) // 2,
+        (screen_geometry.height() - splash_geometry.height()) // 2
+    )
+
+    # 处理启动画面显示事件
+    app.processEvents()
+
     # 创建应用设置（轻量级，可以在主线程中初始化）
     settings = Settings()
     settings.load_settings()
-    
+
     try:
         # 直接导入主窗口，确保APP_ROOT_PATH已设置
         from gui.main_window import MainWindow
-        
+
         # 直接创建并初始化主窗口
         window = MainWindow(initialize_immediately=True)
 
-        # 直接显示主窗口（普通尺寸并置顶）
-        window.maximize_and_raise()
-    
+        # 等待一小段时间确保主窗口完全初始化，然后显示主窗口
+        # 启动画面会自动淡出并关闭
+        QTimer.singleShot(1000, lambda: window.maximize_and_raise())
+
     except Exception as e:
         print(f"启动程序时出错: {e}")
         import traceback
         traceback.print_exc()
-        # 出错时，尝试基本启动
+        # 出错时，立即关闭启动画面并尝试基本启动
+        splash.close_immediately()
         from gui.main_window import MainWindow
         window = MainWindow()
         window.show()

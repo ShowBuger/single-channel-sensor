@@ -136,6 +136,9 @@ class MainWindow(QMainWindow):
         # 将页面添加到堆叠部件
         self.pages.addWidget(self.serial_page)
 
+        # 设置窗口图标
+        self.set_window_icon()
+
         # 连接信号槽
         self.connect_signals()
 
@@ -147,6 +150,27 @@ class MainWindow(QMainWindow):
 
         # 处理自动连接串口
         self.handle_auto_connect()
+
+    def set_window_icon(self):
+        """设置窗口图标"""
+        try:
+            # 获取资源路径（支持打包环境）
+            try:
+                # PyInstaller 创建临时文件夹，并将路径存储在 _MEIPASS 中
+                base_path = sys._MEIPASS
+            except AttributeError:
+                # 如果不是打包环境，使用正常的路径
+                base_path = APP_ROOT_PATH
+
+            # 图标路径
+            icon_path = os.path.join(base_path, "resources", "images", "icon.png")
+
+            if os.path.exists(icon_path):
+                self.setWindowIcon(QIcon(icon_path))
+            else:
+                print(f"警告: 窗口图标文件不存在: {icon_path}")
+        except Exception as e:
+            print(f"设置窗口图标时出错: {e}")
 
     def connect_signals(self):
         """连接信号和槽"""
