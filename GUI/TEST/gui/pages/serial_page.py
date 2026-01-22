@@ -193,7 +193,7 @@ class SerialPage(QWidget):
         mapping_input_layout.addStretch()  # 右侧弹性空间
         mapping_layout.addLayout(mapping_input_layout)
 
-        # GET / SET 按钮行
+        # GET / SET / CALIB 按钮行
         mapping_ctrl_layout = QHBoxLayout()
         mapping_ctrl_layout.addStretch()  # 左侧弹性空间
 
@@ -201,15 +201,22 @@ class SerialPage(QWidget):
         self.mapping_get_btn.setObjectName("secondaryButton")
         self.mapping_get_btn.setMinimumWidth(80)
         self.mapping_get_btn.setMinimumHeight(30)
-        self.mapping_get_btn.setToolTip("获取当前映射值 (ML MAPPING)")
+        self.mapping_get_btn.setToolTip("获取当前映射值和状态 (ML MAPPING & ML FLAG)")
         mapping_ctrl_layout.addWidget(self.mapping_get_btn)
 
         self.mapping_set_btn = QPushButton("SET")
         self.mapping_set_btn.setObjectName("secondaryButton")
         self.mapping_set_btn.setMinimumWidth(80)
         self.mapping_set_btn.setMinimumHeight(30)
-        self.mapping_set_btn.setToolTip("设置映射值 (ML SETMAP X/Y/Z)")
+        self.mapping_set_btn.setToolTip("设置映射值和状态 (ML SETMAP X/Y/Z & ML CHFLAG)")
         mapping_ctrl_layout.addWidget(self.mapping_set_btn)
+
+        self.calibration_btn = QPushButton("CALIB")
+        self.calibration_btn.setObjectName("primaryButton")
+        self.calibration_btn.setMinimumWidth(80)
+        self.calibration_btn.setMinimumHeight(30)
+        self.calibration_btn.setToolTip("执行传感器标定 (ML CALIB)")
+        mapping_ctrl_layout.addWidget(self.calibration_btn)
 
         mapping_ctrl_layout.addStretch()  # 右侧弹性空间
         mapping_layout.addLayout(mapping_ctrl_layout)
@@ -234,7 +241,7 @@ class SerialPage(QWidget):
             btn.setCheckable(True)
             btn.setMinimumWidth(90)
             btn.setObjectName("flagButton")
-            btn.clicked.connect(lambda checked, b=btn: self.update_flag_button_style(b, checked))
+            btn.clicked.connect(lambda checked, b=btn, bit=bit: self.on_flag_button_clicked(b, bit, checked))
             self.flag_buttons.append((btn, bit))
             flags_layout.addWidget(btn)
         flags_layout.addStretch()  # 右侧弹性空间
@@ -243,37 +250,6 @@ class SerialPage(QWidget):
         # 初始化按钮显示
         self.apply_flag_value(self.flag_value)
         self.main_layout.addWidget(self.flag_group)
-
-        # 创建发送区域（紧凑水平）
-        self.send_frame = QFrame()
-        self.send_frame.setObjectName("sendFrame")
-        self.send_frame.setMaximumWidth(900)
-        self.send_layout = QHBoxLayout(self.send_frame)
-        self.send_layout.setContentsMargins(5, 3, 5, 3)
-        self.send_layout.setSpacing(5)
-
-        send_label = QLabel("发送:")
-        send_label.setStyleSheet("background-color: transparent;")
-        self.send_layout.addWidget(send_label)
-
-        self.send_input = QTextEdit()
-        self.send_input.setObjectName("sendInput")
-        self.send_input.setPlaceholderText("输入要发送的数据")
-        self.send_input.setMaximumHeight(35)
-        self.send_input.setMinimumHeight(30)
-        self.send_layout.addWidget(self.send_input)
-
-        self.send_hex_check = QCheckBox("HEX")
-        self.send_hex_check.setStyleSheet("background-color: transparent;")
-        self.send_layout.addWidget(self.send_hex_check)
-
-        self.send_btn = QPushButton("发送")
-        self.send_btn.setObjectName("primaryButton")
-        self.send_btn.setMaximumWidth(60)
-        self.send_btn.setMinimumHeight(28)
-        self.send_layout.addWidget(self.send_btn)
-
-        self.main_layout.addWidget(self.send_frame)
 
         # 创建数据显示区域（充分利用空间）
         self.data_display_frame = QFrame()
@@ -330,9 +306,9 @@ class SerialPage(QWidget):
         self.connect_btn.clicked.connect(self.toggle_connection)
         self.start_stop_btn.clicked.connect(self.toggle_start_stop)
         self.clear_receive_btn.clicked.connect(self.clear_receive)
-        self.send_btn.clicked.connect(self.send_from_ui)
         self.mapping_get_btn.clicked.connect(self.send_mapping_get)
         self.mapping_set_btn.clicked.connect(self.send_mapping_set)
+        self.calibration_btn.clicked.connect(self.send_calibration)
 
         # 串口管理器信号
         self.serial_manager.connected_signal.connect(self.on_connection_changed)
@@ -384,17 +360,21 @@ class SerialPage(QWidget):
             self.is_running = True
 
     def send_mapping_get(self):
-        """发送获取映射值命令"""
+        """发送获取映射值和状态命令"""
         if not self.serial_manager.is_connected():
-            self.on_error("串口未连接，无法获取映射值")
+            self.on_error("串口未连接，无法获取映射值和状态")
             return
+        # 发送获取映射值命令
         self.serial_manager.send_data("ML MAPPING\r\n")
         self.add_status_message("已发送: ML MAPPING")
+        # 发送获取状态命令
+        self.serial_manager.send_data("ML FLAG\r\n")
+        self.add_status_message("已发送: ML FLAG")
 
     def send_mapping_set(self):
-        """发送设置映射值命令"""
+        """发送设置映射值和状态命令"""
         if not self.serial_manager.is_connected():
-            self.on_error("串口未连接，无法设置映射值")
+            self.on_error("串口未连接，无法设置映射值和状态")
             return
 
         # 获取输入框的值
@@ -406,7 +386,7 @@ class SerialPage(QWidget):
             self.on_error("映射值格式错误，请输入有效的数字")
             return
 
-        # 发送三个设置命令
+        # 发送三个设置映射值命令
         cmd_x = f"ML SETMAP X {x_val}\r\n"
         cmd_y = f"ML SETMAP Y {y_val}\r\n"
         cmd_z = f"ML SETMAP Z {z_val}\r\n"
@@ -419,6 +399,19 @@ class SerialPage(QWidget):
 
         self.serial_manager.send_data(cmd_z)
         self.add_status_message(f"已发送: {cmd_z.strip()}")
+
+        # 发送更新状态命令
+        cmd_flag = f"ML CHFLAG 0x{self.flag_value:02X}\r\n"
+        self.serial_manager.send_data(cmd_flag)
+        self.add_status_message(f"已发送: {cmd_flag.strip()}")
+
+    def send_calibration(self):
+        """发送标定命令"""
+        if not self.serial_manager.is_connected():
+            self.on_error("串口未连接，无法执行标定")
+            return
+        self.serial_manager.send_data("ML CALIB\r\n")
+        self.add_status_message("已发送: ML CALIB")
 
     def toggle_connection(self):
         """切换连接状态"""
@@ -570,6 +563,18 @@ class SerialPage(QWidget):
         scrollbar.setValue(scrollbar.maximum())
 
 
+    def on_flag_button_clicked(self, btn, bit, checked):
+        """处理FLAG按钮点击事件"""
+        # 更新按钮样式
+        self.update_flag_button_style(btn, checked)
+        # 更新flag值
+        if checked:
+            self.flag_value |= (1 << bit)
+        else:
+            self.flag_value &= ~(1 << bit)
+        # 添加状态消息
+        self.add_status_message(f"FLAG bit {bit} {'启用' if checked else '禁用'}, 当前值: 0x{self.flag_value:02X}")
+
     def update_flag_button_style(self, btn, checked):
         """更新FLAG按钮的样式"""
         if checked:
@@ -602,35 +607,4 @@ class SerialPage(QWidget):
         color = "#FF5555" if is_error else "#55AA55"
         self.receive_text.append(f'<span style="color: {color};">>>> {message}</span>')
 
-    def send_from_ui(self):
-        """从UI发送数据"""
-        if not self.serial_manager.is_connected():
-            self.add_status_message("错误: 串口未连接", is_error=True)
-            return
-        
-        # 获取输入数据
-        raw_text = self.send_input.toPlainText()
-        data = raw_text.strip()
-        if not data:
-            self.add_status_message("错误: 发送数据为空", is_error=True)
-            return
-        
-        # 判断是否为HEX模式
-        is_hex = self.send_hex_check.isChecked()
-        
-        try:
-            # 文本模式下自动添加换行，避免命令粘连在一起
-            send_payload = data
-            if not is_hex:
-                # 如果用户没有手动输入换行，则自动补充 \r\n
-                if not send_payload.endswith("\n") and not send_payload.endswith("\r"):
-                    send_payload = send_payload + "\r\n"
-
-            # 调用串口管理器发送数据
-            self.serial_manager.send_data(send_payload, is_hex=is_hex)
-            self.add_status_message(f"已发送 ({len(send_payload)} 字节, 模式: {'HEX' if is_hex else 'TEXT'})")
-            # 清空发送框
-            self.send_input.clear()
-        except Exception as e:
-            self.add_status_message(f"发送错误: {str(e)}", is_error=True)
     
