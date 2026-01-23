@@ -1,0 +1,21 @@
+{
+    "theme": "dracula",
+    "serial": {
+        "baud_rate": 115200,
+        "data_bits": 8,
+        "parity": "N",
+        "stop_bits": 1,
+        "flow_control": null,
+        "last_port": "COM15",
+        "auto_connect": true,
+        "reconnect_attempts": 3
+    },
+    "display": {
+        "text_font": "Consolas",
+        "text_size": 10,
+        "show_timestamp": false,
+        "hex_display": false,
+        "auto_scroll": true,
+        "max_lines": 1000
+    }
+}
