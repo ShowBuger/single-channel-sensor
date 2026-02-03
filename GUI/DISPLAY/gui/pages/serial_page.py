@@ -78,7 +78,7 @@ class SerialPage(QWidget):
         self.control_layout.addWidget(baudrate_label, 0, 2)
         self.baudrate_combo = QComboBox()
         self.baudrate_combo.addItems(["1200", "2400", "4800", "9600", "19200", "38400", "57600", "115200", "230400", "460800", "500000", "921600", "1000000"])
-        self.baudrate_combo.setCurrentText("9600")
+        self.baudrate_combo.setCurrentText("115200")
         self.control_layout.addWidget(self.baudrate_combo, 0, 3)
 
         # 数据位

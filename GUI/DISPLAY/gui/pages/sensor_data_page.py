@@ -33,8 +33,9 @@ class SensorDataPage(QWidget):
         self.offset_value = 0.5  # 默认偏移量
 
         # 创建图表数据和曲线字典
-        self.plot_curves = {}  # {sensor_name: {'data1': curve, 'data2': curve, 'data3': curve}}
-        self.plot_data = {}  # {sensor_name: {'data1': [], 'data2': [], 'data3': []}}
+        self.plot_curves = {}  # {sensor_name: [curve1, curve2, ...]}
+        self.plot_data = {}  # {sensor_name: [[data1], [data2], ...]}
+        self.sensor_field_counts = {}  # {sensor_name: num_fields}
 
         # 最大数据点数量，用于限制绘图数据量
         self.max_data_points = 500
@@ -105,6 +106,25 @@ class SensorDataPage(QWidget):
         # 按钮区域
         self.button_layout = QHBoxLayout()
 
+        # 活跃时间过滤下拉框
+        self.active_filter_label = QLabel("活跃时间:")
+        self.active_filter_label.setStyleSheet("background-color: transparent;")
+        self.button_layout.addWidget(self.active_filter_label)
+
+        self.active_filter_combo = QComboBox()
+        self.active_filter_combo.addItems([
+            "全部",           # None
+            "最近5秒",        # 5
+            "最近15秒",       # 15
+            "最近30秒",       # 30
+            "最近60秒",       # 60 (默认)
+            "最近5分钟",      # 300
+            "最近10分钟"      # 600
+        ])
+        self.active_filter_combo.setCurrentText("最近60秒")
+        self.active_filter_combo.setToolTip("选择传感器活跃时间过滤条件")
+        self.button_layout.addWidget(self.active_filter_combo)
+
         # 刷新传感器列表按钮
         self.refresh_btn = QPushButton("刷新传感器列表")
         self.refresh_btn.setObjectName("secondaryButton")
@@ -125,21 +145,14 @@ class SensorDataPage(QWidget):
         # 添加控制选项
         self.plot_options_layout = QHBoxLayout()
 
-        # 显示选项
-        self.show_x_check = QCheckBox("显示X轴数据")
-        self.show_x_check.setChecked(True)
-        self.show_x_check.setStyleSheet("background-color: transparent;")
-        self.plot_options_layout.addWidget(self.show_x_check)
+        # 动态字段显示复选框容器
+        self.show_field_checks_layout = QHBoxLayout()
+        self.show_field_checks = []  # 动态复选框列表
 
-        self.show_y_check = QCheckBox("显示Y轴数据")
-        self.show_y_check.setChecked(True)
-        self.show_y_check.setStyleSheet("background-color: transparent;")
-        self.plot_options_layout.addWidget(self.show_y_check)
+        # 初始创建3个复选框（默认）
+        self.create_field_checkboxes(3)
 
-        self.show_z_check = QCheckBox("显示Z轴数据")
-        self.show_z_check.setChecked(True)
-        self.show_z_check.setStyleSheet("background-color: transparent;")
-        self.plot_options_layout.addWidget(self.show_z_check)
+        self.plot_options_layout.addLayout(self.show_field_checks_layout)
 
         # 自动缩放选项
         self.auto_scale_check = QCheckBox("自动缩放Y轴")
@@ -243,9 +256,6 @@ class SensorDataPage(QWidget):
         self.save_btn.clicked.connect(self.save_data)
 
         # 复选框事件
-        self.show_x_check.stateChanged.connect(self.update_curve_visibility)
-        self.show_y_check.stateChanged.connect(self.update_curve_visibility)
-        self.show_z_check.stateChanged.connect(self.update_curve_visibility)
         self.auto_scale_check.stateChanged.connect(self.toggle_auto_scale)
         self.offset_check.stateChanged.connect(self.on_offset_changed)
         self.offset_spin.valueChanged.connect(self.on_offset_value_changed)
@@ -276,14 +286,31 @@ class SensorDataPage(QWidget):
         # 清空列表
         self.sensor_list_widget.clear()
 
-        # 获取可用传感器名称
-        sensors = self.sensor_data_manager.get_all_sensors()
+        # 获取活跃时间阈值
+        filter_text = self.active_filter_combo.currentText()
+        filter_seconds = self._get_filter_seconds(filter_text)
+
+        # 获取传感器（带活跃度过滤）
+        if filter_seconds is None:
+            # 显示全部
+            sensors = self.sensor_data_manager.get_all_sensors()
+            total_sensors = len(sensors)
+            filtered_count = total_sensors
+        else:
+            # 过滤活跃传感器
+            all_sensors = self.sensor_data_manager.get_all_sensors()
+            total_sensors = len(all_sensors)
+            sensors = self.sensor_data_manager.get_all_sensors(active_within_seconds=filter_seconds)
+            filtered_count = len(sensors)
 
         if not sensors:
-            self.status_label.setText("未检测到任何传感器")
+            if total_sensors > 0:
+                self.status_label.setText(f"未检测到活跃传感器（共{total_sensors}个传感器，但均不在过滤时间内）")
+            else:
+                self.status_label.setText("未检测到任何传感器")
             return
 
-        # 添加传感器到列表（直接显示传感器名称）
+        # 添加传感器到列表
         for sensor_name in sensors:
             item = QListWidgetItem(sensor_name)
             item.setData(Qt.ItemDataRole.UserRole, sensor_name)
@@ -293,7 +320,54 @@ class SensorDataPage(QWidget):
             if sensor_name in current_selected:
                 item.setSelected(True)
 
-        self.status_label.setText(f"已检测到 {len(sensors)} 个传感器")
+        # 更新状态标签
+        if filter_seconds is None:
+            self.status_label.setText(f"已检测到 {total_sensors} 个传感器")
+        else:
+            self.status_label.setText(
+                f"显示{filter_text}内活跃的 {filtered_count} 个传感器（共{total_sensors}个）"
+            )
+
+    def _get_filter_seconds(self, filter_text):
+        """根据过滤文本返回秒数"""
+        filter_map = {
+            "全部": None,
+            "最近5秒": 5,
+            "最近15秒": 15,
+            "最近30秒": 30,
+            "最近60秒": 60,
+            "最近5分钟": 300,
+            "最近10分钟": 600
+        }
+        return filter_map.get(filter_text, 60)  # 默认60秒
+
+    def create_field_checkboxes(self, num_fields):
+        """根据字段数量创建复选框"""
+        # 清空现有复选框
+        for checkbox in self.show_field_checks:
+            self.show_field_checks_layout.removeWidget(checkbox)
+            checkbox.deleteLater()
+        self.show_field_checks.clear()
+
+        # 字段名称映射
+        def get_label(index, total):
+            if total == 3:
+                return ['显示X轴数据', '显示Y轴数据', '显示Z轴数据'][index]
+            elif total == 1:
+                return '显示数据'
+            elif total == 2:
+                return ['显示数据1', '显示数据2'][index]
+            else:
+                return f'显示数据{index+1}'
+
+        # 创建新复选框
+        for i in range(num_fields):
+            checkbox = QCheckBox(get_label(i, num_fields))
+            checkbox.setChecked(True)
+            checkbox.setStyleSheet("background-color: transparent;")
+            checkbox.stateChanged.connect(self.update_curve_visibility)
+            self.show_field_checks.append(checkbox)
+            self.show_field_checks_layout.addWidget(checkbox)
 
     def on_sensor_selection_changed(self):
         """传感器选择变化时调用"""
@@ -304,6 +378,16 @@ class SensorDataPage(QWidget):
         for item in self.sensor_list_widget.selectedItems():
             sensor_name = item.data(Qt.ItemDataRole.UserRole)
             self.selected_sensors.append(sensor_name)
+
+        # 根据选中传感器的最大字段数更新复选框
+        max_fields = 3  # 默认
+        for sensor_name in self.selected_sensors:
+            if sensor_name in self.sensor_field_counts:
+                max_fields = max(max_fields, self.sensor_field_counts[sensor_name])
+
+        # 如果字段数量变化，重新创建复选框
+        if len(self.show_field_checks) != max_fields:
+            self.create_field_checkboxes(max_fields)
 
         # 更新图表
         self.update_plot_curves()
@@ -324,7 +408,16 @@ class SensorDataPage(QWidget):
             sensor_data = self.sensor_data_manager.get_sensor_data(sensor_name)
             if sensor_data:
                 latest_values = sensor_data.get_latest_values()
-                display_text += f"{sensor_name}[X:{latest_values[0]:.2f}, Y:{latest_values[1]:.2f}, Z:{latest_values[2]:.2f}] "
+                num_fields = len(latest_values)
+
+                # 智能格式化显示
+                if num_fields == 3:
+                    display_text += f"{sensor_name}[X:{latest_values[0]:.2f}, Y:{latest_values[1]:.2f}, Z:{latest_values[2]:.2f}] "
+                elif num_fields == 1:
+                    display_text += f"{sensor_name}[{latest_values[0]:.2f}] "
+                else:
+                    values_str = ', '.join([f'{v:.2f}' for v in latest_values])
+                    display_text += f"{sensor_name}[{values_str}] "
 
         # 更新标签文本
         self.current_values_label.setText(display_text)
@@ -349,57 +442,61 @@ class SensorDataPage(QWidget):
             (255, 128, 0)  # 橙色
         ]
 
+        # 线型列表，用于区分同一传感器的不同字段
+        line_styles = [
+            Qt.PenStyle.SolidLine,      # 实线
+            Qt.PenStyle.DashLine,       # 虚线
+            Qt.PenStyle.DotLine,        # 点线
+            Qt.PenStyle.DashDotLine,    # 点划线
+            Qt.PenStyle.DashDotDotLine  # 双点划线
+        ]
+
+        # 字段名称映射
+        def get_field_name(index, total):
+            if total == 3:
+                return ['X轴', 'Y轴', 'Z轴'][index]
+            elif total == 1:
+                return '数据'
+            elif total == 2:
+                return ['数据1', '数据2'][index]
+            else:
+                return f'数据{index+1}'
+
         # 重新创建曲线字典
         self.plot_curves = {}
 
         # 为每个选中的传感器创建曲线
-        for i, sensor_name in enumerate(self.selected_sensors):
-            color_index = i % len(colors)
-            color = colors[color_index]
-
-            # 计算偏移量
-            offset = i * self.offset_value if self.offset_enabled else 0
-
-            # 创建数据结构
+        for sensor_idx, sensor_name in enumerate(self.selected_sensors):
             if sensor_name not in self.plot_data:
-                self.plot_data[sensor_name] = {
-                    'data1': [],
-                    'data2': [],
-                    'data3': []
-                }
+                continue
 
-            # 获取数据
-            data1 = np.array(self.plot_data[sensor_name]['data1'])
-            data2 = np.array(self.plot_data[sensor_name]['data2'])
-            data3 = np.array(self.plot_data[sensor_name]['data3'])
+            num_fields = len(self.plot_data[sensor_name])
+            color = colors[sensor_idx % len(colors)]
+            offset = sensor_idx * self.offset_value if self.offset_enabled else 0
 
-            # 应用偏移
-            if self.offset_enabled and len(data1) > 0:
-                data1 = data1 + offset
-                data2 = data2 + offset
-                data3 = data3 + offset
+            # 为该传感器创建曲线列表
+            self.plot_curves[sensor_name] = []
 
-            # 创建X轴数据
-            x_data = list(range(len(data1)))
+            for field_idx in range(num_fields):
+                # 获取数据
+                data = np.array(self.plot_data[sensor_name][field_idx])
 
-            # 创建曲线
-            self.plot_curves[sensor_name] = {
-                'data1': self.plot_widget.plot(
-                    x_data, data1,
-                    pen=pg.mkPen(color=color, width=2),
-                    name=f"{sensor_name}-X轴"
-                ),
-                'data2': self.plot_widget.plot(
-                    x_data, data2,
-                    pen=pg.mkPen(color=color, width=2, style=Qt.PenStyle.DashLine),
-                    name=f"{sensor_name}-Y轴"
-                ),
-                'data3': self.plot_widget.plot(
-                    x_data, data3,
-                    pen=pg.mkPen(color=color, width=2, style=Qt.PenStyle.DotLine),
-                    name=f"{sensor_name}-Z轴"
+                # 应用偏移
+                if self.offset_enabled and len(data) > 0:
+                    data = data + offset
+
+                x_data = list(range(len(data)))
+                line_style = line_styles[field_idx % len(line_styles)]
+                field_name = get_field_name(field_idx, num_fields)
+
+                # 创建曲线
+                curve = self.plot_widget.plot(
+                    x_data, data,
+                    pen=pg.mkPen(color=color, width=2, style=line_style),
+                    name=f"{sensor_name}-{field_name}"
                 )
-            }
+
+                self.plot_curves[sensor_name].append(curve)
 
         # 更新曲线可见性
         self.update_curve_visibility()
@@ -420,10 +517,16 @@ class SensorDataPage(QWidget):
     def update_curve_visibility(self):
         """更新曲线可见性"""
         for sensor_name in self.plot_curves:
-            # 根据复选框状态设置曲线可见性
-            self.plot_curves[sensor_name]['data1'].setVisible(self.show_x_check.isChecked())
-            self.plot_curves[sensor_name]['data2'].setVisible(self.show_y_check.isChecked())
-            self.plot_curves[sensor_name]['data3'].setVisible(self.show_z_check.isChecked())
+            num_curves = len(self.plot_curves[sensor_name])
+
+            for i in range(num_curves):
+                # 如果复选框数量不足，默认显示
+                if i < len(self.show_field_checks):
+                    visible = self.show_field_checks[i].isChecked()
+                else:
+                    visible = True
+
+                self.plot_curves[sensor_name][i].setVisible(visible)
 
     def toggle_auto_scale(self, state):
         """切换自动缩放"""
@@ -498,62 +601,52 @@ class SensorDataPage(QWidget):
     @pyqtSlot(str, list)
     def on_sensor_data_updated(self, sensor_name, values):
         """接收到传感器数据更新时调用"""
-        # 确保传感器名称在数据字典中
+        num_fields = len(values)
+
+        # 初始化数据结构
         if sensor_name not in self.plot_data:
-            self.plot_data[sensor_name] = {
-                'data1': [],
-                'data2': [],
-                'data3': []
-            }
+            self.plot_data[sensor_name] = [[] for _ in range(num_fields)]
+            self.sensor_field_counts[sensor_name] = num_fields
 
         # 添加数据
-        self.plot_data[sensor_name]['data1'].append(values[0])
-        self.plot_data[sensor_name]['data2'].append(values[1])
-        self.plot_data[sensor_name]['data3'].append(values[2])
+        for i, value in enumerate(values):
+            self.plot_data[sensor_name][i].append(value)
 
         # 限制数据点数量
-        if len(self.plot_data[sensor_name]['data1']) > self.max_data_points:
-            self.plot_data[sensor_name]['data1'] = self.plot_data[sensor_name]['data1'][-self.max_data_points:]
-            self.plot_data[sensor_name]['data2'] = self.plot_data[sensor_name]['data2'][-self.max_data_points:]
-            self.plot_data[sensor_name]['data3'] = self.plot_data[sensor_name]['data3'][-self.max_data_points:]
+        for i in range(num_fields):
+            if len(self.plot_data[sensor_name][i]) > self.max_data_points:
+                self.plot_data[sensor_name][i] = self.plot_data[sensor_name][i][-self.max_data_points:]
 
         # 更新传感器当前值显示（只有当该传感器被选中时才更新显示）
         if sensor_name in self.selected_sensors:
             self.update_current_values_display()
 
         # 如果是新传感器，刷新传感器列表
-        if sensor_name not in [item.data(Qt.ItemDataRole.UserRole) for index in range(self.sensor_list_widget.count())
-                             for item in [self.sensor_list_widget.item(index)]]:
+        existing_sensors = [self.sensor_list_widget.item(i).data(Qt.ItemDataRole.UserRole)
+                           for i in range(self.sensor_list_widget.count())]
+        if sensor_name not in existing_sensors:
             self.refresh_sensor_list()
 
     def update_plots(self):
         """更新图表"""
         # 只更新选中的传感器图表
         for sensor_name in self.selected_sensors:
-            if sensor_name in self.plot_curves and sensor_name in self.plot_data:
-                # 获取数据
-                data1 = np.array(self.plot_data[sensor_name]['data1'])
-                data2 = np.array(self.plot_data[sensor_name]['data2'])
-                data3 = np.array(self.plot_data[sensor_name]['data3'])
+            if sensor_name not in self.plot_curves or sensor_name not in self.plot_data:
+                continue
 
-                # 应用偏移
-                if self.offset_enabled and len(data1) > 0:
-                    # 计算当前传感器的偏移量
-                    sensor_index = self.selected_sensors.index(sensor_name)
-                    offset = sensor_index * self.offset_value
+            num_fields = len(self.plot_data[sensor_name])
+            offset = self.selected_sensors.index(sensor_name) * self.offset_value if self.offset_enabled else 0
 
-                    data1 = data1 + offset
-                    data2 = data2 + offset
-                    data3 = data3 + offset
+            for field_idx in range(num_fields):
+                if field_idx < len(self.plot_curves[sensor_name]):
+                    data = np.array(self.plot_data[sensor_name][field_idx])
 
-                # 创建X轴数据（样本索引）
-                x_data = list(range(len(data1)))
+                    # 应用偏移
+                    if self.offset_enabled and len(data) > 0:
+                        data = data + offset
 
-                # 更新曲线
-                if len(data1) > 0:
-                    self.plot_curves[sensor_name]['data1'].setData(x_data, data1)
-                    self.plot_curves[sensor_name]['data2'].setData(x_data, data2)
-                    self.plot_curves[sensor_name]['data3'].setData(x_data, data3)
+                    x_data = list(range(len(data)))
+                    self.plot_curves[sensor_name][field_idx].setData(x_data, data)
 
         # 每次更新图表时也更新当前值显示
         self.update_current_values_display()
@@ -563,9 +656,9 @@ class SensorDataPage(QWidget):
         # 清空所有传感器数据
         for sensor_name in self.selected_sensors:
             if sensor_name in self.plot_data:
-                self.plot_data[sensor_name]['data1'].clear()
-                self.plot_data[sensor_name]['data2'].clear()
-                self.plot_data[sensor_name]['data3'].clear()
+                # 清空所有字段
+                for field in self.plot_data[sensor_name]:
+                    field.clear()
 
             # 清空传感器管理器中的数据
             self.sensor_data_manager.clear_sensor_data(sensor_name)

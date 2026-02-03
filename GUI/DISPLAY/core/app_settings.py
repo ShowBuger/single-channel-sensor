@@ -22,7 +22,7 @@ class Settings(QObject):
 
             # 串口默认设置
             "serial": {
-                "baud_rate": 9600,
+                "baud_rate": 115200,
                 "data_bits": 8,
                 "parity": "N",
                 "stop_bits": 1,
@@ -141,7 +141,7 @@ class Settings(QObject):
 
             # 串口默认设置
             "serial": {
-                "baud_rate": 9600,
+                "baud_rate": 115200,
                 "data_bits": 8,
                 "parity": "N",
                 "stop_bits": 1,
