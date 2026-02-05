@@ -10,9 +10,6 @@ from PyQt6.QtWidgets import (
     QSizePolicy, QFrame
 )
 
-# 获取应用程序根路径
-APP_ROOT_PATH = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 class LeftMenu(QWidget):
     """左侧菜单栏"""
 

@@ -75,16 +75,8 @@ class TitleBar(QWidget):
 
     def load_system_buttons(self):
         """加载系统按钮图标"""
-        # 获取资源路径（支持打包环境）
-        try:
-            # PyInstaller 创建临时文件夹，并将路径存储在 _MEIPASS 中
-            base_path = sys._MEIPASS
-        except AttributeError:
-            # 如果不是打包环境，使用正常的路径
-            base_path = APP_ROOT_PATH
-
-        # 图标路径
-        icons_path = os.path.join(base_path, "resources", "images")
+        # 使用 APP_ROOT_PATH（已在 main.py 中正确设置）
+        icons_path = os.path.join(APP_ROOT_PATH, "resources", "images")
 
         # 尝试加载图标
         min_icon_path = os.path.join(icons_path, "minimize.png")
@@ -118,21 +110,19 @@ class TitleBar(QWidget):
 
     def toggle_maximize(self):
         """切换最大化/还原窗口"""
+        icons_path = os.path.join(APP_ROOT_PATH, "resources", "images")
+
         if self.parent.isMaximized():
             self.parent.showNormal()
-            if os.path.exists(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                                           "resources", "images", "maximize.png")):
-                self.maximize_btn.setIcon(
-                    QIcon(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                                       "resources", "images", "maximize.png")))
+            max_icon_path = os.path.join(icons_path, "maximize.png")
+            if os.path.exists(max_icon_path):
+                self.maximize_btn.setIcon(QIcon(max_icon_path))
             self.maximize_btn.setToolTip("最大化")
         else:
             self.parent.showMaximized()
-            if os.path.exists(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                                           "resources", "images", "restore.png")):
-                self.maximize_btn.setIcon(
-                    QIcon(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                                       "resources", "images", "restore.png")))
+            restore_icon_path = os.path.join(icons_path, "restore.png")
+            if os.path.exists(restore_icon_path):
+                self.maximize_btn.setIcon(QIcon(restore_icon_path))
             self.maximize_btn.setToolTip("还原")
 
     def mousePressEvent(self, event):

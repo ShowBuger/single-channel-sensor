@@ -71,3 +71,16 @@ GUI/TEST/build/sensor_app/PYZ-00.toc
 GUI/TEST/build/sensor_app/warn-sensor_app.txt
 GUI/TEST/build/sensor_app/xref-sensor_app.html
 GUI/TEST/build/sensor_app/单通道传感器系统.pkg
+GUI/DISPLAY/dist/单通道传感器监测系统.exe
+GUI/DISPLAY/dist/config/settings.json
+GUI/DISPLAY/build/sensor_app/Analysis-00.toc
+GUI/DISPLAY/build/sensor_app/base_library.zip
+GUI/DISPLAY/build/sensor_app/EXE-00.toc
+GUI/DISPLAY/build/sensor_app/generated-fc4fe2be565df186a3cb84b6861ee3c20fa90aca9037c214ea64851f5213eac1.ico
+GUI/DISPLAY/build/sensor_app/PKG-00.toc
+GUI/DISPLAY/build/sensor_app/PYZ-00.pyz
+GUI/DISPLAY/build/sensor_app/PYZ-00.toc
+GUI/DISPLAY/build/sensor_app/warn-sensor_app.txt
+GUI/DISPLAY/build/sensor_app/xref-sensor_app.html
+GUI/DISPLAY/build/sensor_app/单通道传感器监测系统.pkg
+GUI/DISPLAY/sensor_app.spec

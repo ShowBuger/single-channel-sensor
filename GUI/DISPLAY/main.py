@@ -11,8 +11,9 @@ from core.app_settings import Settings
 
 # 确保可以找到资源文件
 if getattr(sys, 'frozen', False):
-    # 如果应用被打包
-    APP_ROOT_PATH = os.path.dirname(sys.executable)
+    # 如果应用被打包 (PyInstaller)
+    # 使用 _MEIPASS 获取临时资源目录
+    APP_ROOT_PATH = getattr(sys, '_MEIPASS', os.path.dirname(sys.executable))
 else:
     # 如果在开发环境中运行
     APP_ROOT_PATH = os.path.dirname(os.path.abspath(__file__))
