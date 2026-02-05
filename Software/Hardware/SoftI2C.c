@@ -12,16 +12,20 @@ typedef struct {
 }i2c_group;
 
 
-#define iic_num 1
+/* 支持2组I2C:
+   iic[0] = I2C1替代: PB6(SCL), PB7(SDA)
+   iic[1] = I2C2替代: PB10(SCL), PB11(SDA) */
+#define iic_num 2
 
 
-#define IIC_GPIO_HIGH GPIO_SetBits     
+#define IIC_GPIO_HIGH GPIO_SetBits
 #define IIC_GPIO_LOW GPIO_ResetBits
 
 
 
 i2c_group iic[iic_num]={
- {GPIOB,GPIO_Pin_6,GPIOB,GPIO_Pin_7}
+ {GPIOB, GPIO_Pin_6,  GPIOB, GPIO_Pin_7},   /* I2C1: PB6(SCL), PB7(SDA) */
+ {GPIOB, GPIO_Pin_10, GPIOB, GPIO_Pin_11}   /* I2C2: PB10(SCL), PB11(SDA) */
 };
 
 void SoftI2C_Init()

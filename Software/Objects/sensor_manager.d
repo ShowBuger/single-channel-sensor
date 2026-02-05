@@ -7,3 +7,13 @@
 .\objects\sensor_manager.o: Hardware\serial.h
 .\objects\sensor_manager.o: E:\Keil5\ARM\ARMCC\Bin\..\include\stdio.h
 .\objects\sensor_manager.o: Hardware\config_storage.h
+.\objects\sensor_manager.o: .\freertos\include\FreeRTOS.h
+.\objects\sensor_manager.o: E:\Keil5\ARM\ARMCC\Bin\..\include\stddef.h
+.\objects\sensor_manager.o: .\freertos\include\FreeRTOSConfig.h
+.\objects\sensor_manager.o: .\freertos\include\projdefs.h
+.\objects\sensor_manager.o: .\freertos\include\portable.h
+.\objects\sensor_manager.o: .\freertos\include\deprecated_definitions.h
+.\objects\sensor_manager.o: .\freertos\portable\RVDS\ARM_CM3\portmacro.h
+.\objects\sensor_manager.o: .\freertos\include\mpu_wrappers.h
+.\objects\sensor_manager.o: .\freertos\include\task.h
+.\objects\sensor_manager.o: .\freertos\include\list.h

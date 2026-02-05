@@ -5,6 +5,10 @@
 #include "serial.h"
 #include "config_storage.h"
 
+/* FreeRTOS 头文件 */
+#include "FreeRTOS.h"
+#include "task.h"
+
 #define XYZT_FLAGS (MLX90393_FLAG_X | MLX90393_FLAG_Y | MLX90393_FLAG_Z ) // 测量所有轴
 #define MEASURE_INTERVAL 8  //测量延时根据OSR和FLT决定
 
@@ -225,8 +229,15 @@ uint8_t get_sensor_data()
         return 1;
     }
 
-    /*等待测量完成*/
-    Delay_ms(MEASURE_INTERVAL);
+    /*等待测量完成 - 根据调度器状态选择延时方式*/
+    if(xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED)
+    {
+        vTaskDelay(pdMS_TO_TICKS(MEASURE_INTERVAL));
+    }
+    else
+    {
+        Delay_ms(MEASURE_INTERVAL);
+    }
 
     /*读取实际传感器原始数据*/
     status = MLX90393_readMeasurement(&mlx_actual_sensors[i], 0, XYZT_FLAGS, &raw_actual);

@@ -3,6 +3,11 @@
 #include <stdarg.h>
 #include <string.h>
 
+/* FreeRTOS 头文件 */
+#include "FreeRTOS.h"
+#include "queue.h"
+#include "freertos_tasks.h"
+
 uint8_t Serial_RxData;		//定义串口接收的数据变量
 uint8_t Serial_RxFlag;		//定义串口接收的标志位变量
 
@@ -55,8 +60,8 @@ void Serial_Init(void)
 	NVIC_InitTypeDef NVIC_InitStructure;					//定义结构体变量
 	NVIC_InitStructure.NVIC_IRQChannel = USART1_IRQn;		//选择配置NVIC的USART1线
 	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;			//指定NVIC线路使能
-	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 1;		//指定NVIC线路的抢占优先级为1
-	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 1;		//指定NVIC线路的响应优先级为1
+	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 3;		//优先级需 >= configMAX_SYSCALL_INTERRUPT_PRIORITY
+	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;		//指定NVIC线路的响应优先级为0
 	NVIC_Init(&NVIC_InitStructure);							//将结构体变量交给NVIC_Init，配置NVIC外设
 	
 	/*USART使能*/
@@ -195,6 +200,8 @@ uint8_t Serial_GetRxData(void)
   */
 void USART1_IRQHandler(void)
 {
+	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+
 	if (USART_GetITStatus(USART1, USART_IT_RXNE) == SET)		//判断是否是USART1的接收事件触发的中断
 	{
 		Serial_RxData = USART_ReceiveData(USART1);				//读取数据寄存器，存放在接收的数据变量
@@ -207,6 +214,16 @@ void USART1_IRQHandler(void)
 			{
 				cmdBuffer[cmdIndex] = '\0';						//添加字符串结束符
 				cmdReadyFlag = 1;								//命令就绪标志置1
+
+				// 发送命令到FreeRTOS队列
+				if(xCommandQueue != NULL)
+				{
+					CommandMsg_t msg;
+					strncpy(msg.command, cmdBuffer, CMD_MAX_LENGTH - 1);
+					msg.command[CMD_MAX_LENGTH - 1] = '\0';
+					xQueueSendFromISR(xCommandQueue, &msg, &xHigherPriorityTaskWoken);
+				}
+
 				cmdIndex = 0;									//重置索引
 			}
 		}
@@ -217,6 +234,9 @@ void USART1_IRQHandler(void)
 
 		USART_ClearITPendingBit(USART1, USART_IT_RXNE);			//清除USART1的RXNE标志位
 	}
+
+	// 如果有更高优先级任务被唤醒，请求上下文切换
+	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 void Serial_SendFloat(float value)
 {

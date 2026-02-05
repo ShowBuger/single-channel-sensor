@@ -72,9 +72,10 @@
 
 
 
-#define xPortPendSVHandler PendSV_Handler
-#define xPortSVCHandler SVC_Handler
-#define xPortSysTickHandler SysTick_Handler
+/* 注意: 不使用宏重定向，在stm32f10x_it.c中直接调用FreeRTOS处理函数 */
+/* #define xPortPendSVHandler PendSV_Handler */
+/* #define xPortSVCHandler SVC_Handler */
+/* #define xPortSysTickHandler SysTick_Handler */
 /*-----------------------------------------------------------
  * Application specific definitions.
  *
@@ -114,6 +115,17 @@ to exclude the API function. */
 #define INCLUDE_vTaskSuspend			1
 #define INCLUDE_vTaskDelayUntil			1
 #define INCLUDE_vTaskDelay				1
+#define INCLUDE_xTaskGetSchedulerState	1
+
+/* 互斥量和信号量配置 */
+#define configUSE_MUTEXES                 1
+#define configUSE_RECURSIVE_MUTEXES       0
+#define configUSE_COUNTING_SEMAPHORES     0
+#define configUSE_TASK_NOTIFICATIONS      1
+
+/* 调试和错误检测 */
+#define configCHECK_FOR_STACK_OVERFLOW    2
+#define configUSE_MALLOC_FAILED_HOOK      1
 
 /* This is the raw value as per the Cortex-M3 NVIC.  Values can be 255
 (lowest) to 0 (1?) (highest). */

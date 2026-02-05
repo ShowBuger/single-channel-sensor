@@ -3,6 +3,88 @@
 #include "Delay.h"
 
 /**
+  * 函    数:简单延时（不依赖任何外设）
+  * 参    数:count 延时计数
+  * 返 回 值:无
+  */
+static void I2C_Delay(volatile uint32_t count)
+{
+	while(count--);
+}
+
+/**
+  * 函    数:I2C总线软件复位
+  * 参    数:无
+  * 返 回 值:无
+  * 说    明:通过GPIO模拟时钟脉冲来释放可能卡死的I2C总线
+  */
+static void I2C_BusReset(void)
+{
+	GPIO_InitTypeDef GPIO_InitStructure;
+	uint8_t i;
+
+	/* 先开启GPIO时钟 */
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
+
+	/* 先禁用I2C外设（如果之前已启用）*/
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_I2C1 | RCC_APB1Periph_I2C2, ENABLE);
+	I2C_Cmd(I2C1, DISABLE);
+	I2C_Cmd(I2C2, DISABLE);
+	I2C_DeInit(I2C1);
+	I2C_DeInit(I2C2);
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_I2C1 | RCC_APB1Periph_I2C2, DISABLE);
+
+	/* 配置为普通GPIO开漏输出 */
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_OD;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+
+	/* I2C1: PB6(SCL), PB7(SDA) */
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6 | GPIO_Pin_7;
+	GPIO_Init(GPIOB, &GPIO_InitStructure);
+
+	/* I2C2: PB10(SCL), PB11(SDA) */
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_10 | GPIO_Pin_11;
+	GPIO_Init(GPIOB, &GPIO_InitStructure);
+
+	/* 释放SDA和SCL - 设置为高电平 */
+	GPIO_SetBits(GPIOB, GPIO_Pin_6 | GPIO_Pin_7 | GPIO_Pin_10 | GPIO_Pin_11);
+	I2C_Delay(1000);
+
+	/* 生成9个时钟脉冲来释放总线 */
+	for(i = 0; i < 9; i++)
+	{
+		/* I2C1 SCL */
+		GPIO_ResetBits(GPIOB, GPIO_Pin_6);
+		I2C_Delay(500);
+		GPIO_SetBits(GPIOB, GPIO_Pin_6);
+		I2C_Delay(500);
+
+		/* I2C2 SCL */
+		GPIO_ResetBits(GPIOB, GPIO_Pin_10);
+		I2C_Delay(500);
+		GPIO_SetBits(GPIOB, GPIO_Pin_10);
+		I2C_Delay(500);
+	}
+
+	/* 生成停止条件: SCL高时SDA由低变高 */
+	/* I2C1 */
+	GPIO_ResetBits(GPIOB, GPIO_Pin_7);	/* SDA低 */
+	I2C_Delay(500);
+	GPIO_SetBits(GPIOB, GPIO_Pin_6);	/* SCL高 */
+	I2C_Delay(500);
+	GPIO_SetBits(GPIOB, GPIO_Pin_7);	/* SDA高 */
+	I2C_Delay(500);
+
+	/* I2C2 */
+	GPIO_ResetBits(GPIOB, GPIO_Pin_11);	/* SDA低 */
+	I2C_Delay(500);
+	GPIO_SetBits(GPIOB, GPIO_Pin_10);	/* SCL高 */
+	I2C_Delay(500);
+	GPIO_SetBits(GPIOB, GPIO_Pin_11);	/* SDA高 */
+	I2C_Delay(500);
+}
+
+/**
   * 函    数:硬件I2C初始化
   * 参    数:无
   * 返 回 值:无
@@ -10,11 +92,14 @@
   */
 void HardI2C_Init(void)
 {
+	/* 软件复位I2C总线，释放可能卡死的从设备 */
+	I2C_BusReset();
+
 	/*开启时钟*/
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_I2C1 | RCC_APB1Periph_I2C2, ENABLE);	//开启I2C1和I2C2的时钟
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);		//开启GPIOB的时钟
 
-	/*GPIO初始化*/
+	/*GPIO初始化 - 配置为复用开漏输出*/
 	GPIO_InitTypeDef GPIO_InitStructure;
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_OD;				//复用开漏输出
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;

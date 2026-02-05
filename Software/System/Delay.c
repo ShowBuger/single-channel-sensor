@@ -1,17 +1,22 @@
 #include "stm32f10x.h"
 
 /**
-  * @brief  微秒级延时
-  * @param  xus 延时时长，范围：0~233015
+  * @brief  微秒级延时 (基于循环，不使用SysTick，避免与FreeRTOS冲突)
+  * @param  xus 延时时长
   * @retval 无
+  * @note   72MHz时钟下，每个循环约8个时钟周期
   */
 void Delay_us(uint32_t xus)
 {
-	SysTick->LOAD = 72 * xus;				//设置定时器重装值
-	SysTick->VAL = 0x00;					//清空当前计数值
-	SysTick->CTRL = 0x00000005;				//设置时钟源为HCLK，启动定时器
-	while(!(SysTick->CTRL & 0x00010000));	//等待计数到0
-	SysTick->CTRL = 0x00000004;				//关闭定时器
+	uint32_t i;
+	for(; xus > 0; xus--)
+	{
+		/* 72MHz / 8 cycles = 9 loops per us */
+		for(i = 0; i < 9; i++)
+		{
+			__NOP();
+		}
+	}
 }
 
 /**
@@ -21,9 +26,21 @@ void Delay_us(uint32_t xus)
   */
 void Delay_ms(uint32_t xms)
 {
-	while(xms--)
+	uint32_t i;
+	for(; xms > 0; xms--)
 	{
-		Delay_us(1000);
+		/* 1ms = 1000us, 72000 loops at 72MHz */
+		for(i = 0; i < 9000; i++)
+		{
+			__NOP();
+			__NOP();
+			__NOP();
+			__NOP();
+			__NOP();
+			__NOP();
+			__NOP();
+			__NOP();
+		}
 	}
 }
  
