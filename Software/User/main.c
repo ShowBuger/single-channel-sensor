@@ -5,8 +5,6 @@
 #include "SoftI2C.h"
 #include "Serial.h"
 #include "Delay.h"
-#include "TCA9548A.h"
-#include "tmag3001.h"
 #include <string.h>
 #include <math.h>
 #include <stdlib.h>
@@ -283,7 +281,6 @@ int main(void)
     SYSTEM_Init();
     /*初始化硬件IIC*/
     HardI2C_Init();
-    /*初始化软件IIC*/
     /*初始化串口*/
     Serial_Init();
     /*初始化配置参数 - 从Flash读取*/

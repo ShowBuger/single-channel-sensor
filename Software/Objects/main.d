@@ -35,8 +35,6 @@
 .\objects\main.o: .\Hardware\Serial.h
 .\objects\main.o: E:\Keil5\ARM\ARMCC\Bin\..\include\stdio.h
 .\objects\main.o: .\System\Delay.h
-.\objects\main.o: .\Hardware\TCA9548A.h
-.\objects\main.o: .\Hardware\tmag3001.h
 .\objects\main.o: E:\Keil5\ARM\ARMCC\Bin\..\include\string.h
 .\objects\main.o: E:\Keil5\ARM\ARMCC\Bin\..\include\math.h
 .\objects\main.o: E:\Keil5\ARM\ARMCC\Bin\..\include\stdlib.h
