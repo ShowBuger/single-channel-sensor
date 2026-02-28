@@ -283,7 +283,6 @@ int main(void)
     SYSTEM_Init();
     /*初始化硬件IIC*/
     HardI2C_Init();
-    /*初始化软件IIC*/
     /*初始化串口*/
     Serial_Init();
     /*初始化配置参数 - 从Flash读取*/
