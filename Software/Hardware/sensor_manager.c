@@ -16,7 +16,7 @@
 // Bit 4: 映射使能
 // Bit 5: 平滑过渡使能
 // 初始值: 0x3B = 0011 1011 (标定、死区、预测补偿、映射、平滑过渡 开启，滑动窗口滤波 关闭)
-uint8_t FLAG_RES = 0x01;
+uint8_t FLAG_RES = 0x00;
 
 uint8_t SENSOR_List[1] = {0};   // 传感器状态列表,0-无传感器,1-有传感器
 uint8_t SENSOR_Run[1] = {0};    // 传感器运行状态
@@ -47,9 +47,6 @@ SlidingAverage reference_sensor_filter[1] = {0};
 StabilityTracker actual_sensor_stability[1] = {0};
 StabilityTracker reference_sensor_stability[1] = {0};
 
-// 尖峰滤波器存储
-SpikeFilter spike_filters[1] = {0};
-
 
 uint8_t Scan_Ports(void)
 {
@@ -58,7 +55,7 @@ uint8_t Scan_Ports(void)
     if(MLX90393_begin(&mlx_actual_sensors[0],0,0,-1,0) == 0 && MLX90393_begin(&mlx_reference_sensors[0],1,0,-1,0) == 0)
     {
         SENSOR_List[0] = 1;
-        sensor_count++ ;
+        sensor_count = 1 ;
     }
     else
     {
@@ -145,19 +142,6 @@ void init_data_structures(void)
         reference_sensor_stability[i].in_transition = 0;
     }
 
-    // 初始化尖峰滤波器 - 仅1个传感器
-    i = 0;
-    {
-        spike_filters[i].initialized = 0;
-        spike_filters[i].last_valid_actual.x = 0.0f;
-        spike_filters[i].last_valid_actual.y = 0.0f;
-        spike_filters[i].last_valid_actual.z = 0.0f;
-        spike_filters[i].last_valid_actual.t = 0.0f;
-        spike_filters[i].last_valid_reference.x = 0.0f;
-        spike_filters[i].last_valid_reference.y = 0.0f;
-        spike_filters[i].last_valid_reference.z = 0.0f;
-        spike_filters[i].last_valid_reference.t = 0.0f;
-    }
 }
 
 uint8_t sensor_start()
@@ -390,108 +374,6 @@ void apply_dead_band_filter(uint8_t sensor_index)
         processed_sensor_data[sensor_index].reference.y = 0.0f;
     if(fabsf(processed_sensor_data[sensor_index].reference.z) < threshold_z)
         processed_sensor_data[sensor_index].reference.z = 0.0f;
-}
-
-/**
- * 函数: apply_spike_filter
- * 功能: 尖峰滤波 - 检测并过滤偶发的突变数据
- * 参数: sensor_index - 传感器索引 (0-4)
- * 返回: 无
- * 说明: 通过对比当前数据与上一次有效数据，检测是否存在尖峰
- *       如果变化量超过阈值（10倍标准差），则认为是尖峰，用上一次有效值替代
- */
-void apply_spike_filter(uint8_t sensor_index)
-{
-    if(sensor_index >= 1) return;
-    if(sensor_calibration[sensor_index].calibrated == 0) return;
-
-    SpikeFilter *filter = &spike_filters[sensor_index];
-
-    // 如果是第一次运行，初始化为当前值
-    if(filter->initialized == 0)
-    {
-        filter->last_valid_actual = processed_sensor_data[sensor_index].actual;
-        filter->last_valid_reference = processed_sensor_data[sensor_index].reference;
-        filter->initialized = 1;
-        return;
-    }
-
-    // 计算尖峰检测阈值（10倍标准差）
-    float threshold_x_actual = SPIKE_FILTER_THRESHOLD_MULTIPLIER * sensor_calibration[sensor_index].actual_std.x;
-    float threshold_y_actual = SPIKE_FILTER_THRESHOLD_MULTIPLIER * sensor_calibration[sensor_index].actual_std.y;
-    float threshold_z_actual = SPIKE_FILTER_THRESHOLD_MULTIPLIER * sensor_calibration[sensor_index].actual_std.z;
-
-    float threshold_x_ref = SPIKE_FILTER_THRESHOLD_MULTIPLIER * sensor_calibration[sensor_index].reference_std.x;
-    float threshold_y_ref = SPIKE_FILTER_THRESHOLD_MULTIPLIER * sensor_calibration[sensor_index].reference_std.y;
-    float threshold_z_ref = SPIKE_FILTER_THRESHOLD_MULTIPLIER * sensor_calibration[sensor_index].reference_std.z;
-
-    // ========== 处理实际传感器 ==========
-    float delta_x = fabsf(processed_sensor_data[sensor_index].actual.x - filter->last_valid_actual.x);
-    float delta_y = fabsf(processed_sensor_data[sensor_index].actual.y - filter->last_valid_actual.y);
-    float delta_z = fabsf(processed_sensor_data[sensor_index].actual.z - filter->last_valid_actual.z);
-
-    uint8_t spike_detected_actual = 0;
-
-    // 检测X轴尖峰
-    if(delta_x > threshold_x_actual && threshold_x_actual > 0.01f)
-    {
-        processed_sensor_data[sensor_index].actual.x = filter->last_valid_actual.x;
-        spike_detected_actual = 1;
-    }
-
-    // 检测Y轴尖峰
-    if(delta_y > threshold_y_actual && threshold_y_actual > 0.01f)
-    {
-        processed_sensor_data[sensor_index].actual.y = filter->last_valid_actual.y;
-        spike_detected_actual = 1;
-    }
-
-    // 检测Z轴尖峰
-    if(delta_z > threshold_z_actual && threshold_z_actual > 0.01f)
-    {
-        processed_sensor_data[sensor_index].actual.z = filter->last_valid_actual.z;
-        spike_detected_actual = 1;
-    }
-
-    // 如果没有检测到尖峰，更新上一次有效值
-    if(spike_detected_actual == 0)
-    {
-        filter->last_valid_actual = processed_sensor_data[sensor_index].actual;
-    }
-
-    // ========== 处理参考传感器 ==========
-    delta_x = fabsf(processed_sensor_data[sensor_index].reference.x - filter->last_valid_reference.x);
-    delta_y = fabsf(processed_sensor_data[sensor_index].reference.y - filter->last_valid_reference.y);
-    delta_z = fabsf(processed_sensor_data[sensor_index].reference.z - filter->last_valid_reference.z);
-
-    uint8_t spike_detected_ref = 0;
-
-    // 检测X轴尖峰
-    if(delta_x > threshold_x_ref && threshold_x_ref > 0.01f)
-    {
-        processed_sensor_data[sensor_index].reference.x = filter->last_valid_reference.x;
-        spike_detected_ref = 1;
-    }
-
-    // 检测Y轴尖峰
-    if(delta_y > threshold_y_ref && threshold_y_ref > 0.01f)
-    {
-        processed_sensor_data[sensor_index].reference.y = filter->last_valid_reference.y;
-        spike_detected_ref = 1;
-    }
-
-    // 检测Z轴尖峰
-    if(delta_z > threshold_z_ref && threshold_z_ref > 0.01f)
-    {
-        processed_sensor_data[sensor_index].reference.z = filter->last_valid_reference.z;
-        spike_detected_ref = 1;
-    }
-
-    // 如果没有检测到尖峰，更新上一次有效值
-    if(spike_detected_ref == 0)
-    {
-        filter->last_valid_reference = processed_sensor_data[sensor_index].reference;
-    }
 }
 
 
@@ -1134,7 +1016,7 @@ void Config_Init_All(void)
     else
     {
         // Flash中无有效数据，使用默认值并保存
-        FLAG_RES = 0x3B;
+        FLAG_RES = 0x00;
         X_MAPPING_VALUE = 0.1f;
         Y_MAPPING_VALUE = 0.1f;
         Z_MAPPING_VALUE = -0.1f;

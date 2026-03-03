@@ -217,6 +217,8 @@ void serial_command_process()
 int main(void)
 {
     SYSTEM_Init();
+    /*初始化延时（TIM2）*/
+    Delay_Init();
     /*初始化软件IIC*/
     SoftI2C_Init();
     /*初始化串口*/
