@@ -48,15 +48,18 @@ void Serial_Init(void)
 	/*中断输出配置*/
 	USART_ITConfig(USART1, USART_IT_RXNE, ENABLE);			//开启串口接收数据的中断
 	
-	/*NVIC中断分组*/
-	NVIC_PriorityGroupConfig(NVIC_PriorityGroup_2);			//配置NVIC为分组2
-	
-	/*NVIC配置*/
+	/*全局NVIC优先级分组：4位全部用于抢占，兼容FreeRTOS BASEPRI机制*/
+	NVIC_PriorityGroupConfig(NVIC_PriorityGroup_4);
+
+	/*NVIC配置
+	 * 抢占优先级 6：位于 configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY(5) 以下，
+	 * ISR 内可安全调用 FreeRTOS FromISR API（如 xQueueSendFromISR）
+	 * 子优先级固定为 0（配合 NVIC_PriorityGroup_4，子优先级无效）*/
 	NVIC_InitTypeDef NVIC_InitStructure;					//定义结构体变量
 	NVIC_InitStructure.NVIC_IRQChannel = USART1_IRQn;		//选择配置NVIC的USART1线
 	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;			//指定NVIC线路使能
-	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 1;		//指定NVIC线路的抢占优先级为1
-	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 1;		//指定NVIC线路的响应优先级为1
+	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 6;		//抢占优先级6，兼容FreeRTOS
+	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;		//子优先级0
 	NVIC_Init(&NVIC_InitStructure);							//将结构体变量交给NVIC_Init，配置NVIC外设
 	
 	/*USART使能*/
