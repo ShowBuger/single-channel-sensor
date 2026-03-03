@@ -1,6 +1,5 @@
 #include "sensor_manager.h"
 #include "mlx90393.h"
-#include "TCA9548A.h"
 #include "Delay.h"
 #include <math.h>
 #include "serial.h"

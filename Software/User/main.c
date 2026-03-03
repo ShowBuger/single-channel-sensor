@@ -1,35 +1,12 @@
 #include "stm32f10x.h"
 #include "mlx90393.h"
 #include "sensor_manager.h"
-#include "HardI2C.h"
 #include "SoftI2C.h"
 #include "Serial.h"
 #include "Delay.h"
-#include "TCA9548A.h"
-#include "tmag3001.h"
 #include <string.h>
 #include <math.h>
 #include <stdlib.h>
-
-void IWDG_Init(uint8_t prer, uint16_t rlr)
-{
-	IWDG_WriteAccessCmd(IWDG_WriteAccess_Enable);	//使能对IWDG_PR和IWDG_RLR寄存器的写操作
-	IWDG_SetPrescaler(prer);						//设置预分频器值
-	IWDG_SetReload(rlr);							//设置重装载值
-	IWDG_ReloadCounter();							//重装载计数器(喂狗)
-	IWDG_Enable();									//启动独立看门狗
-}
-
-/**
-  * 函    数:喂狗函数
-  * 参    数:无
-  * 返 回 值:无
-  * 说    明:在主循环中定期调用此函数,防止系统复位
-  */
-void IWDG_Feed(void)
-{
-	IWDG_ReloadCounter();							//重装载计数器(喂狗)
-}
 
 /**
   * 函    数:系统时钟初始化
@@ -42,7 +19,6 @@ void IWDG_Feed(void)
   *         HCLK: 72MHz (AHB)
   *         PCLK1: 36MHz (APB1)
   *         PCLK2: 72MHz (APB2)
-  *         启用LSI 40kHz用于IWDG
   */
 void SYSTEM_Init()
 {
@@ -94,21 +70,13 @@ void SYSTEM_Init()
 		while(1);  // 建议添加错误指示
 	}
 
-	/*使能内部低速振荡器LSI (40kHz),供IWDG使用*/
+	/*使能内部低速振荡器LSI (40kHz)*/
 	RCC_LSICmd(ENABLE);
 
 	/*等待LSI就绪*/
 	while(RCC_GetFlagStatus(RCC_FLAG_LSIRDY) == RESET);
 }
 
-/**
-  * 函    数:Flash读保护检查和设置
-  * 参    数:无
-  * 返 回 值:无
-  * 说    明:检查Flash读保护状态,如果未设置则设置为Level 1读保护
-  *         Level 1读保护: 防止通过调试接口(JTAG/SWD)和SRAM启动读取Flash内容
-  *         解除读保护需要先擦除整个Flash
-  */
 
 void serial_command_process()
 {
@@ -148,38 +116,6 @@ void serial_command_process()
 							else
 							{
 									printf("Failed to stop sensor\r\n");
-							}
-					}
-					// 处理 ML MERSURE 命令 - 单次测量
-					else if(strcmp(cmd, "ML MERSURE") == 0)
-					{
-							// 启动传感器
-							if(sensor_start() == 0)
-							{
-									printf("Sensor started for single measurement\r\n");
-
-									// 获取数据
-									get_sensor_data();
-
-									// 打印传感器数据 - 仅1个传感器
-									if(SENSOR_Run[0] == 1)
-									{
-											print_processed_sensor_data(0);
-									}
-
-									// 停止传感器
-									if(sensor_stop() == 0)
-									{
-											printf("Single measurement completed\r\n");
-									}
-									else
-									{
-											printf("Warning: Failed to stop sensor\r\n");
-									}
-							}
-							else
-							{
-									printf("Failed to start sensor for measurement\r\n");
 							}
 					}
 					else if(strcmp(cmd, "ML CALIB") == 0)
@@ -281,8 +217,8 @@ void serial_command_process()
 int main(void)
 {
     SYSTEM_Init();
-    /*初始化硬件IIC*/
-    HardI2C_Init();
+    /*初始化软件IIC*/
+    SoftI2C_Init();
     /*初始化串口*/
     Serial_Init();
     /*初始化配置参数 - 从Flash读取*/

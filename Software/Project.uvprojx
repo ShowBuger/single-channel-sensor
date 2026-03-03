@@ -690,16 +690,6 @@
               <FilePath>.\Hardware\Serial.h</FilePath>
             </File>
             <File>
-              <FileName>HardI2C.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\Hardware\HardI2C.c</FilePath>
-            </File>
-            <File>
-              <FileName>HardI2C.h</FileName>
-              <FileType>5</FileType>
-              <FilePath>.\Hardware\HardI2C.h</FilePath>
-            </File>
-            <File>
               <FileName>sensor_manager.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\Hardware\sensor_manager.c</FilePath>

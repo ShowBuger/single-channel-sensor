@@ -27,10 +27,10 @@ i2c_group iic[iic_num]={
 void SoftI2C_Init()
 {
     int i = 0;
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB | RCC_APB2Periph_GPIOA, ENABLE);  // ʹ��GBIOB��GPIOA��ʱ��
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB | RCC_APB2Periph_GPIOA, ENABLE);  
 
     GPIO_InitTypeDef GPIO_InitStructure;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_OD;  //����Ϊ��©���
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_OD;  
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;  
     for(i = 0; i < iic_num; i++)
     {

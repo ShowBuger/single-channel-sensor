@@ -1,5 +1,5 @@
 #include "MLX90393.h"
-#include "HardI2C.h"
+#include "SoftI2C.h"
 #include "Delay.h"
 #include "stm32f10x.h"
 
@@ -150,91 +150,24 @@ uint8_t MLX90393_begin(MLX90393_Handle *handle, uint8_t A1, uint8_t A0, int DRDY
 //———————————————————————————————————————————————
 uint8_t MLX90393_sendCommand(MLX90393_Handle *handle, uint8_t i2c_id, uint8_t cmd)
 {
-    uint8_t resp = 0xFF;  // 默认错误值
-    I2C_TypeDef* I2Cx = (i2c_id == 0) ? I2C1 : I2C2;
-    uint32_t timeout;
-
-    // 检查I2C总线是否忙
-    timeout = 10000;
-    while(I2C_GetFlagStatus(I2Cx, I2C_FLAG_BUSY))
-    {
-        if(--timeout == 0) return 0xFF;  // 总线忙超时
-    }
+    uint8_t resp = 0xFF;
 
     // 发送命令
-    I2C_GenerateSTART(I2Cx, ENABLE);
-    timeout = 10000;
-    while(!I2C_CheckEvent(I2Cx, I2C_EVENT_MASTER_MODE_SELECT))
-    {
-        if(--timeout == 0)
-        {
-            I2C_GenerateSTOP(I2Cx, ENABLE);
-            return 0xFF;  // 超时返回错误
-        }
-    }
+    IIC_Start(i2c_id);
+    I2C_WriteByte(i2c_id, handle->I2C_Address << 1);
+    if(I2C_WaitAck(i2c_id) != 0) { IIC_Stop(i2c_id); return 0xFF; }
 
-    I2C_Send7bitAddress(I2Cx, handle->I2C_Address << 1, I2C_Direction_Transmitter);
-    timeout = 10000;
-    while(!I2C_CheckEvent(I2Cx, I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED))
-    {
-        if(--timeout == 0)
-        {
-            I2C_GenerateSTOP(I2Cx, ENABLE);
-            return 0xFF;  // 超时返回错误
-        }
-    }
+    I2C_WriteByte(i2c_id, cmd);
+    if(I2C_WaitAck(i2c_id) != 0) { IIC_Stop(i2c_id); return 0xFF; }
 
-    I2C_SendData(I2Cx, cmd);
-    timeout = 10000;
-    while(!I2C_CheckEvent(I2Cx, I2C_EVENT_MASTER_BYTE_TRANSMITTED))
-    {
-        if(--timeout == 0)
-        {
-            I2C_GenerateSTOP(I2Cx, ENABLE);
-            return 0xFF;  // 超时返回错误
-        }
-    }
+    // 重复起始，读取状态字节
+    IIC_Start(i2c_id);
+    I2C_WriteByte(i2c_id, (handle->I2C_Address << 1) | 1);
+    if(I2C_WaitAck(i2c_id) != 0) { IIC_Stop(i2c_id); return 0xFF; }
 
-    // 读取状态字节
-    I2C_GenerateSTART(I2Cx, ENABLE);  // 重复起始
-    timeout = 10000;
-    while(!I2C_CheckEvent(I2Cx, I2C_EVENT_MASTER_MODE_SELECT))
-    {
-        if(--timeout == 0)
-        {
-            I2C_GenerateSTOP(I2Cx, ENABLE);
-            return 0xFF;  // 超时返回错误
-        }
-    }
-
-    I2C_Send7bitAddress(I2Cx, handle->I2C_Address << 1, I2C_Direction_Receiver);
-    timeout = 10000;
-    while(!I2C_CheckEvent(I2Cx, I2C_EVENT_MASTER_RECEIVER_MODE_SELECTED))
-    {
-        if(--timeout == 0)
-        {
-            I2C_GenerateSTOP(I2Cx, ENABLE);
-            return 0xFF;  // 超时返回错误
-        }
-    }
-
-    // 单字节接收序列：禁用ACK并生成STOP
-    I2C_AcknowledgeConfig(I2Cx, DISABLE);
-    I2C_GenerateSTOP(I2Cx, ENABLE);
-
-    timeout = 10000;
-    while(!I2C_CheckEvent(I2Cx, I2C_EVENT_MASTER_BYTE_RECEIVED))
-    {
-        if(--timeout == 0)
-        {
-            I2C_AcknowledgeConfig(I2Cx, ENABLE);
-            return 0xFF;  // 超时返回错误
-        }
-    }
-    resp = I2C_ReceiveData(I2Cx);
-
-    // 恢复ACK配置
-    I2C_AcknowledgeConfig(I2Cx, ENABLE);
+    resp = I2C_ReadByte(i2c_id);
+    I2C_SendAck(i2c_id, 1);  // NACK（最后一字节）
+    IIC_Stop(i2c_id);
 
     return resp;
 }
@@ -245,48 +178,30 @@ uint8_t MLX90393_sendCommand(MLX90393_Handle *handle, uint8_t i2c_id, uint8_t cm
 uint8_t MLX90393_readRegister(MLX90393_Handle *handle, uint8_t i2c_id, uint8_t reg, uint16_t *data)
 {
     uint8_t buffer[3];
-    I2C_TypeDef* I2Cx = (i2c_id == 0) ? I2C1 : I2C2;
 
     // 发送读寄存器命令
-    I2C_GenerateSTART(I2Cx, ENABLE);
-    while(!I2C_CheckEvent(I2Cx, I2C_EVENT_MASTER_MODE_SELECT));
+    IIC_Start(i2c_id);
+    I2C_WriteByte(i2c_id, handle->I2C_Address << 1);
+    if(I2C_WaitAck(i2c_id) != 0) { IIC_Stop(i2c_id); return 0xFF; }
 
-    I2C_Send7bitAddress(I2Cx, handle->I2C_Address << 1, I2C_Direction_Transmitter);
-    while(!I2C_CheckEvent(I2Cx, I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED));
+    I2C_WriteByte(i2c_id, MLX90393_CMD_READ_REGISTER);
+    if(I2C_WaitAck(i2c_id) != 0) { IIC_Stop(i2c_id); return 0xFF; }
 
-    I2C_SendData(I2Cx, MLX90393_CMD_READ_REGISTER);
-    while(!I2C_CheckEvent(I2Cx, I2C_EVENT_MASTER_BYTE_TRANSMITTED));
+    I2C_WriteByte(i2c_id, (reg & 0x3F) << 2);
+    if(I2C_WaitAck(i2c_id) != 0) { IIC_Stop(i2c_id); return 0xFF; }
 
-    I2C_SendData(I2Cx, (reg & 0x3F) << 2);
-    while(!I2C_CheckEvent(I2Cx, I2C_EVENT_MASTER_BYTE_TRANSMITTED));
+    // 重复起始，读取3字节数据
+    IIC_Start(i2c_id);
+    I2C_WriteByte(i2c_id, (handle->I2C_Address << 1) | 1);
+    if(I2C_WaitAck(i2c_id) != 0) { IIC_Stop(i2c_id); return 0xFF; }
 
-    // 读取3字节数据
-    I2C_GenerateSTART(I2Cx, ENABLE);  // 重复起始
-    while(!I2C_CheckEvent(I2Cx, I2C_EVENT_MASTER_MODE_SELECT));
-
-    I2C_Send7bitAddress(I2Cx, handle->I2C_Address << 1, I2C_Direction_Receiver);
-    while(!I2C_CheckEvent(I2Cx, I2C_EVENT_MASTER_RECEIVER_MODE_SELECTED));
-
-    // 读取第1个字节 (状态) - 发送ACK
-    I2C_AcknowledgeConfig(I2Cx, ENABLE);
-    while(!I2C_CheckEvent(I2Cx, I2C_EVENT_MASTER_BYTE_RECEIVED));
-    buffer[0] = I2C_ReceiveData(I2Cx);
-
-    // 读取第2个字节 (高字节) - 发送ACK
-    while(!I2C_CheckEvent(I2Cx, I2C_EVENT_MASTER_BYTE_RECEIVED));
-    buffer[1] = I2C_ReceiveData(I2Cx);
-
-    // 读取第3个字节 (低字节) - 发送NACK并STOP
-    I2C_AcknowledgeConfig(I2Cx, DISABLE);
-    I2C_GenerateSTOP(I2Cx, ENABLE);
-    while(!I2C_CheckEvent(I2Cx, I2C_EVENT_MASTER_BYTE_RECEIVED));
-    buffer[2] = I2C_ReceiveData(I2Cx);
-
-    // 恢复ACK配置
-    I2C_AcknowledgeConfig(I2Cx, ENABLE);
+    buffer[0] = I2C_ReadByte(i2c_id); I2C_SendAck(i2c_id, 0);  // 状态字节，ACK
+    buffer[1] = I2C_ReadByte(i2c_id); I2C_SendAck(i2c_id, 0);  // 高字节，ACK
+    buffer[2] = I2C_ReadByte(i2c_id); I2C_SendAck(i2c_id, 1);  // 低字节，NACK
+    IIC_Stop(i2c_id);
 
     *data = (buffer[1] << 8) | buffer[2];
-    return buffer[0]; // 状态字节
+    return buffer[0];
 }
 
 //———————————————————————————————————————————————
@@ -297,43 +212,32 @@ uint8_t MLX90393_writeRegister(MLX90393_Handle *handle, uint8_t i2c_id, uint8_t 
     uint8_t resp;
     uint8_t MSB = data >> 8;
     uint8_t LSB = data & 0xFF;
-    I2C_TypeDef* I2Cx = (i2c_id == 0) ? I2C1 : I2C2;
 
     // 发送写寄存器命令及数据
-    I2C_GenerateSTART(I2Cx, ENABLE);
-    while(!I2C_CheckEvent(I2Cx, I2C_EVENT_MASTER_MODE_SELECT));
+    IIC_Start(i2c_id);
+    I2C_WriteByte(i2c_id, handle->I2C_Address << 1);
+    if(I2C_WaitAck(i2c_id) != 0) { IIC_Stop(i2c_id); return 0xFF; }
 
-    I2C_Send7bitAddress(I2Cx, handle->I2C_Address << 1, I2C_Direction_Transmitter);
-    while(!I2C_CheckEvent(I2Cx, I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED));
+    I2C_WriteByte(i2c_id, MLX90393_CMD_WRITE_REGISTER);
+    if(I2C_WaitAck(i2c_id) != 0) { IIC_Stop(i2c_id); return 0xFF; }
 
-    I2C_SendData(I2Cx, MLX90393_CMD_WRITE_REGISTER);
-    while(!I2C_CheckEvent(I2Cx, I2C_EVENT_MASTER_BYTE_TRANSMITTED));
+    I2C_WriteByte(i2c_id, MSB);
+    if(I2C_WaitAck(i2c_id) != 0) { IIC_Stop(i2c_id); return 0xFF; }
 
-    I2C_SendData(I2Cx, MSB);
-    while(!I2C_CheckEvent(I2Cx, I2C_EVENT_MASTER_BYTE_TRANSMITTED));
+    I2C_WriteByte(i2c_id, LSB);
+    if(I2C_WaitAck(i2c_id) != 0) { IIC_Stop(i2c_id); return 0xFF; }
 
-    I2C_SendData(I2Cx, LSB);
-    while(!I2C_CheckEvent(I2Cx, I2C_EVENT_MASTER_BYTE_TRANSMITTED));
+    I2C_WriteByte(i2c_id, (reg & 0x3F) << 2);
+    if(I2C_WaitAck(i2c_id) != 0) { IIC_Stop(i2c_id); return 0xFF; }
 
-    I2C_SendData(I2Cx, (reg & 0x3F) << 2);
-    while(!I2C_CheckEvent(I2Cx, I2C_EVENT_MASTER_BYTE_TRANSMITTED));
+    // 重复起始，读取状态字节
+    IIC_Start(i2c_id);
+    I2C_WriteByte(i2c_id, (handle->I2C_Address << 1) | 1);
+    if(I2C_WaitAck(i2c_id) != 0) { IIC_Stop(i2c_id); return 0xFF; }
 
-    // 读取状态字节
-    I2C_GenerateSTART(I2Cx, ENABLE);  // 重复起始
-    while(!I2C_CheckEvent(I2Cx, I2C_EVENT_MASTER_MODE_SELECT));
-
-    I2C_Send7bitAddress(I2Cx, handle->I2C_Address << 1, I2C_Direction_Receiver);
-    while(!I2C_CheckEvent(I2Cx, I2C_EVENT_MASTER_RECEIVER_MODE_SELECTED));
-
-    // 单字节接收序列：禁用ACK并生成STOP
-    I2C_AcknowledgeConfig(I2Cx, DISABLE);
-    I2C_GenerateSTOP(I2Cx, ENABLE);
-
-    while(!I2C_CheckEvent(I2Cx, I2C_EVENT_MASTER_BYTE_RECEIVED));
-    resp = I2C_ReceiveData(I2Cx);
-
-    // 恢复ACK配置
-    I2C_AcknowledgeConfig(I2Cx, ENABLE);
+    resp = I2C_ReadByte(i2c_id);
+    I2C_SendAck(i2c_id, 1);  // NACK（最后一字节）
+    IIC_Stop(i2c_id);
 
     return resp;
 }
@@ -454,7 +358,6 @@ uint8_t MLX90393_readMeasurement(MLX90393_Handle *handle, uint8_t i2c_id, uint8_
     uint8_t buffer[9];
     uint8_t count = 1;
     uint8_t i;
-    I2C_TypeDef* I2Cx = (i2c_id == 0) ? I2C1 : I2C2;
 
     if(flags & MLX90393_FLAG_T) count += 2;
     if(flags & MLX90393_FLAG_X) count += 2;
@@ -462,36 +365,23 @@ uint8_t MLX90393_readMeasurement(MLX90393_Handle *handle, uint8_t i2c_id, uint8_
     if(flags & MLX90393_FLAG_Z) count += 2;
 
     // 发送读测量命令
-    I2C_GenerateSTART(I2Cx, ENABLE);
-    while(!I2C_CheckEvent(I2Cx, I2C_EVENT_MASTER_MODE_SELECT));
+    IIC_Start(i2c_id);
+    I2C_WriteByte(i2c_id, handle->I2C_Address << 1);
+    if(I2C_WaitAck(i2c_id) != 0) { IIC_Stop(i2c_id); return 0xFF; }
 
-    I2C_Send7bitAddress(I2Cx, handle->I2C_Address << 1, I2C_Direction_Transmitter);
-    while(!I2C_CheckEvent(I2Cx, I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED));
+    I2C_WriteByte(i2c_id, cmd);
+    if(I2C_WaitAck(i2c_id) != 0) { IIC_Stop(i2c_id); return 0xFF; }
 
-    I2C_SendData(I2Cx, cmd);
-    while(!I2C_CheckEvent(I2Cx, I2C_EVENT_MASTER_BYTE_TRANSMITTED));
+    // 重复起始，读取所有字节
+    IIC_Start(i2c_id);
+    I2C_WriteByte(i2c_id, (handle->I2C_Address << 1) | 1);
+    if(I2C_WaitAck(i2c_id) != 0) { IIC_Stop(i2c_id); return 0xFF; }
 
-    // 读取数据
-    I2C_GenerateSTART(I2Cx, ENABLE);  // 重复起始
-    while(!I2C_CheckEvent(I2Cx, I2C_EVENT_MASTER_MODE_SELECT));
-
-    I2C_Send7bitAddress(I2Cx, handle->I2C_Address << 1, I2C_Direction_Receiver);
-    while(!I2C_CheckEvent(I2Cx, I2C_EVENT_MASTER_RECEIVER_MODE_SELECTED));
-
-    // 读取所有字节
-    I2C_AcknowledgeConfig(I2Cx, ENABLE);
-    for(i = 0; i < count; i++){
-        if(i == count - 1) {
-            // 最后一个字节：禁用ACK并生成STOP
-            I2C_AcknowledgeConfig(I2Cx, DISABLE);
-            I2C_GenerateSTOP(I2Cx, ENABLE);
-        }
-        while(!I2C_CheckEvent(I2Cx, I2C_EVENT_MASTER_BYTE_RECEIVED));
-        buffer[i] = I2C_ReceiveData(I2Cx);
+    for(i = 0; i < count; i++) {
+        buffer[i] = I2C_ReadByte(i2c_id);
+        I2C_SendAck(i2c_id, (i == count - 1) ? 1 : 0);  // 最后一字节发 NACK
     }
-
-    // 恢复ACK配置
-    I2C_AcknowledgeConfig(I2Cx, ENABLE);
+    IIC_Stop(i2c_id);
 
     // 解析数据
     uint8_t index = 1;
