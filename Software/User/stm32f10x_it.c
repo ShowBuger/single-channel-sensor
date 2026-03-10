@@ -132,7 +132,6 @@ void DebugMon_Handler(void)
   * @param  None
   * @retval None
   */
-extern volatile uint32_t ms_ticks;
 //void SysTick_Handler(void)
 //{
 //}

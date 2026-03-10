@@ -2,6 +2,8 @@
 #include "SoftI2C.h"
 #include "Delay.h"
 #include "stm32f10x.h"
+#include "FreeRTOS.h"
+#include "task.h"
 
 
 /**
@@ -120,28 +122,25 @@ uint8_t MLX90393_begin(MLX90393_Handle *handle, uint8_t A1, uint8_t A0, int DRDY
     /* Exit Mode */
     status = MLX90393_exit_mode(handle, id);
     if(error_process(status) == MLX90393_ERROR_BIT_SET) return 1;   //错误退出
-    Delay_ms(1) ;  // Wait for 1 ms
+    vTaskDelay(pdMS_TO_TICKS(1));  // Wait for 1 ms
 
     /* Reset */
     status = MLX90393_reset(handle, id);
     if(error_process(status) == MLX90393_ERROR_BIT_SET) return 1;   //错误退出
-    Delay_ms(2);
+    vTaskDelay(pdMS_TO_TICKS(2));
+   // Delay_ms(2);
 
     /*Config OSR*/
     status = MLX90393_setOverSampling(handle, id, 3);
     if(error_process(status) == MLX90393_ERROR_BIT_SET) return 1;   //错误退出
-    Delay_ms(1);
+    vTaskDelay(pdMS_TO_TICKS(1));
+    //Delay_ms(1);
 
     /*Config Filter*/
     status = MLX90393_setDigitalFiltering(handle, id, 0);
     if(error_process(status) == MLX90393_ERROR_BIT_SET) return 1;   //错误退出
-    Delay_ms(1);
-
-//    /*执行内建自检(BIST)*/
-//    if(MLX90393_selfTest(handle, id) != 0)
-//    {
-//        return 1;  // 自检失败
-//    }
+    vTaskDelay(pdMS_TO_TICKS(1));
+    //Delay_ms(1);
     return 0;
 }
 

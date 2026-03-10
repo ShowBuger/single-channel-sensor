@@ -4,6 +4,9 @@
 #include <math.h>
 #include "serial.h"
 #include "config_storage.h"
+#include "FreeRTOS.h"
+#include "task.h"
+
 
 #define XYZT_FLAGS (MLX90393_FLAG_X | MLX90393_FLAG_Y | MLX90393_FLAG_Z ) // 测量所有轴
 #define MEASURE_INTERVAL 8  //测量延时根据OSR和FLT决定
@@ -51,16 +54,12 @@ StabilityTracker reference_sensor_stability[1] = {0};
 uint8_t Scan_Ports(void)
 {
     uint8_t sensor_count = 0;
+    printf("start scan\n");
     /*扫描MLX90393传感器自检 - 仅1对传感器*/
     if(MLX90393_begin(&mlx_actual_sensors[0],0,0,-1,0) == 0 && MLX90393_begin(&mlx_reference_sensors[0],1,0,-1,0) == 0)
     {
         SENSOR_List[0] = 1;
         sensor_count = 1 ;
-    }
-    else
-    {
-        SENSOR_List[0] = 0;
-        SENSOR_Run[0] = 0;
     }
     return sensor_count;
 }
@@ -210,7 +209,8 @@ uint8_t get_sensor_data()
     }
 
     /*等待测量完成*/
-    Delay_ms(MEASURE_INTERVAL);
+    //Delay_ms(MEASURE_INTERVAL);
+    vTaskDelay(pdMS_TO_TICKS(MEASURE_INTERVAL));
 
     /*读取实际传感器原始数据*/
     status = MLX90393_readMeasurement(&mlx_actual_sensors[i], 0, XYZT_FLAGS, &raw_actual);
@@ -233,7 +233,7 @@ uint8_t get_sensor_data()
 
        /*标记数据有效*/
      sensor_data[i].valid = 1;
-	 data_process();
+	// data_process();
    return 0;
 }
 

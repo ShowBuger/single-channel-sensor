@@ -7,7 +7,10 @@
 #include <string.h>
 #include <math.h>
 #include <stdlib.h>
-
+#include "FreeRTOS.h"
+#include "task.h"
+#include "FreeRTOSConfig.h"
+#include "app.h"
 /**
   * 函    数:系统时钟初始化
   * 参    数:无
@@ -74,151 +77,9 @@ void SYSTEM_Init()
 	RCC_LSICmd(ENABLE);
 
 	/*等待LSI就绪*/
-	while(RCC_GetFlagStatus(RCC_FLAG_LSIRDY) == RESET);
-    
-}
-
-
-void serial_command_process()
-{
- // 处理串口命令
-			if(Serial_GetCommandFlag())
-			{
-					char* cmd = Serial_GetCommandBuffer();
-					// 处理 ML START 命令
-					if(strcmp(cmd, "ML START") == 0)
-					{
-							if(sensor_start() == 0)
-							{
-									printf("Sensor started successfully\r\n");
-									// 打印运行中的传感器 - 仅1个传感器
-									printf("Running sensor: ");
-									if(SENSOR_Run[0] == 1)
-									{
-											printf("0\r\n");
-									}
-									else
-									{
-											printf("None\r\n");
-									}
-							}
-							else
-							{
-									printf("Failed to start sensors\r\n");
-							}
-					}
-					// 处理 ML STOP 命令
-					else if(strcmp(cmd, "ML STOP") == 0)
-					{
-							if(sensor_stop() == 0)
-							{
-									printf("Sensor stopped\r\n");
-							}
-							else
-							{
-									printf("Failed to stop sensor\r\n");
-							}
-					}
-					else if(strcmp(cmd, "ML CALIB") == 0)
-					{
-							if(perform_sensor_calibration() == 0)
-							{
-									printf("Calibration completed\r\n");
-							}
-							else
-							{
-									printf("Calibration failed\r\n");
-							}
-					}
-					// 处理 ML CHFLAG data 命令 - 修改 FLAG_RES 的值
-					else if(strncmp(cmd, "ML CHFLAG ", 10) == 0)
-					{
-							uint32_t new_flag_value;
-							// 尝试解析十六进制格式 (0x开头) 或十进制格式
-							if(sscanf(cmd + 10, "0x%X", &new_flag_value) == 1 ||
-							   sscanf(cmd + 10, "0X%X", &new_flag_value) == 1 ||
-							   sscanf(cmd + 10, "%u", &new_flag_value) == 1)
-							{
-									if(new_flag_value <= 0xFF)  // 确保值在 uint8_t 范围内
-									{
-											uint8_t old_value = FLAG_RES;
-											FLAG_RES = (uint8_t)new_flag_value;
-											printf("FLAG_RES updated: 0x%02X -> 0x%02X\r\n", old_value, FLAG_RES);
-
-											// 保存到Flash
-											Config_Save_All();
-									}
-									else
-									{
-											printf("Error: Value out of range (0-255)\r\n");
-									}
-							}
-							else
-							{
-									printf("Error: Invalid format. Usage: ML CHFLAG <value>\r\n");
-									printf("Example: ML CHFLAG 0x1B or ML CHFLAG 27\r\n");
-							}
-					}
-					// 处理 ML FLAG 命令 - 显示FLAG_RES
-					else if(strcmp(cmd, "ML FLAG") == 0)
-					{
-							printf("FLAG_RES: 0x%02X\r\n", FLAG_RES);
-					}
-					// 处理 ML MAPPING 命令 - 显示映射系数
-					else if(strcmp(cmd, "ML MAPPING") == 0)
-					{
-							printf("Mapping values:\r\n");
-							printf("  X: %.3f\r\n", X_MAPPING_VALUE);
-							printf("  Y: %.3f\r\n", Y_MAPPING_VALUE);
-							printf("  Z: %.3f\r\n", Z_MAPPING_VALUE);
-					}
-					// 处理 ML SETMAP X/Y/Z value 命令 - 修改映射系数
-					else if(strncmp(cmd, "ML SETMAP ", 10) == 0)
-					{
-							char axis;
-							float new_value;
-							// 解析命令: ML SETMAP X 0.5
-							if(sscanf(cmd + 10, "%c %f", &axis, &new_value) == 2)
-							{
-									if(axis == 'X' || axis == 'x')
-									{
-											X_MAPPING_VALUE = new_value;
-											printf("X_MAPPING_VALUE updated: %.3f\r\n", X_MAPPING_VALUE);
-											Mapping_Value_Save();
-									}
-									else if(axis == 'Y' || axis == 'y')
-									{
-											Y_MAPPING_VALUE = new_value;
-											printf("Y_MAPPING_VALUE updated: %.3f\r\n", Y_MAPPING_VALUE);
-											Mapping_Value_Save();
-									}
-									else if(axis == 'Z' || axis == 'z')
-									{
-											Z_MAPPING_VALUE = new_value;
-											printf("Z_MAPPING_VALUE updated: %.3f\r\n", Z_MAPPING_VALUE);
-											Mapping_Value_Save();
-									}
-									else
-									{
-											printf("Error: Invalid axis '%c'. Use X, Y, or Z\r\n", axis);
-									}
-							}
-							else
-							{
-									printf("Error: Invalid format. Usage: ML SETMAP <X|Y|Z> <value>\r\n");
-									printf("Example: ML SETMAP X 0.5\r\n");
-							}
-					}
-					else
-					{
-							printf("Unknown command: %s\r\n", cmd);
-					}
-			}
-}
-int main(void)
-{
-    SYSTEM_Init();
-
+	while(RCC_GetFlagStatus(RCC_FLAG_LSIRDY) == RESET)
+    {};
+  
     /*初始化延时（TIM2）*/
     Delay_Init();
     /*初始化软件IIC*/
@@ -228,15 +89,26 @@ int main(void)
     /*初始化配置参数 - 从Flash读取*/
     Config_Init_All();
     printf("System_Reset\r\n");
-    Scan_Ports();
-    sensor_start();
+}
+
+
+int main(void)
+{
+    SYSTEM_Init();  //系统初始化
+    
+    //创建启动任务
+    xTaskCreate(vBooTTask, "BOOT_task", 512, NULL, BOOT_Task_PRIORITIES, NULL);
+    
+    vTaskStartScheduler();  //开启任务调度
+
     while(1)
     {
-        serial_command_process();
-        if(SENSOR_Run[0] == 1)
-        {
-            get_sensor_data();
-            print_processed_sensor_data(0);
-        }
+        printf("FREERTOS_START_FAILED");
+//        serial_command_process();
+//        if(SENSOR_Run[0] == 1)
+//        {
+//            get_sensor_data();
+//            print_processed_sensor_data(0);
+//        }
     }
 }

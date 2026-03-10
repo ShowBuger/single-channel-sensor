@@ -2,12 +2,17 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
+#include "Serial.h"
+#include "FreeRTOS.h"
+#include "queue.h"
+
+extern QueueHandle_t xUartCommandQueue;
 
 uint8_t Serial_RxData;		//定义串口接收的数据变量
 uint8_t Serial_RxFlag;		//定义串口接收的标志位变量
 
 // 命令接收缓冲区
-#define CMD_BUFFER_SIZE 64
+
 static char cmdBuffer[CMD_BUFFER_SIZE];
 static uint8_t cmdIndex = 0;
 static uint8_t cmdReadyFlag = 0;
@@ -210,6 +215,9 @@ void USART1_IRQHandler(void)
 			{
 				cmdBuffer[cmdIndex] = '\0';						//添加字符串结束符
 				cmdReadyFlag = 1;								//命令就绪标志置1
+				BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+				xQueueSendFromISR(xUartCommandQueue, cmdBuffer, &xHigherPriorityTaskWoken);
+				portYIELD_FROM_ISR(xHigherPriorityTaskWoken);  //如有更高优先级任务被唤醒则切换
 				cmdIndex = 0;									//重置索引
 			}
 		}
@@ -219,6 +227,7 @@ void USART1_IRQHandler(void)
 		}
 
 		USART_ClearITPendingBit(USART1, USART_IT_RXNE);			//清除USART1的RXNE标志位
+        
 	}
 }
 void Serial_SendFloat(float value)

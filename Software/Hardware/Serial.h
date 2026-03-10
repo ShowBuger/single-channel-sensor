@@ -19,4 +19,5 @@ void Serial_ProcessCommand(void);
 uint8_t Serial_GetCommandFlag(void);
 char* Serial_GetCommandBuffer(void);
 
+#define CMD_BUFFER_SIZE 64
 #endif
