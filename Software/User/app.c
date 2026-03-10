@@ -30,7 +30,7 @@ void vBooTTask(void *pvParameters)
     
     xTaskCreate(vDataAcquireTask, "DataAcquire_task", 256, NULL, DATA_ACQUIRE_PRIORITIES, NULL);
     xTaskCreate(vDataProcessTask, "DataProcess_task", 512, NULL, DATA_PROCESS_PRIORITIES, NULL);
-    xTaskCreate(vUartCommandTask, "UartCommand_task", 128, NULL, UART_COMMAND_PRIORITIES, NULL);
+    xTaskCreate(vUartCommandTask, "UartCommand_task", 256, NULL, UART_COMMAND_PRIORITIES, NULL);
 
     vTaskDelete(NULL); //任务自杀
 }

@@ -844,9 +844,9 @@ uint8_t perform_sensor_calibration(void)
     uint8_t calibration_samples = 10;  // 标定采样次数
 
     // 数据缓冲区 - 存储所有采样数据用于计算标准差 - 仅1个传感器
-    MLX90393_Data actual_samples[1][10];    // 实际传感器采样数据
-    MLX90393_Data reference_samples[1][10]; // 参考传感器采样数据
-    uint8_t sample_valid[1][10] = {0};      // 采样有效标志
+    static MLX90393_Data actual_samples[1][10];    // 实际传感器采样数据
+    static MLX90393_Data reference_samples[1][10]; // 参考传感器采样数据
+    uint8_t sample_valid[1][10] = {0};             // 采样有效标志
 
     // 临时累加器 - 用于存储累加和 - 仅1个传感器
     struct {
@@ -861,14 +861,22 @@ uint8_t perform_sensor_calibration(void)
     printf("Calibrating sensors (10 samples)...\r\n");
 
     // 连续读取10次数据
+    int retry_count = 0;
     for(j = 0; j < calibration_samples; j++)
     {
         // 读取所有传感器数据
         if(get_sensor_data() != 0)
         {
+            if(++retry_count > 30)
+            {
+                printf("Calibration failed: sensor not responding\r\n");
+                return 1;
+            }
+            vTaskDelay(pdMS_TO_TICKS(10));
             j--;
-            continue;  // 读取失败,跳过本次采样
+            continue;  // 读取失败,重试
         }
+        retry_count = 0;
 
         // 保存数据并累加有效数据
         if(SENSOR_Run[i] == 0) continue;  // 传感器未运行,跳过
