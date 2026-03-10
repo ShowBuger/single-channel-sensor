@@ -10,11 +10,16 @@
 #include "FreeRTOSConfig.h"
 #include "Serial.h"
 #include "queue.h"
+#include "semphr.h"
 QueueHandle_t xSensorDataQueue;  //传感器数据队列
 QueueHandle_t xUartCommandQueue; //串口命令队列
+SemaphoreHandle_t xI2CMutex;     //I2C 总线互斥量
 
 void vBooTTask(void *pvParameters)
 {
+    // 创建互斥量
+    xI2CMutex = xSemaphoreCreateMutex();
+
     Scan_Ports();   //扫描传感器
     sensor_start();
 
@@ -36,18 +41,18 @@ void vDataAcquireTask(void *pvParameters)
 {
     while(1)
     {
-        
-       //获取互斥量
-        
-        
-        // 采集传感器数据
-        if(get_sensor_data() == 0)
+        // 获取 I2C 互斥量，最多等待 50ms
+        if(xSemaphoreTake(xI2CMutex, pdMS_TO_TICKS(50)) == pdTRUE)
         {
-            // 写队列，不等待（队列满则丢弃本帧）
-            xQueueSend(xSensorDataQueue, &sensor_data[0], 0);
+            // 采集传感器数据
+            if(get_sensor_data() == 0)
+            {
+                // 写队列，不等待（队列满则丢弃本帧）
+                xQueueSend(xSensorDataQueue, &sensor_data[0], 0);
+            }
+            // 释放 I2C 互斥量
+            xSemaphoreGive(xI2CMutex);
         }
-
-        //释放互斥量
     }
 }
 
@@ -82,15 +87,21 @@ void vUartCommandTask(void *pvParameters)
         // ML START
         if(strcmp(cmd, "ML START") == 0)
         {
-            if(sensor_start() == 0)
+            if(xSemaphoreTake(xI2CMutex, pdMS_TO_TICKS(1000)) == pdTRUE)
             {
-                printf("Sensor started successfully\r\n");
-                printf("Running sensor: %s\r\n", SENSOR_Run[0] ? "0" : "None");
+                if(sensor_start() == 0)
+                {
+                    printf("Sensor started successfully\r\n");
+                    printf("Running sensor: %s\r\n", SENSOR_Run[0] ? "0" : "None");
+                }
+                else
+                {
+                    printf("Failed to start sensors\r\n");
+                }
+                xSemaphoreGive(xI2CMutex);
             }
             else
-            {
-                printf("Failed to start sensors\r\n");
-            }
+                printf("Error: I2C busy\r\n");
         }
         // ML STOP
         else if(strcmp(cmd, "ML STOP") == 0)
@@ -103,10 +114,16 @@ void vUartCommandTask(void *pvParameters)
         // ML CALIB
         else if(strcmp(cmd, "ML CALIB") == 0)
         {
-            if(perform_sensor_calibration() == 0)
-                printf("Calibration completed\r\n");
+            if(xSemaphoreTake(xI2CMutex, pdMS_TO_TICKS(1000)) == pdTRUE)
+            {
+                if(perform_sensor_calibration() == 0)
+                    printf("Calibration completed\r\n");
+                else
+                    printf("Calibration failed\r\n");
+                xSemaphoreGive(xI2CMutex);
+            }
             else
-                printf("Calibration failed\r\n");
+                printf("Error: I2C busy\r\n");
         }
         // ML FLAG
         else if(strcmp(cmd, "ML FLAG") == 0)
