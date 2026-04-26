@@ -6,7 +6,7 @@
         "parity": "N",
         "stop_bits": 1,
         "flow_control": null,
-        "last_port": "COM19",
+        "last_port": "COM4",
         "auto_connect": false,
         "reconnect_attempts": 3
     },

@@ -36,8 +36,8 @@ class MainWindow(QMainWindow):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         # 初始化窗口尺寸
-        self.window_size = QSize(1000, 600)  # 默认尺寸
-        self.setMinimumSize(self.window_size)
+        self.window_size = QSize(1000, 680)  # 默认尺寸
+        self.setMinimumSize(QSize(920, 620))
 
         # 导入设置
         self.settings = Settings()

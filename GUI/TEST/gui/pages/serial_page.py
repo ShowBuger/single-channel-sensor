@@ -9,7 +9,8 @@ from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QPushButton, QLabel, QComboBox, QTextEdit,
-    QGroupBox, QCheckBox, QFrame, QFileDialog, QMessageBox, QSizePolicy, QLineEdit
+    QGroupBox, QCheckBox, QFrame, QFileDialog, QMessageBox, QSizePolicy, QLineEdit,
+    QProgressBar, QSpinBox
 )
 
 
@@ -62,33 +63,43 @@ class SerialPage(QWidget):
         """设置UI布局"""
         # 创建主布局
         self.main_layout = QVBoxLayout(self)
-        self.main_layout.setContentsMargins(20, 20, 20, 20)
-        self.main_layout.setSpacing(15)
-        self.main_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.main_layout.setContentsMargins(10, 8, 10, 8)
+        self.main_layout.setSpacing(6)
+        self.main_layout.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
 
         # 创建连接设置区域（仅保留端口号、波特率、刷新、连接）
         self.connection_group = QGroupBox("串口连接")
         self.connection_group.setObjectName("connectionGroup")
         self.connection_group.setMaximumWidth(900)
         self.connection_layout = QGridLayout(self.connection_group)
-        self.connection_layout.setContentsMargins(5, 5, 5, 5)
+        self.connection_layout.setContentsMargins(8, 6, 8, 6)
         self.connection_layout.setHorizontalSpacing(8)
-        self.connection_layout.setVerticalSpacing(5)
+        self.connection_layout.setVerticalSpacing(4)
 
-        row = 0
-        # 串口选择（固定使用sensor0）
+        # 第 0 行: 串口号 | port_combo(span 3) | 刷新 | 连接
         port_label = QLabel("串口号")
         port_label.setStyleSheet("background-color: transparent;")
-        self.connection_layout.addWidget(port_label, row, 0)
+        self.connection_layout.addWidget(port_label, 0, 0)
         self.port_combo = QComboBox()
         self.port_combo.setMinimumWidth(200)
-        self.connection_layout.addWidget(self.port_combo, row, 1, 1, 2)
+        self.connection_layout.addWidget(self.port_combo, 0, 1, 1, 3)
 
-        row += 1
-        # 波特率
+        self.refresh_btn = QPushButton("刷新")
+        self.refresh_btn.setObjectName("secondaryButton")
+        self.refresh_btn.setMinimumHeight(26)
+        self.refresh_btn.setMinimumWidth(60)
+        self.connection_layout.addWidget(self.refresh_btn, 0, 4)
+
+        self.connect_btn = QPushButton("连接")
+        self.connect_btn.setObjectName("primaryButton")
+        self.connect_btn.setMinimumHeight(26)
+        self.connect_btn.setMinimumWidth(60)
+        self.connection_layout.addWidget(self.connect_btn, 0, 5)
+
+        # 第 1 行: 波特率 | baudrate_combo | [状态指示器 + 文本]
         baudrate_label = QLabel("波特率")
         baudrate_label.setStyleSheet("background-color: transparent;")
-        self.connection_layout.addWidget(baudrate_label, row, 0)
+        self.connection_layout.addWidget(baudrate_label, 1, 0)
         self.baudrate_combo = QComboBox()
         self.baudrate_combo.addItems([
             "1200", "2400", "4800", "9600", "19200", "38400",
@@ -96,25 +107,11 @@ class SerialPage(QWidget):
             "921600", "1000000"
         ])
         self.baudrate_combo.setCurrentText("115200")
-        self.connection_layout.addWidget(self.baudrate_combo, row, 1)
+        self.connection_layout.addWidget(self.baudrate_combo, 1, 1)
 
-        # 刷新按钮
-        self.refresh_btn = QPushButton("刷新")
-        self.refresh_btn.setObjectName("secondaryButton")
-        self.refresh_btn.setMinimumHeight(28)
-        self.refresh_btn.setMinimumWidth(60)
-        self.connection_layout.addWidget(self.refresh_btn, row, 2)
-
-        # 连接按钮
-        self.connect_btn = QPushButton("连接")
-        self.connect_btn.setObjectName("primaryButton")
-        self.connect_btn.setMinimumHeight(28)
-        self.connect_btn.setMinimumWidth(60)
-        self.connection_layout.addWidget(self.connect_btn, row, 3)
-
-        row += 1
-        # 连接状态指示器
         status_layout = QHBoxLayout()
+        status_layout.setContentsMargins(0, 0, 0, 0)
+        status_layout.setSpacing(4)
         self.connection_indicator = QLabel("●")
         self.connection_indicator.setObjectName("connectionIndicator")
         self.connection_indicator.setStyleSheet("color: gray; font-size: 14px;")
@@ -123,147 +120,197 @@ class SerialPage(QWidget):
         status_layout.addWidget(self.connection_indicator)
         status_layout.addWidget(self.connection_status_text)
         status_layout.addStretch()
-        self.connection_layout.addLayout(status_layout, row, 0, 1, 4)
+        self.connection_layout.addLayout(status_layout, 1, 2, 1, 4)
 
         self.main_layout.addWidget(self.connection_group)
 
-        # 串口指令区域：SCAN/START/STOP + FLAG 使能按钮
+        # 串口指令区域：START/STOP + 映射值 + FLAG 使能按钮
         self.flag_group = QGroupBox("串口指令")
         self.flag_group.setObjectName("flagGroup")
         self.flag_group.setMaximumWidth(900)
         self.flag_layout = QVBoxLayout(self.flag_group)
-        self.flag_layout.setContentsMargins(5, 5, 5, 5)
-        self.flag_layout.setSpacing(5)
+        self.flag_layout.setContentsMargins(8, 6, 8, 6)
+        self.flag_layout.setSpacing(4)
 
-        # START/STOP 行
+        # 第 1 行: START/STOP 按钮（居中）
         command_ctrl_layout = QHBoxLayout()
-        command_ctrl_layout.addStretch()  # 左侧弹性空间
-
-        # 合并的 START/STOP 按钮
+        command_ctrl_layout.setContentsMargins(0, 0, 0, 0)
+        command_ctrl_layout.addStretch()
         self.start_stop_btn = QPushButton("START")
         self.start_stop_btn.setObjectName("primaryButton")
         self.start_stop_btn.setMinimumWidth(100)
-        self.start_stop_btn.setMinimumHeight(35)
+        self.start_stop_btn.setMinimumHeight(28)
         self.start_stop_btn.setToolTip("启动所有检测到的传感器并进行自动标定")
-        self.is_running = False  # 运行状态标志
+        self.is_running = False
         command_ctrl_layout.addWidget(self.start_stop_btn)
-
-        command_ctrl_layout.addStretch()  # 右侧弹性空间
+        command_ctrl_layout.addStretch()
         self.flag_layout.addLayout(command_ctrl_layout)
 
-        # 映射值配置区域 (ML SETMAP)
-        mapping_layout = QVBoxLayout()
-        mapping_layout.setSpacing(8)
+        # 第 2 行: X/Y/Z 映射输入 + GET/SET/CALIB 按钮，同一行
+        mapping_row = QHBoxLayout()
+        mapping_row.setSpacing(6)
+        mapping_row.setContentsMargins(0, 0, 0, 0)
 
-        # 映射值输入行
-        mapping_input_layout = QHBoxLayout()
-        mapping_input_layout.setSpacing(10)
-        mapping_input_layout.addStretch()  # 左侧弹性空间
+        for axis_text, attr_name, default in (("X:", "mapping_x_input", "0.1"),
+                                              ("Y:", "mapping_y_input", "0.1"),
+                                              ("Z:", "mapping_z_input", "-0.1")):
+            lbl = QLabel(axis_text)
+            lbl.setStyleSheet("background-color: transparent; font-weight: bold;")
+            mapping_row.addWidget(lbl)
+            edit = QLineEdit()
+            edit.setPlaceholderText(default)
+            edit.setText(default)
+            edit.setMaximumWidth(70)
+            edit.setMinimumHeight(26)
+            setattr(self, attr_name, edit)
+            mapping_row.addWidget(edit)
 
-        # X轴映射值
-        x_label = QLabel("X:")
-        x_label.setStyleSheet("background-color: transparent; font-weight: bold;")
-        mapping_input_layout.addWidget(x_label)
-        self.mapping_x_input = QLineEdit()
-        self.mapping_x_input.setPlaceholderText("0.1")
-        self.mapping_x_input.setMaximumWidth(80)
-        self.mapping_x_input.setText("0.1")
-        mapping_input_layout.addWidget(self.mapping_x_input)
-
-        # Y轴映射值
-        y_label = QLabel("Y:")
-        y_label.setStyleSheet("background-color: transparent; font-weight: bold;")
-        mapping_input_layout.addWidget(y_label)
-        self.mapping_y_input = QLineEdit()
-        self.mapping_y_input.setPlaceholderText("0.1")
-        self.mapping_y_input.setMaximumWidth(80)
-        self.mapping_y_input.setText("0.1")
-        mapping_input_layout.addWidget(self.mapping_y_input)
-
-        # Z轴映射值
-        z_label = QLabel("Z:")
-        z_label.setStyleSheet("background-color: transparent; font-weight: bold;")
-        mapping_input_layout.addWidget(z_label)
-        self.mapping_z_input = QLineEdit()
-        self.mapping_z_input.setPlaceholderText("-0.1")
-        self.mapping_z_input.setMaximumWidth(80)
-        self.mapping_z_input.setText("-0.1")
-        mapping_input_layout.addWidget(self.mapping_z_input)
-
-        mapping_input_layout.addStretch()  # 右侧弹性空间
-        mapping_layout.addLayout(mapping_input_layout)
-
-        # GET / SET / CALIB 按钮行
-        mapping_ctrl_layout = QHBoxLayout()
-        mapping_ctrl_layout.addStretch()  # 左侧弹性空间
+        mapping_row.addSpacing(10)
 
         self.mapping_get_btn = QPushButton("GET")
         self.mapping_get_btn.setObjectName("secondaryButton")
-        self.mapping_get_btn.setMinimumWidth(80)
-        self.mapping_get_btn.setMinimumHeight(30)
+        self.mapping_get_btn.setMinimumWidth(70)
+        self.mapping_get_btn.setMinimumHeight(26)
         self.mapping_get_btn.setToolTip("获取当前映射值和状态 (ML MAPPING & ML FLAG)")
-        mapping_ctrl_layout.addWidget(self.mapping_get_btn)
+        mapping_row.addWidget(self.mapping_get_btn)
 
         self.mapping_set_btn = QPushButton("SET")
         self.mapping_set_btn.setObjectName("secondaryButton")
-        self.mapping_set_btn.setMinimumWidth(80)
-        self.mapping_set_btn.setMinimumHeight(30)
+        self.mapping_set_btn.setMinimumWidth(70)
+        self.mapping_set_btn.setMinimumHeight(26)
         self.mapping_set_btn.setToolTip("设置映射值和状态 (ML SETMAP X/Y/Z & ML CHFLAG)")
-        mapping_ctrl_layout.addWidget(self.mapping_set_btn)
+        mapping_row.addWidget(self.mapping_set_btn)
 
         self.calibration_btn = QPushButton("CALIB")
         self.calibration_btn.setObjectName("primaryButton")
-        self.calibration_btn.setMinimumWidth(80)
-        self.calibration_btn.setMinimumHeight(30)
+        self.calibration_btn.setMinimumWidth(70)
+        self.calibration_btn.setMinimumHeight(26)
         self.calibration_btn.setToolTip("执行传感器标定 (ML CALIB)")
-        mapping_ctrl_layout.addWidget(self.calibration_btn)
+        mapping_row.addWidget(self.calibration_btn)
 
-        mapping_ctrl_layout.addStretch()  # 右侧弹性空间
-        mapping_layout.addLayout(mapping_ctrl_layout)
+        mapping_row.addStretch()
+        self.flag_layout.addLayout(mapping_row)
 
-        self.flag_layout.addLayout(mapping_layout)
-
-        # 标志按钮（可切换），与 FLAG_RES 各位一一对应
+        # 第 3 行: FLAG 使能按钮（6 个）
         self.flag_buttons = []
         flags_info = [
-            ("标定", 0),          # Bit0: 标定使能
-            ("死区过滤", 1),      # Bit1: 死区过滤使能
-            ("滑动窗口", 2),      # Bit2: 滑动窗口滤波使能
-            ("预测补偿", 3),      # Bit3: 预测补偿使能
-            ("映射", 4),          # Bit4: 映射使能
-            ("平滑过渡", 5),      # Bit5: 平滑过渡使能
+            ("标定", 0),
+            ("死区过滤", 1),
+            ("滑动窗口", 2),
+            ("预测补偿", 3),
+            ("映射", 4),
+            ("平滑过渡", 5),
         ]
         flags_layout = QHBoxLayout()
-        flags_layout.setSpacing(8)
-        flags_layout.addStretch()  # 左侧弹性空间
+        flags_layout.setSpacing(6)
+        flags_layout.setContentsMargins(0, 0, 0, 0)
+        flags_layout.addStretch()
         for text, bit in flags_info:
             btn = QPushButton(text)
             btn.setCheckable(True)
-            btn.setMinimumWidth(90)
+            btn.setMinimumWidth(80)
+            btn.setMinimumHeight(26)
             btn.setObjectName("flagButton")
             btn.clicked.connect(lambda checked, b=btn, bit=bit: self.on_flag_button_clicked(b, bit, checked))
             self.flag_buttons.append((btn, bit))
             flags_layout.addWidget(btn)
-        flags_layout.addStretch()  # 右侧弹性空间
+        flags_layout.addStretch()
         self.flag_layout.addLayout(flags_layout)
 
         # 初始化按钮显示
         self.apply_flag_value(self.flag_value)
         self.main_layout.addWidget(self.flag_group)
 
-        # 创建数据显示区域（充分利用空间）
-        self.data_display_frame = QFrame()
-        self.data_display_frame.setObjectName("dataDisplayFrame")
-        self.data_display_layout = QVBoxLayout(self.data_display_frame)
-        self.data_display_layout.setContentsMargins(0, 0, 0, 0)
-        self.data_display_layout.setSpacing(3)
+        # 文件发送 (OTA 升级) 区域
+        self.file_send_group = QGroupBox("文件发送 (OTA)")
+        self.file_send_group.setObjectName("fileSendGroup")
+        self.file_send_group.setMaximumWidth(900)
+        file_send_layout = QVBoxLayout(self.file_send_group)
+        file_send_layout.setContentsMargins(8, 6, 8, 6)
+        file_send_layout.setSpacing(4)
 
-        # 接收区域
+        # 第 1 行: 文件路径 + 浏览按钮
+        file_row = QHBoxLayout()
+        file_row.setSpacing(6)
+        file_row.setContentsMargins(0, 0, 0, 0)
+        self.file_path_edit = QLineEdit()
+        self.file_path_edit.setReadOnly(True)
+        self.file_path_edit.setPlaceholderText("未选择文件")
+        self.file_path_edit.setMinimumHeight(26)
+        file_row.addWidget(self.file_path_edit, 1)
+        self.browse_file_btn = QPushButton("浏览...")
+        self.browse_file_btn.setObjectName("secondaryButton")
+        self.browse_file_btn.setMinimumWidth(70)
+        self.browse_file_btn.setMinimumHeight(26)
+        file_row.addWidget(self.browse_file_btn)
+        file_send_layout.addLayout(file_row)
+
+        # 第 2 行: 发送间隔 + 单次字节数 + 开始发送 按钮
+        param_row = QHBoxLayout()
+        param_row.setSpacing(6)
+        param_row.setContentsMargins(0, 0, 0, 0)
+
+        interval_label = QLabel("发送间隔(ms):")
+        interval_label.setStyleSheet("background-color: transparent;")
+        param_row.addWidget(interval_label)
+        self.send_interval_spin = QSpinBox()
+        self.send_interval_spin.setRange(0, 10000)
+        self.send_interval_spin.setValue(20)
+        self.send_interval_spin.setFixedWidth(80)
+        self.send_interval_spin.setMinimumHeight(26)
+        self.send_interval_spin.setToolTip("相邻两次发送的时间间隔，0 表示尽快连续发送")
+        param_row.addWidget(self.send_interval_spin)
+
+        param_row.addSpacing(8)
+
+        chunk_label = QLabel("单次字节数:")
+        chunk_label.setStyleSheet("background-color: transparent;")
+        param_row.addWidget(chunk_label)
+        self.chunk_size_spin = QSpinBox()
+        self.chunk_size_spin.setRange(1, 4096)
+        self.chunk_size_spin.setValue(64)
+        self.chunk_size_spin.setFixedWidth(80)
+        self.chunk_size_spin.setMinimumHeight(26)
+        self.chunk_size_spin.setToolTip("每次写入串口的字节数")
+        param_row.addWidget(self.chunk_size_spin)
+
+        param_row.addStretch()
+
+        self.file_send_btn = QPushButton("开始发送")
+        self.file_send_btn.setObjectName("primaryButton")
+        self.file_send_btn.setMinimumWidth(90)
+        self.file_send_btn.setMinimumHeight(26)
+        self.file_send_btn.setEnabled(False)
+        param_row.addWidget(self.file_send_btn)
+
+        file_send_layout.addLayout(param_row)
+
+        # 第 3 行: 进度条
+        self.file_progress_bar = QProgressBar()
+        self.file_progress_bar.setRange(0, 100)
+        self.file_progress_bar.setValue(0)
+        self.file_progress_bar.setFormat("%p%  (0 / 0 字节)")
+        self.file_progress_bar.setTextVisible(True)
+        self.file_progress_bar.setMaximumHeight(18)
+        file_send_layout.addWidget(self.file_progress_bar)
+
+        self.main_layout.addWidget(self.file_send_group)
+
+        # 文件发送状态变量
+        self.file_send_path = None
+        self.file_send_bytes = None
+        self.file_send_offset = 0
+        self.file_send_timer = QTimer(self)
+        self.file_send_timer.timeout.connect(self._send_next_chunk)
+        self.is_file_sending = False
+
+        # 数据监视区域
         self.receive_group = QGroupBox("数据监视")
         self.receive_group.setMaximumWidth(900)
+        self.receive_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         self.receive_layout = QVBoxLayout(self.receive_group)
-        self.receive_layout.setContentsMargins(5, 5, 5, 5)
-        self.receive_layout.setSpacing(5)
+        self.receive_layout.setContentsMargins(8, 6, 8, 6)
+        self.receive_layout.setSpacing(4)
 
         # 接收设置栏（紧凑显示）
         self.receive_settings_layout = QHBoxLayout()
@@ -273,7 +320,7 @@ class SerialPage(QWidget):
         self.clear_receive_btn = QPushButton("清空")
         self.clear_receive_btn.setObjectName("secondaryButton")
         self.clear_receive_btn.setMaximumWidth(50)
-        self.clear_receive_btn.setMinimumHeight(28)
+        self.clear_receive_btn.setMinimumHeight(24)
         self.receive_settings_layout.addWidget(self.clear_receive_btn)
 
         self.receive_settings_layout.addStretch()
@@ -285,19 +332,16 @@ class SerialPage(QWidget):
         self.receive_text.setReadOnly(True)
         self.receive_text.setObjectName("receiveText")
         self.receive_text.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        # 设置背景色与应用背景一致
+        self.receive_text.setMinimumHeight(100)
         self.receive_text.setStyleSheet("background-color: #282a36; color: #f8f8f2; border: 1px solid #44475a;")
-        self.receive_layout.addWidget(self.receive_text)
+        self.receive_layout.addWidget(self.receive_text, 1)
 
-        self.data_display_layout.addWidget(self.receive_group, 1)  # 给予充分的扩展空间
+        # 接收组直接加入主布局，并占据剩余空间
+        self.main_layout.addWidget(self.receive_group, 1)
 
-        # 添加数据显示区域到主布局（充分扩展）
-        self.main_layout.addWidget(self.data_display_frame, 1)
-
-        # 状态标签
-        self.status_label = QLabel("未连接")
-        self.status_label.setObjectName("statusLabel")
-        self.main_layout.addWidget(self.status_label)
+        # 为旧代码中 self.status_label 的引用保留一个不可见标签
+        self.status_label = QLabel("")
+        self.status_label.setVisible(False)
 
     def connect_signals(self):
         """连接信号和槽"""
@@ -309,6 +353,8 @@ class SerialPage(QWidget):
         self.mapping_get_btn.clicked.connect(self.send_mapping_get)
         self.mapping_set_btn.clicked.connect(self.send_mapping_set)
         self.calibration_btn.clicked.connect(self.send_calibration)
+        self.browse_file_btn.clicked.connect(self.browse_send_file)
+        self.file_send_btn.clicked.connect(self.toggle_file_send)
 
         # 串口管理器信号
         self.serial_manager.connected_signal.connect(self.on_connection_changed)
@@ -491,6 +537,9 @@ class SerialPage(QWidget):
             self.status_label.setText("未连接")
             self.set_connection_indicator(False)
             self.add_status_message("串口已断开")
+            # 若正在发送文件，中断发送
+            if self.is_file_sending:
+                self._finish_file_send(success=False, message="串口已断开")
 
     def set_connection_indicator(self, connected, port_name=None):
         """更新连接指示器"""
@@ -600,6 +649,143 @@ class SerialPage(QWidget):
     def clear_receive(self):
         """清空接收区"""
         self.receive_text.clear()
+
+    def browse_send_file(self):
+        """选择要发送的文件 (用于 OTA 升级)"""
+        if self.is_file_sending:
+            self.on_error("正在发送文件，请先停止后再选择")
+            return
+
+        start_dir = ""
+        if self.file_send_path and os.path.isfile(self.file_send_path):
+            start_dir = os.path.dirname(self.file_send_path)
+
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "选择要发送的文件",
+            start_dir,
+            "固件文件 (*.bin *.hex);;所有文件 (*.*)"
+        )
+        if not path:
+            return
+
+        try:
+            size = os.path.getsize(path)
+        except OSError as e:
+            self.on_error(f"读取文件信息失败: {e}")
+            return
+
+        self.file_send_path = path
+        self.file_send_bytes = None
+        self.file_send_offset = 0
+        self.file_path_edit.setText(path)
+        self.file_progress_bar.setValue(0)
+        self.file_progress_bar.setFormat(f"%p%%  (0 / {size} 字节)")
+        self.file_send_btn.setEnabled(True)
+        self.add_status_message(f"已选择文件: {os.path.basename(path)} ({size} 字节)")
+
+    def toggle_file_send(self):
+        """开始或停止文件发送"""
+        if self.is_file_sending:
+            self._finish_file_send(success=False, message="已手动停止")
+            return
+
+        if not self.serial_manager.is_connected():
+            self.on_error("串口未连接，无法发送文件")
+            return
+        if not self.file_send_path or not os.path.isfile(self.file_send_path):
+            self.on_error("请先选择有效的文件")
+            return
+
+        try:
+            with open(self.file_send_path, "rb") as f:
+                self.file_send_bytes = f.read()
+        except OSError as e:
+            self.on_error(f"打开文件失败: {e}")
+            self.file_send_bytes = None
+            return
+
+        total = len(self.file_send_bytes)
+        if total == 0:
+            self.on_error("文件为空")
+            self.file_send_bytes = None
+            return
+
+        self.file_send_offset = 0
+        self.is_file_sending = True
+        self.file_progress_bar.setRange(0, 100)
+        self.file_progress_bar.setValue(0)
+        self.file_progress_bar.setFormat(f"%p%%  (0 / {total} 字节)")
+
+        # 禁用配置项，防止发送过程中被修改
+        self.browse_file_btn.setEnabled(False)
+        self.send_interval_spin.setEnabled(False)
+        self.chunk_size_spin.setEnabled(False)
+        self.file_send_btn.setText("停止发送")
+        self.file_send_btn.setObjectName("stopButton")
+        self.file_send_btn.setStyleSheet("background-color: #ff5555; color: white; font-weight: bold;")
+
+        self.add_status_message(
+            f"开始发送文件: {os.path.basename(self.file_send_path)} "
+            f"(共 {total} 字节, 单次 {self.chunk_size_spin.value()} 字节, "
+            f"间隔 {self.send_interval_spin.value()} ms)"
+        )
+
+        interval_ms = self.send_interval_spin.value()
+        self.file_send_timer.setInterval(max(0, interval_ms))
+        # 立即发送第一块，再按间隔驱动后续
+        self._send_next_chunk()
+        if self.is_file_sending:
+            self.file_send_timer.start()
+
+    def _send_next_chunk(self):
+        """发送下一块数据"""
+        if not self.is_file_sending or self.file_send_bytes is None:
+            return
+
+        if not self.serial_manager.is_connected():
+            self._finish_file_send(success=False, message="串口已断开")
+            return
+
+        chunk_size = self.chunk_size_spin.value()
+        total = len(self.file_send_bytes)
+        end = min(self.file_send_offset + chunk_size, total)
+        chunk = self.file_send_bytes[self.file_send_offset:end]
+
+        if not self.serial_manager.send_data(chunk):
+            self._finish_file_send(success=False, message="发送失败")
+            return
+
+        self.file_send_offset = end
+        percent = int(self.file_send_offset * 100 / total) if total else 100
+        self.file_progress_bar.setValue(percent)
+        self.file_progress_bar.setFormat(f"%p%%  ({self.file_send_offset} / {total} 字节)")
+
+        if self.file_send_offset >= total:
+            self._finish_file_send(success=True, message="发送完成")
+
+    def _finish_file_send(self, success, message=""):
+        """结束文件发送，恢复 UI 状态"""
+        self.file_send_timer.stop()
+        self.is_file_sending = False
+
+        self.browse_file_btn.setEnabled(True)
+        self.send_interval_spin.setEnabled(True)
+        self.chunk_size_spin.setEnabled(True)
+        self.file_send_btn.setText("开始发送")
+        self.file_send_btn.setObjectName("primaryButton")
+        self.file_send_btn.setStyleSheet("")
+        self.file_send_btn.setEnabled(self.file_send_path is not None and os.path.isfile(self.file_send_path))
+
+        total = len(self.file_send_bytes) if self.file_send_bytes is not None else 0
+        sent = self.file_send_offset
+        if message:
+            self.add_status_message(
+                f"文件发送{'完成' if success else '中断'}: {message} ({sent}/{total} 字节)",
+                is_error=not success
+            )
+        # 释放文件内容内存
+        self.file_send_bytes = None
 
 
     def add_status_message(self, message, is_error=False):
