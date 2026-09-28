@@ -1,4 +1,4 @@
-#include "DMA.h"
+#include "bsp_dma.h"
 
 uint16_t DMA_Size = 4;
 void dma_Init(uint32_t AddrA,uint32_t AddrB,uint16_t size){

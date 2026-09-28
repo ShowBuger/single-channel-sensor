@@ -1,10 +1,10 @@
 #include "sensor_manager.h"
-#include "mlx90393.h"
-#include "TCA9548A.h"
-#include "Delay.h"
+#include "../drivers/sensors/mlx90393.h"
+#include "../drivers/sensors/tca9548a.h"
+#include "../drivers/bsp/bsp_delay.h"
 #include <math.h>
-#include "serial.h"
-#include "config_storage.h"
+#include "../drivers/bsp/bsp_uart.h"
+#include "config_manager.h"
 
 #define XYZT_FLAGS (MLX90393_FLAG_X | MLX90393_FLAG_Y | MLX90393_FLAG_Z ) // 测量所有轴
 #define MEASURE_INTERVAL 8  //测量延时根据OSR和FLT决定

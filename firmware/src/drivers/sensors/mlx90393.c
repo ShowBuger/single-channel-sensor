@@ -1,6 +1,6 @@
-#include "MLX90393.h"
-#include "HardI2C.h"
-#include "Delay.h"
+#include "mlx90393.h"
+#include "../bsp/bsp_i2c.h"
+#include "../bsp/bsp_delay.h"
 #include "stm32f10x.h"
 
 

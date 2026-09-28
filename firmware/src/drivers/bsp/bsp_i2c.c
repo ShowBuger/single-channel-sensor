@@ -1,6 +1,6 @@
-#include "stm32f10x.h"                  // Device header
-#include "Serial.h"
-#include "Delay.h"
+#include "stm32f10x.h"
+#include "bsp_uart.h"
+#include "bsp_delay.h"
 
 /**
   * 函    数:硬件I2C初始化

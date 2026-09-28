@@ -1,6 +1,6 @@
 #include "stm32f10x.h"
-#include "SoftI2C.h"
-#include "Delay.h"
+#include "bsp_i2c_soft.h"
+#include "bsp_delay.h"
 #include <stdio.h>
 
 

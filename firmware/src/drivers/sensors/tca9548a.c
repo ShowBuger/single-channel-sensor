@@ -1,6 +1,6 @@
-#include "stm32f10x.h"                  // Device header
-#include "TCA9548A.h"
-#include "Delay.h"
+#include "stm32f10x.h"
+#include "tca9548a.h"
+#include "../bsp/bsp_delay.h"
 
 // TCA9548A RESET引脚定义 (根据原理图配置)
 // TCA_RST1 连接到 PB12 (U5 - I2C1)
