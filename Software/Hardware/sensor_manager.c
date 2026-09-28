@@ -56,7 +56,7 @@ uint8_t Scan_Ports(void)
 {
     uint8_t sensor_count = 0;
     /*扫描MLX90393传感器自检 - 仅1对传感器*/
-    if(MLX90393_begin(&mlx_actual_sensors[0],0,0,-1,0) == 0 && MLX90393_begin(&mlx_reference_sensors[0],1,0,-1,0) == 0)
+    if(MLX90393_begin(&mlx_actual_sensors[0],0,0,-1,0) == 0 && MLX90393_begin(&mlx_reference_sensors[0],0,1,-1,0) == 0)
     {
         SENSOR_List[0] = 1;
         sensor_count++ ;

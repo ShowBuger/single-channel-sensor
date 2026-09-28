@@ -1,0 +1,54 @@
+---
+# Clang-Format 配置文件
+# 适用于嵌入式C项目（STM32）
+
+BasedOnStyle: LLVM
+
+# 缩进设置
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ContinuationIndentWidth: 4
+
+# 括号和空格
+SpaceAfterCStyleCast: true
+SpaceBeforeParens: ControlStatements
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+SpacesInCStyleCastParentheses: false
+
+# 大括号换行
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: true
+  AfterControlStatement: Never
+  AfterStruct: true
+  AfterEnum: true
+  AfterUnion: true
+  BeforeCatch: false
+  BeforeElse: false
+
+# 行宽和换行
+ColumnLimit: 120
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AlwaysBreakAfterReturnType: None
+
+# 指针和引用对齐
+PointerAlignment: Right
+DerivePointerAlignment: false
+
+# 对齐
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+AlignTrailingComments: true
+
+# 包含文件排序
+SortIncludes: true
+IncludeBlocks: Preserve
+
+# 其他
+KeepEmptyLinesAtTheStartOfBlocks: false
+MaxEmptyLinesToKeep: 2
+IndentCaseLabels: false
