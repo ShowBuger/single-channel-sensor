@@ -1,6 +1,9 @@
 # Keil uVision 项目文件
 *.uvguix.*
+*.uvguix
 *.uvopt
+*.uvoptx
+*.uvprojx
 *.bak
 *.ddk
 *.edk
