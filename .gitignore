@@ -28,11 +28,21 @@
 *.dep
 *.fed
 
-# Keil 输出目录
-Objects/
-Listings/
-DebugConfig/
-RTE/
+# Keil 输出目录（新结构）
+firmware/build/
+firmware/project/keil/*.uvguix*
+firmware/project/keil/*.bak
+
+# 旧目录兼容
+Software/
+
+# Python 构建文件（适配新结构）
+gui/test/dist/
+gui/test/build/
+gui/test/*.spec
+gui/display/dist/
+gui/display/build/
+gui/display/*.spec
 
 # Proteus 备份文件
 *.pdsbak
@@ -62,29 +72,3 @@ desktop.ini
 # 日志文件
 *.log
 nul
-GUI/TEST/dist/单通道传感器系统.exe
-GUI/TEST/dist/config/settings.json
-GUI/TEST/build/sensor_app/Analysis-00.toc
-GUI/TEST/build/sensor_app/base_library.zip
-GUI/TEST/build/sensor_app/EXE-00.toc
-GUI/TEST/build/sensor_app/generated-79f7b032f7b1ec94557c9841a50caeae9224eff034eac291f0c9472d6f304eff.ico
-GUI/TEST/build/sensor_app/PKG-00.toc
-GUI/TEST/build/sensor_app/PYZ-00.pyz
-GUI/TEST/build/sensor_app/PYZ-00.toc
-GUI/TEST/build/sensor_app/warn-sensor_app.txt
-GUI/TEST/build/sensor_app/xref-sensor_app.html
-GUI/TEST/build/sensor_app/单通道传感器系统.pkg
-GUI/DISPLAY/dist/单通道传感器监测系统.exe
-GUI/DISPLAY/dist/config/settings.json
-GUI/DISPLAY/build/sensor_app/Analysis-00.toc
-GUI/DISPLAY/build/sensor_app/base_library.zip
-GUI/DISPLAY/build/sensor_app/EXE-00.toc
-GUI/DISPLAY/build/sensor_app/generated-fc4fe2be565df186a3cb84b6861ee3c20fa90aca9037c214ea64851f5213eac1.ico
-GUI/DISPLAY/build/sensor_app/PKG-00.toc
-GUI/DISPLAY/build/sensor_app/PYZ-00.pyz
-GUI/DISPLAY/build/sensor_app/PYZ-00.toc
-GUI/DISPLAY/build/sensor_app/warn-sensor_app.txt
-GUI/DISPLAY/build/sensor_app/xref-sensor_app.html
-GUI/DISPLAY/build/sensor_app/单通道传感器监测系统.pkg
-GUI/DISPLAY/sensor_app.spec
-CLAUDE.md
