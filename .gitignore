@@ -1,13 +1,42 @@
-# Keil uVision 项目文件
-*.uvguix.*
+# Build directories and generated files
+**/build/
+**/build_test/
+**/.pio/
+**/CMakeFiles/
+**/.cmake/
+**/.cache/
+**/compile_commands.json
+**/CMakeCache.txt
+**/cmake_install.cmake
+**/build.ninja
+**/.ninja_deps
+**/.ninja_log
+**/Makefile
+
+# Embedded build outputs
+*.elf
+*.hex
+*.bin
+*.map
+*.o
+*.obj
+*.d
+*.lst
+*.su
+*.axf
+*.crf
+*.htm
+
+# Keil and other IDE generated files
 *.uvguix
+*.uvguix.*
 *.uvopt
 *.uvoptx
 *.uvprojx
 *.bak
 *.ddk
 *.edk
-*.lst
+*.iex
 *.lnp
 *.mpf
 *.mpj
@@ -17,58 +46,54 @@
 *.prvddk
 *.rpt
 *.scvd
-*.__i
-*.crf
-*.o
-*.d
-*.axf
-*.htm
-*.iex
-*.map
 *.dep
 *.fed
-
-# Keil 输出目录（新结构）
-firmware/build/
+*.__i
 firmware/project/keil/*.uvguix*
 firmware/project/keil/*.bak
 
-# 旧目录兼容
-Software/
+# Shared VS Code settings are allowlisted below; ignore personal settings and caches
+/.vscode/*
+!/.vscode/tasks.json
+!/.vscode/launch.json
+!/.vscode/extensions.json
+!/.vscode/c_cpp_properties.json
+/.vscode/settings.json
+**/.vscode/.browse.c_cpp.db*
+**/.vscode/*.log
+firmware/.vscode/
+/.idea/
+/.claude/
 
-# Python 构建文件（适配新结构）
-gui/test/dist/
-gui/test/build/
-gui/test/*.spec
-gui/display/dist/
-gui/display/build/
-gui/display/*.spec
-
-# Proteus 备份文件
-*.pdsbak
-*.PWI
-Backup*/
-
-# Python 虚拟环境和缓存（上位机）
+# Python environments, caches, and distribution outputs
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+.pytest_cache/
+.mypy_cache/
+.venv/
 venv/
 ENV/
 env/
+gui/test/dist/
+gui/test/build/
+gui/display/dist/
+gui/display/build/
 
-# IDE 配置文件
-.vscode/
-.idea/
-.claude/
-
-# 操作系统文件
+# Temporary files, logs, and OS metadata
+*.log
+*.tmp
+*.swp
+*.swo
+*~
 .DS_Store
 Thumbs.db
 desktop.ini
-
-# 日志文件
-*.log
 nul
+
+# CAD/EDA backups
+*.pdsbak
+*.PWI
+Backup*/

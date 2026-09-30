@@ -1,0 +1,121 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "CMake: Configure",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "-B",
+                "${workspaceFolder}/firmware/build",
+                "-S",
+                "${workspaceFolder}/firmware",
+                "-G",
+                "Ninja",
+                "-DCMAKE_BUILD_TYPE=Debug"
+            ],
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "CMake: Build",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "${workspaceFolder}/firmware/build",
+                "--config",
+                "Debug",
+                "-j",
+                "8"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "dependsOn": ["CMake: Configure"],
+            "problemMatcher": ["$gcc"]
+        },
+        {
+            "label": "CMake: Clean",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--build",
+                "${workspaceFolder}/firmware/build",
+                "--target",
+                "clean"
+            ],
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "CMake: Rebuild",
+            "type": "shell",
+            "dependsOn": ["CMake: Clean", "CMake: Build"],
+            "dependsOrder": "sequence",
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "Flash (OpenOCD)",
+            "type": "shell",
+            "command": "openocd",
+            "args": [
+                "-f",
+                "interface/stlink.cfg",
+                "-f",
+                "target/stm32f1x.cfg",
+                "-c",
+                "program ${workspaceFolder}/firmware/build/single_channel_sensor.elf verify reset exit"
+            ],
+            "dependsOn": ["CMake: Build"],
+            "group": "test",
+            "problemMatcher": []
+        },
+        {
+            "label": "Flash (ST-Link)",
+            "type": "shell",
+            "command": "st-flash",
+            "args": [
+                "write",
+                "${workspaceFolder}/firmware/build/single_channel_sensor.bin",
+                "0x8000000"
+            ],
+            "dependsOn": ["CMake: Build"],
+            "group": "test",
+            "problemMatcher": []
+        },
+        {
+            "label": "Erase Flash",
+            "type": "shell",
+            "command": "openocd",
+            "args": [
+                "-f",
+                "interface/stlink.cfg",
+                "-f",
+                "target/stm32f1x.cfg",
+                "-c",
+                "init",
+                "-c",
+                "reset halt",
+                "-c",
+                "stm32f1x mass_erase 0",
+                "-c",
+                "shutdown"
+            ],
+            "group": "test",
+            "problemMatcher": []
+        },
+        {
+            "label": "Show Size",
+            "type": "shell",
+            "command": "arm-none-eabi-size",
+            "args": [
+                "${workspaceFolder}/firmware/build/single_channel_sensor.elf"
+            ],
+            "group": "none",
+            "problemMatcher": []
+        }
+    ]
+}
