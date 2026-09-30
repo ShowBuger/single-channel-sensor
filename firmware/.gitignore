@@ -1,0 +1,39 @@
+# 添加构建输出目录到忽略列表
+build/
+build_test/
+
+# CMake 生成的文件
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+Makefile
+
+# Ninja 构建文件
+.ninja_deps
+.ninja_log
+build.ninja
+
+# 编译输出
+*.elf
+*.hex
+*.bin
+*.map
+*.o
+*.d
+*.lst
+*.su
+
+# clangd 缓存
+.cache/
+.clangd/
+
+# VSCode
+.vscode/.browse.c_cpp.db*
+.vscode/*.log
+
+# 临时文件
+*.swp
+*.swo
+*~
+.DS_Store

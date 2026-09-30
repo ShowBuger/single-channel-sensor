@@ -34,7 +34,18 @@ single_channel_sensor/
 ## 🚀 快速开始
 
 ### 固件开发
-详见 [docs/README.md](docs/README.md)
+
+#### 开发环境
+- **VSCode** + ARM工具链 (推荐)
+- 或 Keil MDK-ARM
+
+详见 [firmware/README.md](firmware/README.md) 和 [docs/README.md](docs/README.md)
+
+#### 快速编译
+```bash
+cd firmware
+make
+```
 
 ### 上位机
 - 显示版本: `gui/display/`
@@ -47,6 +58,12 @@ single_channel_sensor/
 - [Git提交规范](docs/COMMIT_CONVENTION.md)
 
 ## 📝 更新日志
+
+### 2026-09-29 - VSCode开发环境支持
+- 添加Makefile构建系统
+- 配置VSCode开发和调试环境
+- 清理Keil残留文件
+- 支持OpenOCD/J-Link/ST-Link调试
 
 ### 2024-09-28 - 目录重构
 - 重构项目目录结构，建立清晰的分层架构

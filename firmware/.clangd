@@ -1,0 +1,54 @@
+# clangd 配置文件
+# 为 ARM Cortex-M3 STM32 项目优化
+
+CompileFlags:
+  Add:
+    # 目标架构
+    - "-target"
+    - "arm-none-eabi"
+    - "-mcpu=cortex-m3"
+    - "-mthumb"
+    - "-mfloat-abi=soft"
+
+    # 标准
+    - "-std=gnu11"
+
+    # 宏定义
+    - "-DUSE_STDPERIPH_DRIVER"
+    - "-DSTM32F10X_MD"
+    - "-DSTM32F103xB"
+    - "-DDEBUG"
+
+  Remove:
+    # 移除可能导致clangd误报的编译器特定选项
+    - "-mno-unaligned-access"
+    - "-fno-tree-loop-distribute-patterns"
+    - "--specs=*"
+
+Diagnostics:
+  # 禁用某些过于严格的警告
+  Suppress:
+    - "unused-parameter"
+    - "unused-variable"
+  ClangTidy:
+    Add:
+      - "readability-*"
+      - "bugprone-*"
+      - "performance-*"
+    Remove:
+      - "readability-magic-numbers"
+      - "readability-uppercase-literal-suffix"
+      - "bugprone-easily-swappable-parameters"
+
+InlayHints:
+  Enabled: Yes
+  ParameterNames: Yes
+  DeducedTypes: Yes
+
+Hover:
+  ShowAKA: Yes
+
+# 索引优化
+Index:
+  Background: Build
+  StandardLibrary: No
