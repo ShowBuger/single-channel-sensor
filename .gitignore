@@ -63,7 +63,7 @@ firmware/project/keil/*.bak
 **/.vscode/*.log
 firmware/.vscode/
 /.idea/
-# /.claude/ is tracked so /commit skill is available after clone
+/.claude/
 
 # Python environments, caches, and distribution outputs
 __pycache__/
