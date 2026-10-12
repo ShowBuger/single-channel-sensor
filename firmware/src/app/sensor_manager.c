@@ -176,12 +176,12 @@ uint8_t sensor_start()
    // 执行标定
    if(perform_sensor_calibration() == 0)
    {
-       printf("Sensor ready for measurement.\r\n");
+       Serial_Printf("Sensor ready for measurement.\r\n");
        return 0;
    }
    else
    {
-       printf("Sensor start failed!\r\n");
+       Serial_Printf("Sensor start failed!\r\n");
        return 1;
    }
 }
@@ -887,16 +887,16 @@ void print_calibration_data(uint8_t sensor_index)
     if(sensor_index >= 1) return;
     if(sensor_calibration[sensor_index].calibrated == 0) return;
 
-    printf("=== Calibration Data [%d] ===\n", sensor_index);
-    printf("Actual Offset: X=%.2f, Y=%.2f, Z=%.2f\n",
+    Serial_Printf("=== Calibration Data [%d] ===\n", sensor_index);
+    Serial_Printf("Actual Offset: X=%.2f, Y=%.2f, Z=%.2f\n",
             sensor_calibration[sensor_index].actual_offset.x,
             sensor_calibration[sensor_index].actual_offset.y,
             sensor_calibration[sensor_index].actual_offset.z);
-    printf("Reference Offset: X=%.2f, Y=%.2f, Z=%.2f\n",
+    Serial_Printf("Reference Offset: X=%.2f, Y=%.2f, Z=%.2f\n",
             sensor_calibration[sensor_index].reference_offset.x,
             sensor_calibration[sensor_index].reference_offset.y,
             sensor_calibration[sensor_index].reference_offset.z);
-    printf("Actual Std: X=%.2f, Y=%.2f, Z=%.2f\n",
+    Serial_Printf("Actual Std: X=%.2f, Y=%.2f, Z=%.2f\n",
             sensor_calibration[sensor_index].actual_std.x,
             sensor_calibration[sensor_index].actual_std.y,
             sensor_calibration[sensor_index].actual_std.z);
@@ -914,7 +914,7 @@ void print_sensor_data(uint8_t sensor_index)
     if(sensor_data[sensor_index].valid == 0) return;
 
     // 打印实际传感器数据
-    printf("sensor%d:%.2f, %.2f, %.2f\n",
+    Serial_Printf("sensor%d:%.2f, %.2f, %.2f\n",
             sensor_index,
             sensor_data[sensor_index].actual.x,
             sensor_data[sensor_index].actual.y,
@@ -932,13 +932,13 @@ void print_processed_sensor_data(uint8_t sensor_index)
     if(processed_sensor_data[sensor_index].valid == 0) return;
 
     // 打印实际传感器处理后数据
-    printf("sensor%d:%.2f, %.2f, %.2f\n",
+    Serial_Printf("sensor%d:%.2f, %.2f, %.2f\n",
             sensor_index,
             processed_sensor_data[sensor_index].actual.x,
             processed_sensor_data[sensor_index].actual.y,
             processed_sensor_data[sensor_index].actual.z);
 //    // 打印参考传感器处理后数据
-//    printf("sensor%d:%.2f, %.2f, %.2f\n",
+//    Serial_Printf("sensor%d:%.2f, %.2f, %.2f\n",
 //            sensor_index+5,
 //            processed_sensor_data[sensor_index].reference.x,
 //            processed_sensor_data[sensor_index].reference.y,
@@ -977,7 +977,7 @@ uint8_t perform_sensor_calibration(void)
     // 清空标定数据
     sensor_calibration[i].calibrated = 0;
 
-    printf("Calibrating sensors (10 samples)...\r\n");
+    Serial_Printf("Calibrating sensors (10 samples)...\r\n");
 
     // 连续读取10次数据
     for(j = 0; j < calibration_samples; j++)
@@ -1014,7 +1014,7 @@ uint8_t perform_sensor_calibration(void)
     // 计算均值、标准差并保存为标定值
     if(SENSOR_Run[i] == 0)
     {
-        printf("please start sensor!");
+        Serial_Printf("please start sensor!");
         return 1;  // 传感器未运行,跳过
     }
 
@@ -1022,7 +1022,7 @@ uint8_t perform_sensor_calibration(void)
     if(accumulator[i].sample_count < 5)
     {
         sensor_calibration[i].calibrated = 0;  // 标定失败
-        printf("sensor calibrate failed!");
+        Serial_Printf("sensor calibrate failed!");
         return 1;
     }
 
@@ -1094,12 +1094,12 @@ uint8_t perform_sensor_calibration(void)
     // 检查传感器是否标定成功 - 仅1个传感器
     if(sensor_calibration[i].calibrated == 1)
     {
-        printf("Calibration complete! Sensor calibrated.\r\n");
+        Serial_Printf("Calibration complete! Sensor calibrated.\r\n");
         return 0;  // 标定成功
     }
     else
     {
-        printf("Calibration failed! Sensor not calibrated.\r\n");
+        Serial_Printf("Calibration failed! Sensor not calibrated.\r\n");
         return 1;  // 标定失败
     }
 }
@@ -1127,9 +1127,9 @@ void Config_Init_All(void)
         X_MAPPING_VALUE = loaded_x_map;
         Y_MAPPING_VALUE = loaded_y_map;
         Z_MAPPING_VALUE = loaded_z_map;
-        printf("Config loaded from Flash:\r\n");
-        printf("  FLAG_RES = 0x%02X\r\n", FLAG_RES);
-        printf("  Mapping: X=%.2f, Y=%.2f, Z=%.2f\r\n",
+        Serial_Printf("Config loaded from Flash:\r\n");
+        Serial_Printf("  FLAG_RES = 0x%02X\r\n", FLAG_RES);
+        Serial_Printf("  Mapping: X=%.2f, Y=%.2f, Z=%.2f\r\n",
                X_MAPPING_VALUE, Y_MAPPING_VALUE, Z_MAPPING_VALUE);
     }
     else
@@ -1140,9 +1140,9 @@ void Config_Init_All(void)
         Y_MAPPING_VALUE = 0.1f;
         Z_MAPPING_VALUE = -0.1f;
         Config_Save(FLAG_RES, X_MAPPING_VALUE, Y_MAPPING_VALUE, Z_MAPPING_VALUE);
-        printf("Config restored to default:\r\n");
-        printf("  FLAG_RES = 0x%02X\r\n", FLAG_RES);
-        printf("  Mapping: X=%.2f, Y=%.2f, Z=%.2f\r\n",
+        Serial_Printf("Config restored to default:\r\n");
+        Serial_Printf("  FLAG_RES = 0x%02X\r\n", FLAG_RES);
+        Serial_Printf("  Mapping: X=%.2f, Y=%.2f, Z=%.2f\r\n",
                X_MAPPING_VALUE, Y_MAPPING_VALUE, Z_MAPPING_VALUE);
     }
 }
@@ -1157,15 +1157,15 @@ uint8_t Config_Save_All(void)
 {
     if(Config_Save(FLAG_RES, X_MAPPING_VALUE, Y_MAPPING_VALUE, Z_MAPPING_VALUE) == 0)
     {
-        printf("Config saved to Flash:\r\n");
-        printf("  FLAG_RES = 0x%02X\r\n", FLAG_RES);
-        printf("  Mapping: X=%.2f, Y=%.2f, Z=%.2f\r\n",
+        Serial_Printf("Config saved to Flash:\r\n");
+        Serial_Printf("  FLAG_RES = 0x%02X\r\n", FLAG_RES);
+        Serial_Printf("  Mapping: X=%.2f, Y=%.2f, Z=%.2f\r\n",
                X_MAPPING_VALUE, Y_MAPPING_VALUE, Z_MAPPING_VALUE);
         return 0;
     }
     else
     {
-        printf("Failed to save config to Flash\r\n");
+        Serial_Printf("Failed to save config to Flash\r\n");
         return 1;
     }
 }

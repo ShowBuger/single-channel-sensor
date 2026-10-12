@@ -2,7 +2,24 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Cortex Debug (OpenOCD/ST-Link)",
+            "name": "Debug (DAPLink)",
+            "type": "cortex-debug",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/firmware/build/single_channel_sensor.elf",
+            "servertype": "openocd",
+            "serverpath": "C:/Users/Administrator/AppData/Local/Microsoft/WinGet/Packages/xpack-dev-tools.openocd-xpack_Microsoft.Winget.Source_8wekyb3d8bbwe/xpack-openocd-0.12.0-7/bin/openocd.exe",
+            "configFiles": [
+                "interface/cmsis-dap.cfg",
+                "target/stm32f1x.cfg"
+            ],
+            "searchDir": [],
+            "runToEntryPoint": "main",
+            "showDevDebugOutput": "none",
+            "preLaunchTask": "CMake: Build"
+        },
+        {
+            "name": "Debug (OpenOCD/ST-Link)",
             "type": "cortex-debug",
             "request": "launch",
             "cwd": "${workspaceFolder}",
@@ -17,14 +34,10 @@
             "runToEntryPoint": "main",
             "showDevDebugOutput": "none",
             "svdFile": "${workspaceFolder}/firmware/docs/STM32F103xx.svd",
-            "preLaunchTask": "CMake: Build",
-            "postRestartCommands": [
-                "break main",
-                "continue"
-            ]
+            "preLaunchTask": "CMake: Build"
         },
         {
-            "name": "Cortex Debug (J-Link)",
+            "name": "Debug (J-Link)",
             "type": "cortex-debug",
             "request": "launch",
             "cwd": "${workspaceFolder}",

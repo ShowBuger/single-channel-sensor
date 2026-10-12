@@ -4,7 +4,6 @@
 
 /* STM32F103C8T6: 64 KB Flash, 1 KB pages.
  * Store config in the last page: 0x0800FC00. */
-#define FLASH_PAGE_SIZE        1024U
 #define CONFIG_FLASH_PAGE_ADDR 0x0800FC00U
 #define CONFIG_MAGIC_NUMBER    0x52454C54U   /* "RELT" */
 

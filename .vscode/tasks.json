@@ -2,118 +2,53 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "CMake: Configure",
-            "type": "shell",
-            "command": "cmake",
-            "args": [
-                "-B",
-                "${workspaceFolder}/firmware/build",
-                "-S",
-                "${workspaceFolder}/firmware",
-                "-G",
-                "Ninja",
-                "-DCMAKE_BUILD_TYPE=Debug"
-            ],
-            "group": "build",
-            "problemMatcher": []
-        },
-        {
             "label": "CMake: Build",
             "type": "shell",
-            "command": "cmake",
-            "args": [
-                "--build",
-                "${workspaceFolder}/firmware/build",
-                "--config",
-                "Debug",
-                "-j",
-                "8"
-            ],
+            "command": "${workspaceFolder}/firmware/tools/build.ps1",
             "group": {
                 "kind": "build",
                 "isDefault": true
             },
-            "dependsOn": ["CMake: Configure"],
             "problemMatcher": ["$gcc"]
         },
         {
-            "label": "CMake: Clean",
+            "label": "CMake: Build Release",
             "type": "shell",
-            "command": "cmake",
-            "args": [
-                "--build",
-                "${workspaceFolder}/firmware/build",
-                "--target",
-                "clean"
-            ],
+            "command": "${workspaceFolder}/firmware/tools/build.ps1",
+            "args": ["-Release"],
             "group": "build",
-            "problemMatcher": []
+            "problemMatcher": ["$gcc"]
         },
         {
             "label": "CMake: Rebuild",
             "type": "shell",
-            "dependsOn": ["CMake: Clean", "CMake: Build"],
-            "dependsOrder": "sequence",
+            "command": "${workspaceFolder}/firmware/tools/build.ps1",
+            "args": ["-Clean"],
             "group": "build",
-            "problemMatcher": []
+            "problemMatcher": ["$gcc"]
         },
         {
-            "label": "Flash (OpenOCD)",
+            "label": "Flash (DAPLink)",
             "type": "shell",
-            "command": "openocd",
-            "args": [
-                "-f",
-                "interface/stlink.cfg",
-                "-f",
-                "target/stm32f1x.cfg",
-                "-c",
-                "program ${workspaceFolder}/firmware/build/single_channel_sensor.elf verify reset exit"
-            ],
+            "command": "${workspaceFolder}/firmware/tools/flash.ps1",
+            "args": ["-Method", "daplink"],
             "dependsOn": ["CMake: Build"],
             "group": "test",
             "problemMatcher": []
         },
         {
-            "label": "Flash (ST-Link)",
+            "label": "Flash (OpenOCD/ST-Link)",
             "type": "shell",
-            "command": "st-flash",
-            "args": [
-                "write",
-                "${workspaceFolder}/firmware/build/single_channel_sensor.bin",
-                "0x8000000"
-            ],
+            "command": "${workspaceFolder}/firmware/tools/flash.ps1",
+            "args": ["-Method", "openocd"],
             "dependsOn": ["CMake: Build"],
-            "group": "test",
-            "problemMatcher": []
-        },
-        {
-            "label": "Erase Flash",
-            "type": "shell",
-            "command": "openocd",
-            "args": [
-                "-f",
-                "interface/stlink.cfg",
-                "-f",
-                "target/stm32f1x.cfg",
-                "-c",
-                "init",
-                "-c",
-                "reset halt",
-                "-c",
-                "stm32f1x mass_erase 0",
-                "-c",
-                "shutdown"
-            ],
             "group": "test",
             "problemMatcher": []
         },
         {
             "label": "Show Size",
             "type": "shell",
-            "command": "arm-none-eabi-size",
-            "args": [
-                "${workspaceFolder}/firmware/build/single_channel_sensor.elf"
-            ],
+            "command": "$env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User'); arm-none-eabi-size '${workspaceFolder}/firmware/build/single_channel_sensor.elf'",
             "group": "none",
             "problemMatcher": []
         }

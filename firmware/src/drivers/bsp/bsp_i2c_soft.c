@@ -1,7 +1,7 @@
 #include "bsp_i2c_soft.h"
 #include "bsp_delay.h"
+#include "bsp_uart.h"
 #include "stm32f1xx_hal.h"
-#include <stdio.h>
 
 typedef struct {
     GPIO_TypeDef* scl_port;
@@ -139,21 +139,21 @@ void I2C_SendAck(uint8_t idx, uint8_t ack)
 void I2C_ScanDevices(uint8_t idx)
 {
     uint8_t addr, found = 0;
-    printf("Scanning I2C bus...\r\n");
+    Serial_Printf("Scanning I2C bus...\r\n");
     for (addr = 0x00; addr < 0x80; addr++)
     {
         IIC_Start(idx);
         I2C_WriteByte(idx, addr << 1);
         if (I2C_WaitAck(idx) == 0)
         {
-            printf("Found device at 0x%02X\r\n", addr);
+            Serial_Printf("Found device at 0x%02X\r\n", addr);
             found++;
         }
         IIC_Stop(idx);
         Delay_us(10);
     }
     if (found == 0)
-        printf("No I2C devices found.\r\n");
+        Serial_Printf("No I2C devices found.\r\n");
     else
-        printf("Total %d device(s) found.\r\n", found);
+        Serial_Printf("Total %d device(s) found.\r\n", found);
 }

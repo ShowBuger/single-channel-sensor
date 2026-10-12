@@ -1,9 +1,9 @@
 # STM32 flash script (PowerShell)
-# Supports HEX flashing via OpenOCD / ST-Link / J-Link
+# Supports HEX flashing via OpenOCD / DAPLink / ST-Link / J-Link
 
 param(
-    [ValidateSet("openocd", "stlink", "jlink")]
-    [string]$Method = "openocd",
+    [ValidateSet("openocd", "daplink", "stlink", "jlink")]
+    [string]$Method = "daplink",
     [string]$HexFile = "",
     [switch]$NoVerify,
     [switch]$NoReset,
@@ -21,14 +21,15 @@ function Write-Err  { param($m) Write-Host "  x $m" -ForegroundColor Red    }
 if ($Help) {
     Write-Host "Usage: .\tools\flash.ps1 [options]"
     Write-Host ""
-    Write-Host "  -Method   openocd|stlink|jlink   Flash tool (default: openocd)"
-    Write-Host "  -HexFile  <path>                 HEX file path (default: build\)"
-    Write-Host "  -NoVerify                        Skip post-flash verify"
-    Write-Host "  -NoReset                         Do not reset after flash"
-    Write-Host "  -Help                            Show this help"
+    Write-Host "  -Method   openocd|daplink|stlink|jlink   Flash tool (default: daplink)"
+    Write-Host "  -HexFile  <path>                         HEX file path (default: build\)"
+    Write-Host "  -NoVerify                                Skip post-flash verify"
+    Write-Host "  -NoReset                                 Do not reset after flash"
+    Write-Host "  -Help                                    Show this help"
     Write-Host ""
     Write-Host "Examples:"
-    Write-Host "  .\tools\flash.ps1"
+    Write-Host "  .\tools\flash.ps1                    # DAPLink (default)"
+    Write-Host "  .\tools\flash.ps1 -Method openocd    # OpenOCD + ST-Link"
     Write-Host "  .\tools\flash.ps1 -Method stlink"
     Write-Host "  .\tools\flash.ps1 -Method jlink"
     Write-Host "  .\tools\flash.ps1 -HexFile D:\my.hex"
@@ -83,15 +84,35 @@ function Assert-Tool {
 # Flash
 switch ($Method) {
 
-    "openocd" {
-        Assert-Tool "openocd" "https://openocd.org  or  winget install openocd"
+    "daplink" {
+        Assert-Tool "openocd" "winget install xpack-dev-tools.openocd-xpack"
 
         $verify  = if ($NoVerify) { "" } else { "verify" }
         $reset   = if ($NoReset)  { "" } else { "reset"  }
         $hexUnix = $HexFile -replace '\\', '/'
         $cmd     = "program `"$hexUnix`" $verify $reset exit"
 
-        Write-Warn ">> Running OpenOCD..."
+        Write-Warn ">> Running OpenOCD (DAPLink/CMSIS-DAP)..."
+        Write-Host "   openocd -f interface/cmsis-dap.cfg -f target/stm32f1x.cfg -c `"$cmd`""
+        Write-Host ""
+
+        openocd -f interface/cmsis-dap.cfg -f target/stm32f1x.cfg -c $cmd
+
+        if ($LASTEXITCODE -ne 0) {
+            Write-Err "OpenOCD failed (exit $LASTEXITCODE)"
+            exit 1
+        }
+    }
+
+    "openocd" {
+        Assert-Tool "openocd" "https://openocd.org  or  winget install xpack-dev-tools.openocd-xpack"
+
+        $verify  = if ($NoVerify) { "" } else { "verify" }
+        $reset   = if ($NoReset)  { "" } else { "reset"  }
+        $hexUnix = $HexFile -replace '\\', '/'
+        $cmd     = "program `"$hexUnix`" $verify $reset exit"
+
+        Write-Warn ">> Running OpenOCD (ST-Link)..."
         Write-Host "   openocd -f interface/stlink.cfg -f target/stm32f1x.cfg -c `"$cmd`""
         Write-Host ""
 
