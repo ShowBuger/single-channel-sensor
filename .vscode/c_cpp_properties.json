@@ -7,12 +7,12 @@
                 "${workspaceFolder}/firmware/src/app",
                 "${workspaceFolder}/firmware/src/drivers/bsp",
                 "${workspaceFolder}/firmware/src/drivers/sensors",
-                "${workspaceFolder}/firmware/libs/CMSIS",
-                "${workspaceFolder}/firmware/libs/STM32F10x_StdPeriph_Driver"
+                "${workspaceFolder}/firmware/libs/CMSIS/Core/Include",
+                "${workspaceFolder}/firmware/libs/CMSIS/Device/ST/STM32F1xx/Include",
+                "${workspaceFolder}/firmware/libs/STM32F1xx_HAL_Driver/Inc"
             ],
             "defines": [
-                "USE_STDPERIPH_DRIVER",
-                "STM32F10X_MD",
+                "USE_HAL_DRIVER",
                 "STM32F103xB",
                 "DEBUG"
             ],

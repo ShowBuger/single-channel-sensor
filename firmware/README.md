@@ -4,33 +4,34 @@
 
 ## 🚀 快速开始
 
-### 1. 检查环境
-```bash
-./tools/check_env.sh
+### Windows（PowerShell）
+
+**第一步：安装工具链**（首次克隆后只需运行一次）
+```powershell
+.\tools\install_toolchain.ps1
+```
+脚本会自动下载 ARM GNU Toolchain 15.3 并配置好路径，下载约 1 GB。
+
+**第二步：加载环境**（每次打开新终端后运行）
+```powershell
+. .\tools\env_setup.ps1
 ```
 
-### 2. 构建项目
-```bash
-./tools/build.sh
-# 或在VSCode中按 Ctrl+Shift+B
+**第三步：构建**
+```powershell
+.\tools\build.ps1
 ```
 
-### 3. 烧录固件
-```bash
-./tools/flash.sh
-# 或在VSCode中: Ctrl+Shift+P → Tasks → Flash
-```
-
-### 4. 调试
-```bash
-# 在VSCode中按 F5
+**第四步：烧录**
+```powershell
+.\tools\flash.ps1                   # OpenOCD（默认）
+.\tools\flash.ps1 -Method stlink   # ST-Link
+.\tools\flash.ps1 -Method jlink    # J-Link
 ```
 
 ## 📚 文档
 
 - 📘 [详细配置指南](docs/CMAKE_SETUP_GUIDE.md) - 完整的安装和配置说明
-- 📗 [快速入门](README_QUICK_START.md) - 5分钟快速上手
-- 📙 [配置总结](docs/CMAKE_SETUP_SUMMARY.md) - 已完成配置的总结
 
 ## 🎯 主要特性
 
@@ -38,7 +39,7 @@
 - ✅ **Ninja** - 快速增量编译
 - ✅ **clangd** - 智能代码补全和检查
 - ✅ **Cortex-Debug** - 强大的可视化调试
-- ✅ **跨平台** - Linux/macOS/Windows支持
+- ✅ **Windows** - PowerShell 脚本一键构建与烧录
 
 ## 📊 项目结构
 
