@@ -1,7 +1,7 @@
 #ifndef __TMAG3001_H
 #define __TMAG3001_H
 
-#include "stm32f10x.h"
+#include <stdint.h>
 
 // Version: 3.5 with gain support - Force recompilation
 

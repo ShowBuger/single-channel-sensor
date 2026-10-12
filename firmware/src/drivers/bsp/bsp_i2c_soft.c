@@ -1,208 +1,159 @@
-#include "stm32f10x.h"
 #include "bsp_i2c_soft.h"
 #include "bsp_delay.h"
+#include "stm32f1xx_hal.h"
 #include <stdio.h>
-
 
 typedef struct {
     GPIO_TypeDef* scl_port;
-    uint16_t scl_pin;
+    uint16_t      scl_pin;
     GPIO_TypeDef* sda_port;
-    uint16_t sda_pin;
-}i2c_group;
+    uint16_t      sda_pin;
+} i2c_group;
 
+#define IIC_NUM 1
 
-#define iic_num 1
-
-
-#define IIC_GPIO_HIGH GPIO_SetBits     
-#define IIC_GPIO_LOW GPIO_ResetBits
-
-
-
-i2c_group iic[iic_num]={
- {GPIOB,GPIO_Pin_6,GPIOB,GPIO_Pin_7}
+static i2c_group iic[IIC_NUM] = {
+    { GPIOB, GPIO_PIN_6, GPIOB, GPIO_PIN_7 }
 };
 
-void SoftI2C_Init()
-{
-    int i = 0;
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB | RCC_APB2Periph_GPIOA, ENABLE);  // ʹ��GBIOB��GPIOA��ʱ��
+#define IIC_SCL_HIGH(i)  HAL_GPIO_WritePin(iic[i].scl_port, iic[i].scl_pin, GPIO_PIN_SET)
+#define IIC_SCL_LOW(i)   HAL_GPIO_WritePin(iic[i].scl_port, iic[i].scl_pin, GPIO_PIN_RESET)
+#define IIC_SDA_HIGH(i)  HAL_GPIO_WritePin(iic[i].sda_port, iic[i].sda_pin, GPIO_PIN_SET)
+#define IIC_SDA_LOW(i)   HAL_GPIO_WritePin(iic[i].sda_port, iic[i].sda_pin, GPIO_PIN_RESET)
+#define IIC_SDA_READ(i)  HAL_GPIO_ReadPin(iic[i].sda_port, iic[i].sda_pin)
 
-    GPIO_InitTypeDef GPIO_InitStructure;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_OD;  //����Ϊ��©���
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;  
-    for(i = 0; i < iic_num; i++)
+void SoftI2C_Init(void)
+{
+    __HAL_RCC_GPIOB_CLK_ENABLE();
+
+    GPIO_InitTypeDef gpio = {0};
+    gpio.Mode  = GPIO_MODE_OUTPUT_OD;   /* open-drain */
+    gpio.Pull  = GPIO_NOPULL;
+    gpio.Speed = GPIO_SPEED_FREQ_HIGH;
+
+    int i;
+    for (i = 0; i < IIC_NUM; i++)
     {
-        GPIO_InitStructure.GPIO_Pin = iic[i].scl_pin;
-        if(iic[i].scl_port == GPIOB)
-        {
-            GPIO_Init(GPIOB, &GPIO_InitStructure);
-            GPIO_SetBits(GPIOB, iic[i].scl_pin);
-        }
-        else if(iic[i].scl_port == GPIOA)
-        {
-            GPIO_Init(GPIOA, &GPIO_InitStructure);
-            GPIO_SetBits(GPIOA, iic[i].scl_pin);            
-        }
-        GPIO_InitStructure.GPIO_Pin = iic[i].sda_pin;
-        if(iic[i].sda_port == GPIOB)
-        {
-            GPIO_Init(GPIOB, &GPIO_InitStructure);
-            GPIO_SetBits(GPIOB, iic[i].sda_pin);
-        }
-        else if(iic[i].sda_port == GPIOA)
-        {
-            GPIO_Init(GPIOA, &GPIO_InitStructure);
-            GPIO_SetBits(GPIOA, iic[i].sda_pin);             
-        }
+        gpio.Pin = iic[i].scl_pin;
+        HAL_GPIO_Init(iic[i].scl_port, &gpio);
+        HAL_GPIO_WritePin(iic[i].scl_port, iic[i].scl_pin, GPIO_PIN_SET);
+
+        gpio.Pin = iic[i].sda_pin;
+        HAL_GPIO_Init(iic[i].sda_port, &gpio);
+        HAL_GPIO_WritePin(iic[i].sda_port, iic[i].sda_pin, GPIO_PIN_SET);
     }
 }
 
-
-void IIC_Start(uint8_t iic_index)
+void IIC_Start(uint8_t idx)
 {
-    IIC_GPIO_HIGH(iic[iic_index].sda_port, iic[iic_index].sda_pin);
-    IIC_GPIO_HIGH(iic[iic_index].scl_port, iic[iic_index].scl_pin);
+    IIC_SDA_HIGH(idx);
+    IIC_SCL_HIGH(idx);
     Delay_us(10);
-    IIC_GPIO_LOW(iic[iic_index].sda_port, iic[iic_index].sda_pin);
+    IIC_SDA_LOW(idx);
     Delay_us(10);
-    IIC_GPIO_LOW(iic[iic_index].scl_port, iic[iic_index].scl_pin);
+    IIC_SCL_LOW(idx);
 }
 
-void IIC_Stop(uint8_t iic_index)
+void IIC_Stop(uint8_t idx)
 {
-    IIC_GPIO_LOW(iic[iic_index].sda_port, iic[iic_index].sda_pin);
-    IIC_GPIO_LOW(iic[iic_index].scl_port, iic[iic_index].scl_pin);
+    IIC_SDA_LOW(idx);
+    IIC_SCL_LOW(idx);
     Delay_us(10);
-    IIC_GPIO_HIGH(iic[iic_index].scl_port, iic[iic_index].scl_pin);
+    IIC_SCL_HIGH(idx);
     Delay_us(10);
-    IIC_GPIO_HIGH(iic[iic_index].sda_port, iic[iic_index].sda_pin);
+    IIC_SDA_HIGH(idx);
     Delay_us(10);
 }
-void I2C_WriteByte(uint8_t iic_index, uint8_t data)
+
+void I2C_WriteByte(uint8_t idx, uint8_t data)
 {
     uint8_t i;
-    for(i = 0; i < 8; i++)
+    for (i = 0; i < 8; i++)
     {
-        IIC_GPIO_LOW(iic[iic_index].scl_port, iic[iic_index].scl_pin);
+        IIC_SCL_LOW(idx);
         Delay_us(5);
-
-        if(data & 0x80)
-        {
-            IIC_GPIO_HIGH(iic[iic_index].sda_port, iic[iic_index].sda_pin);
-        }
+        if (data & 0x80)
+            IIC_SDA_HIGH(idx);
         else
-        {
-            IIC_GPIO_LOW(iic[iic_index].sda_port, iic[iic_index].sda_pin);
-        }
+            IIC_SDA_LOW(idx);
         data <<= 1;
         Delay_us(5);
-
-        IIC_GPIO_HIGH(iic[iic_index].scl_port, iic[iic_index].scl_pin);
+        IIC_SCL_HIGH(idx);
         Delay_us(10);
     }
-    IIC_GPIO_LOW(iic[iic_index].scl_port, iic[iic_index].scl_pin);
+    IIC_SCL_LOW(idx);
 }
 
-uint8_t I2C_ReadByte(uint8_t iic_index)
+uint8_t I2C_ReadByte(uint8_t idx)
 {
-    uint8_t i;
-    uint8_t data = 0;
-
-    IIC_GPIO_HIGH(iic[iic_index].sda_port, iic[iic_index].sda_pin);
-
-    for(i = 0; i < 8; i++)
+    uint8_t i, data = 0;
+    IIC_SDA_HIGH(idx);
+    for (i = 0; i < 8; i++)
     {
-        IIC_GPIO_LOW(iic[iic_index].scl_port, iic[iic_index].scl_pin);
+        IIC_SCL_LOW(idx);
         Delay_us(10);
-
-        IIC_GPIO_HIGH(iic[iic_index].scl_port, iic[iic_index].scl_pin);
+        IIC_SCL_HIGH(idx);
         data <<= 1;
-
-        if(GPIO_ReadInputDataBit(iic[iic_index].sda_port, iic[iic_index].sda_pin))
-        {
+        if (IIC_SDA_READ(idx) == GPIO_PIN_SET)
             data |= 0x01;
-        }
         Delay_us(10);
     }
-    IIC_GPIO_LOW(iic[iic_index].scl_port, iic[iic_index].scl_pin);
-
+    IIC_SCL_LOW(idx);
     return data;
 }
 
-uint8_t I2C_WaitAck(uint8_t iic_index)
+uint8_t I2C_WaitAck(uint8_t idx)
 {
     uint8_t timeout = 0;
-
-    IIC_GPIO_HIGH(iic[iic_index].sda_port, iic[iic_index].sda_pin);
+    IIC_SDA_HIGH(idx);
     Delay_us(5);
-    IIC_GPIO_HIGH(iic[iic_index].scl_port, iic[iic_index].scl_pin);
+    IIC_SCL_HIGH(idx);
     Delay_us(5);
-
-    while(GPIO_ReadInputDataBit(iic[iic_index].sda_port, iic[iic_index].sda_pin))
+    while (IIC_SDA_READ(idx) == GPIO_PIN_SET)
     {
         timeout++;
-        if(timeout > 250)
+        if (timeout > 250)
         {
-            IIC_Stop(iic_index);
+            IIC_Stop(idx);
             return 1;
         }
     }
-
-    IIC_GPIO_LOW(iic[iic_index].scl_port, iic[iic_index].scl_pin);
+    IIC_SCL_LOW(idx);
     return 0;
 }
 
-void I2C_SendAck(uint8_t iic_index, uint8_t ack)
+void I2C_SendAck(uint8_t idx, uint8_t ack)
 {
-    IIC_GPIO_LOW(iic[iic_index].scl_port, iic[iic_index].scl_pin);
-    if(ack == 0)
-    {
-        IIC_GPIO_LOW(iic[iic_index].sda_port, iic[iic_index].sda_pin);
-    }
+    IIC_SCL_LOW(idx);
+    if (ack == 0)
+        IIC_SDA_LOW(idx);
     else
-    {
-        IIC_GPIO_HIGH(iic[iic_index].sda_port, iic[iic_index].sda_pin);
-    }
+        IIC_SDA_HIGH(idx);
     Delay_us(5);
-
-    IIC_GPIO_HIGH(iic[iic_index].scl_port, iic[iic_index].scl_pin);
+    IIC_SCL_HIGH(idx);
     Delay_us(10);
-
-    IIC_GPIO_LOW(iic[iic_index].scl_port, iic[iic_index].scl_pin);
-    IIC_GPIO_HIGH(iic[iic_index].sda_port, iic[iic_index].sda_pin);
+    IIC_SCL_LOW(idx);
+    IIC_SDA_HIGH(idx);
 }
 
-void I2C_ScanDevices(uint8_t iic_index)
+void I2C_ScanDevices(uint8_t idx)
 {
-    uint8_t addr;
-    uint8_t ack;
-    uint8_t found_count = 0;
-
-    printf("Scanning I2C bus (0x00-0x7F)...\r\n");
-
-    for(addr = 0x00; addr < 0x80; addr++)
+    uint8_t addr, found = 0;
+    printf("Scanning I2C bus...\r\n");
+    for (addr = 0x00; addr < 0x80; addr++)
     {
-        IIC_Start(iic_index);
-        I2C_WriteByte(iic_index, (addr << 1));
-        ack = I2C_WaitAck(iic_index);
-        IIC_Stop(iic_index);
-
-        if(ack == 0)
+        IIC_Start(idx);
+        I2C_WriteByte(idx, addr << 1);
+        if (I2C_WaitAck(idx) == 0)
         {
-            printf("Found device at address: 0x%02X\r\n", addr);
-            found_count++;
+            printf("Found device at 0x%02X\r\n", addr);
+            found++;
         }
+        IIC_Stop(idx);
         Delay_us(10);
     }
-
-    if(found_count == 0)
-    {
+    if (found == 0)
         printf("No I2C devices found.\r\n");
-    }
     else
-    {
-        printf("Total %d device(s) found.\r\n", found_count);
-    }
+        printf("Total %d device(s) found.\r\n", found);
 }

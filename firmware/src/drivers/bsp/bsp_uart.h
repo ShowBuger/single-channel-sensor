@@ -4,19 +4,17 @@
 #include <stdio.h>
 #include <stdint.h>
 
-void Serial_Init(void);
-void Serial_SendByte(uint8_t Byte);
-void Serial_SendArray(uint8_t *Array, uint16_t Length);
-void Serial_SendString(char *String);
-void Serial_SendNumber(uint32_t Number, uint8_t Length);
-void Serial_Printf(char *format, ...);
-void Serial_SendFloat(float value);
+void    Serial_Init(void);
+void    Serial_SendByte(uint8_t byte);
+void    Serial_SendArray(uint8_t *arr, uint16_t len);
+void    Serial_SendString(char *str);
+void    Serial_SendNumber(uint32_t num, uint8_t len);
+void    Serial_Printf(char *fmt, ...);
+void    Serial_SendFloat(float val);
 uint8_t Serial_GetRxFlag(void);
 uint8_t Serial_GetRxData(void);
-
-// 命令处理相关
-void Serial_ProcessCommand(void);
 uint8_t Serial_GetCommandFlag(void);
-char* Serial_GetCommandBuffer(void);
+char   *Serial_GetCommandBuffer(void);
+void    Serial_ProcessCommand(void);
 
 #endif

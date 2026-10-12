@@ -1,41 +1,44 @@
-#include "stm32f10x.h"
+#include "bsp_delay.h"
+#include "stm32f1xx_hal.h"
 
 /**
-  * @brief  微秒级延时
-  * @param  xus 延时时长，范围：0~233015
-  * @retval 无
-  */
-void Delay_us(uint32_t xus)
+ * @brief  Microsecond delay using DWT cycle counter
+ * @param  us  Delay in microseconds
+ */
+void Delay_us(uint32_t us)
 {
-	SysTick->LOAD = 72 * xus;				//设置定时器重装值
-	SysTick->VAL = 0x00;					//清空当前计数值
-	SysTick->CTRL = 0x00000005;				//设置时钟源为HCLK，启动定时器
-	while(!(SysTick->CTRL & 0x00010000));	//等待计数到0
-	SysTick->CTRL = 0x00000004;				//关闭定时器
+    uint32_t start = DWT->CYCCNT;
+    uint32_t ticks = us * (HAL_RCC_GetHCLKFreq() / 1000000U);
+    while ((DWT->CYCCNT - start) < ticks);
 }
 
 /**
-  * @brief  毫秒级延时
-  * @param  xms 延时时长，范围：0~4294967295
-  * @retval 无
-  */
-void Delay_ms(uint32_t xms)
+ * @brief  Millisecond delay using HAL_Delay
+ * @param  ms  Delay in milliseconds
+ */
+void Delay_ms(uint32_t ms)
 {
-	while(xms--)
-	{
-		Delay_us(1000);
-	}
+    HAL_Delay(ms);
 }
- 
+
 /**
-  * @brief  秒级延时
-  * @param  xs 延时时长，范围：0~4294967295
-  * @retval 无
-  */
-void Delay_s(uint32_t xs)
+ * @brief  Second delay
+ * @param  s  Delay in seconds
+ */
+void Delay_s(uint32_t s)
 {
-	while(xs--)
-	{
-		Delay_ms(1000);
-	}
-} 
+    while (s--)
+    {
+        HAL_Delay(1000);
+    }
+}
+
+/**
+ * @brief  Enable DWT cycle counter (call once at startup)
+ */
+void Delay_Init(void)
+{
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CYCCNT = 0;
+    DWT->CTRL  |= DWT_CTRL_CYCCNTENA_Msk;
+}
