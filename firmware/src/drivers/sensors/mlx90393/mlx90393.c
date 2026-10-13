@@ -1,6 +1,7 @@
 #include "mlx90393.h"
-#include "../bsp/bsp_i2c_soft.h"
-#include "../bsp/bsp_delay.h"
+#include "../../bsp/bsp_i2c_soft.h"
+#include "../../bsp/bsp_delay.h"
+#include "../../bsp/bsp_uart.h"
 
 /* All hardware I2C calls replaced with soft I2C.
  * i2c_id parameter maps to the iic[] index in bsp_i2c_soft.c (always 0 here). */
@@ -118,18 +119,32 @@ uint8_t MLX90393_begin(MLX90393_Handle *handle, uint8_t A1, uint8_t A0, int DRDY
     handle->I2C_Address = MLX90393_I2C_BASE_ADDR | ((A1 ? 2 : 0) | (A0 ? 1 : 0));
     handle->DRDY_pin    = DRDY_pin;
 
+    Serial_Printf("[begin] addr=0x%02X A1=%d A0=%d\r\n", handle->I2C_Address, A1, A0);
+
     status = MLX90393_exit_mode(handle, id);
-    if (error_process(status) == MLX90393_ERROR_BIT_SET) return 1;
+    Serial_Printf("[begin] exit_mode status=0x%02X\r\n", status);
+    if (error_process(status) == MLX90393_ERROR_BIT_SET) { Serial_Printf("[begin] exit_mode FAIL\r\n"); return 1; }
+    if (status == 0xFF) { Serial_Printf("[begin] exit_mode: no I2C ACK (addr wrong?)\r\n"); return 1; }
     Delay_ms(1);
 
     status = MLX90393_reset(handle, id);
-    if (error_process(status) == MLX90393_ERROR_BIT_SET) return 1;
+    Serial_Printf("[begin] reset status=0x%02X\r\n", status);
+    if (error_process(status) == MLX90393_ERROR_BIT_SET) { Serial_Printf("[begin] reset FAIL\r\n"); return 1; }
+    if (status == 0xFF) { Serial_Printf("[begin] reset: no I2C ACK\r\n"); return 1; }
     Delay_ms(2);
 
     /* 一次性写入3个寄存器，确保OSR/DIG_FILT/GAIN等字段都正确设置 */
     status = MLX90393_configureAll(handle, id, &cfg);
-    if (error_process(status) == MLX90393_ERROR_BIT_SET) return 1;
+    Serial_Printf("[begin] configureAll status=0x%02X\r\n", status);
+    if (error_process(status) == MLX90393_ERROR_BIT_SET) { Serial_Printf("[begin] configureAll FAIL\r\n"); return 1; }
 
+    /* 读回 REG 0x02 验证 OSR/DIG_FLT 确实写进去了 */
+    uint16_t reg02;
+    uint8_t rst = MLX90393_readRegister(handle, id, 0x02, &reg02);
+    Serial_Printf("[begin] verify reg0x02=0x%04X (status=0x%02X) OSR=%u FLT=%u\r\n",
+                  reg02, rst, reg02 & 0x03, (reg02 >> 2) & 0x07);
+
+    Serial_Printf("[begin] OK\r\n");
     return 0;
 }
 

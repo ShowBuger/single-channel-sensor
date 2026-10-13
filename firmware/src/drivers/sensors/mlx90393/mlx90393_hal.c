@@ -1,4 +1,4 @@
-#include "sensor_hal.h"
+#include "../sensor_hal.h"
 #include "mlx90393.h"
 
 static uint8_t mlx_init(void *h, uint8_t a1, uint8_t a0, int drdy, uint8_t id)

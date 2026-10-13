@@ -67,6 +67,9 @@ include_directories(
     src/app
     src/drivers/bsp
     src/drivers/sensors
+    src/drivers/sensors/mlx90393
+    src/drivers/sensors/tmag3001
+    src/drivers/sensors/tca9548a
     ${CMSIS_DIR}/Core/Include
     ${CMSIS_DIR}/Device/ST/STM32F1xx/Include
     ${HAL_DIR}/Inc
@@ -105,7 +108,7 @@ list(FILTER BSP_SOURCES_RAW EXCLUDE REGEX ".*bsp_i2c\\.c$")
 list(FILTER BSP_SOURCES_RAW EXCLUDE REGEX ".*bsp_dma\\.c$")
 set(BSP_SOURCES ${BSP_SOURCES_RAW})
 
-file(GLOB SENSOR_SOURCES  src/drivers/sensors/*.c)
+file(GLOB_RECURSE SENSOR_SOURCES  src/drivers/sensors/**/*.c)
 
 set(MAIN_SOURCES
     src/main.c

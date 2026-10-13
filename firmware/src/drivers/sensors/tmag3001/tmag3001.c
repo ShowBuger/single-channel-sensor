@@ -1,6 +1,6 @@
 #include "tmag3001.h"
-#include "../bsp/bsp_i2c_soft.h"
-#include "../bsp/bsp_delay.h"
+#include "../../bsp/bsp_i2c_soft.h"
+#include "../../bsp/bsp_delay.h"
 // Updated with gain support for TMAG3001
 
 /**

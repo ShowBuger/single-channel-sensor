@@ -2,7 +2,7 @@
 #define __SENSOR_MANAGER_H
 
 #include <stdint.h>
-#include "mlx90393.h"
+#include "../drivers/sensors/mlx90393/mlx90393.h"
 #include "algo_params.h"
 
 // 传感器数据结构 - 包含实际传感器和参考传感器的数据

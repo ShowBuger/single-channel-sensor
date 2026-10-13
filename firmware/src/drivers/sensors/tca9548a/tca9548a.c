@@ -1,7 +1,7 @@
 #include "stm32f1xx_hal.h"
 #include "tca9548a.h"
-#include "../bsp/bsp_i2c_soft.h"
-#include "../bsp/bsp_delay.h"
+#include "../../bsp/bsp_i2c_soft.h"
+#include "../../bsp/bsp_delay.h"
 
 #define TCA9548A_RST1_PORT  GPIOB
 #define TCA9548A_RST1_PIN   GPIO_PIN_12

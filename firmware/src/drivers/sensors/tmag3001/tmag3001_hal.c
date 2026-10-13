@@ -1,6 +1,6 @@
-#include "sensor_hal.h"
+#include "../sensor_hal.h"
 #include "tmag3001.h"
-#include "../bsp/bsp_delay.h"
+#include "../../bsp/bsp_delay.h"
 
 static uint8_t tmag_init(void *h, uint8_t a1, uint8_t a0, int drdy, uint8_t id)
 {

@@ -1,6 +1,6 @@
 #include "sensor_manager.h"
-#include "../drivers/sensors/mlx90393.h"
-#include "../drivers/sensors/tca9548a.h"
+#include "../drivers/sensors/mlx90393/mlx90393.h"
+#include "../drivers/sensors/tca9548a/tca9548a.h"
 #include "../drivers/bsp/bsp_delay.h"
 #include <math.h>
 #include "../drivers/bsp/bsp_uart.h"
@@ -62,16 +62,27 @@ Config_TypeDef g_config;
 uint8_t Scan_Ports(void)
 {
     uint8_t sensor_count = 0;
-    /*扫描MLX90393传感器自检 - 仅1对传感器*/
-    if(MLX90393_begin(&mlx_actual_sensors[0],0,0,-1,0) == 0 && MLX90393_begin(&mlx_reference_sensors[0],0,1,-1,0) == 0)
+    uint8_t r_actual, r_ref;
+
+    Serial_Printf("[scan] Init actual sensor (A1=0 A0=0, addr=0x0C)...\r\n");
+    r_actual = MLX90393_begin(&mlx_actual_sensors[0], 0, 0, -1, 0);
+    Serial_Printf("[scan] actual begin -> %s\r\n", r_actual == 0 ? "OK" : "FAIL");
+
+    Serial_Printf("[scan] Init reference sensor (A1=1 A0=0, addr=0x0E)...\r\n");
+    r_ref = MLX90393_begin(&mlx_reference_sensors[0], 1, 0, -1, 0);
+    Serial_Printf("[scan] reference begin -> %s\r\n", r_ref == 0 ? "OK" : "FAIL");
+
+    if(r_actual == 0 && r_ref == 0)
     {
         SENSOR_List[0] = 1;
-        sensor_count++ ;
+        sensor_count++;
+        Serial_Printf("[scan] Both sensors ready\r\n");
     }
     else
     {
         SENSOR_List[0] = 0;
         SENSOR_Run[0] = 0;
+        Serial_Printf("[scan] FAIL: actual=%d ref=%d\r\n", r_actual, r_ref);
     }
     return sensor_count;
 }
@@ -222,14 +233,16 @@ uint8_t get_sensor_data()
     status = MLX90393_startMeasurement(&mlx_actual_sensors[i], 0, XYZT_FLAGS);
     if(error_process(status) != MLX90393_ERROR_NONE)
     {
-        sensor_data[i].valid = 0;  // 启动失败,标记无效
+        Serial_Printf("[get] actual startMeasurement FAIL status=0x%02X\r\n", status);
+        sensor_data[i].valid = 0;
         return 1;
     }
     /*启动参考传感器单次测量*/
     status = MLX90393_startMeasurement(&mlx_reference_sensors[i], 0, XYZT_FLAGS);
     if(error_process(status) != MLX90393_ERROR_NONE)
     {
-        sensor_data[i].valid = 0;  // 启动失败,标记无效
+        Serial_Printf("[get] ref startMeasurement FAIL status=0x%02X\r\n", status);
+        sensor_data[i].valid = 0;
         return 1;
     }
 
@@ -240,16 +253,18 @@ uint8_t get_sensor_data()
     status = MLX90393_readMeasurement(&mlx_actual_sensors[i], 0, XYZT_FLAGS, &raw_actual);
     if(error_process(status) != MLX90393_ERROR_NONE)
     {
-       sensor_data[i].valid = 0;  // 读取失败,标记无效
-       return 1;
+        Serial_Printf("[get] actual readMeasurement FAIL status=0x%02X\r\n", status);
+        sensor_data[i].valid = 0;
+        return 1;
     }
 
     /*读取参考传感器原始数据*/
     status = MLX90393_readMeasurement(&mlx_reference_sensors[i], 0, XYZT_FLAGS, &raw_reference);
     if(error_process(status) != MLX90393_ERROR_NONE)
     {
-       sensor_data[i].valid = 0;  // 读取失败,标记无效
-       return 1;
+        Serial_Printf("[get] ref readMeasurement FAIL status=0x%02X\r\n", status);
+        sensor_data[i].valid = 0;
+        return 1;
     }
     /*转换为物理量*/
     sensor_data[i].actual = MLX90393_convertRaw(raw_actual);
