@@ -64,6 +64,7 @@ firmware/project/keil/*.bak
 firmware/.vscode/
 /.idea/
 /.claude/
+/.agents/
 
 # Python environments, caches, and distribution outputs
 __pycache__/
