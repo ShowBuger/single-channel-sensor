@@ -176,14 +176,18 @@ int main(void)
 
     SoftI2C_Init();
     Serial_Init();
+    IWDG_Init();        /* 启动看门狗，统一在代码里管理，避免依赖 option bytes */
     Config_Init_All();
 
     Serial_Printf("System_Reset\r\n");
+    IWDG_Feed();        /* 初始化耗时较长，喂一次防止在此处复位 */
     Scan_Ports();
-    sensor_start();
+    IWDG_Feed();        /* Scan_Ports 含 I2C 通信，完成后再喂一次 */
+    sensor_start();     /* 内含校准，校准完成后进入主循环再周期喂狗 */
 
     while (1)
     {
+        IWDG_Feed();        /* 主循环每次迭代喂狗 */
         serial_command_process();
         if (SENSOR_Run[0] == 1)
         {

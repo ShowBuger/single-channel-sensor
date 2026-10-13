@@ -247,8 +247,10 @@ uint8_t MLX90393_configureAll(MLX90393_Handle *h, uint8_t id, const MLX90393_Con
     uint8_t  st;
     uint16_t r;
 
-    /* REG 0x00: GAIN_SEL[6:4] */
-    r  = (uint16_t)((cfg->gain_sel & 0x07U) << GAIN_SEL_SHIFT);
+    /* REG 0x00: GAIN_SEL[6:4] | HALLCONF[3:0]
+     * HALLCONF 必须保持 0x0C，convertRaw 的硬编码系数依赖此值 */
+    r  = (uint16_t)((cfg->gain_sel & 0x07U) << GAIN_SEL_SHIFT)
+       | (uint16_t)(0x0CU << HALLCONF_SHIFT);
     st = MLX90393_writeRegister(h, id, 0x00U, r);
     if (error_process(st) == MLX90393_ERROR_BIT_SET) return st;
 

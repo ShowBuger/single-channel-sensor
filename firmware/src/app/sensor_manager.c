@@ -8,7 +8,11 @@
 #include "algo_params.h"
 
 #define XYZT_FLAGS (MLX90393_FLAG_X | MLX90393_FLAG_Y | MLX90393_FLAG_Z ) // 测量所有轴
-#define MEASURE_INTERVAL 8  //测量延时根据OSR和FLT决定
+// 测量延时根据OSR和FLT决定
+// MLX90393 转换时间 ≈ 2^OSR × 1.27ms × N轴
+// OSR=3 (×8), 3轴: 8 × 1.27ms × 3 ≈ 30ms → 留50ms余量
+// 旧代码因register clobber bug实际跑OSR=0所以8ms够用，现已修复
+#define MEASURE_INTERVAL 50
 
 // FLAG_RES: 使用每一位代表不同的使能标志
 // Bit 0: 标定使能
@@ -980,17 +984,31 @@ uint8_t perform_sensor_calibration(void)
     // 清空标定数据
     sensor_calibration[i].calibrated = 0;
 
+    /* 传感器未启动则直接报错，避免后续死循环 */
+    if(SENSOR_Run[i] == 0)
+    {
+        Serial_Printf("Calibration skipped: sensor not running\r\n");
+        return 1;
+    }
+
     Serial_Printf("Calibrating sensors (10 samples)...\r\n");
 
     // 连续读取10次数据
+    uint8_t retry_count = 0;
     for(j = 0; j < calibration_samples; j++)
     {
         // 读取所有传感器数据
         if(get_sensor_data() != 0)
         {
+            if(++retry_count > 20)  // 最多允许20次连续失败，防止死循环
+            {
+                Serial_Printf("Calibration aborted: sensor read failed repeatedly\r\n");
+                return 1;
+            }
             j--;
-            continue;  // 读取失败,跳过本次采样
+            continue;  // 读取失败,重试本次采样
         }
+        retry_count = 0;  // 读取成功则重置重试计数器
 
         // 保存数据并累加有效数据
         if(SENSOR_Run[i] == 0) continue;  // 传感器未运行,跳过
