@@ -927,7 +927,7 @@ void print_calibration_data(uint8_t sensor_index)
 
 /**
  * 函数: print_sensor_data
- * 功能: 打印传感器数据(用于调试)
+ * 功能: 打印传感器原始数据（数据流输出）
  * 参数: sensor_index - 传感器索引 (0-4)
  * 返回: 无
  */
@@ -936,8 +936,8 @@ void print_sensor_data(uint8_t sensor_index)
     if(sensor_index >= 1) return;
     if(sensor_data[sensor_index].valid == 0) return;
 
-    // 打印实际传感器数据
-    LOG_I("DATA", "sensor%d:%.2f, %.2f, %.2f",
+    // 打印实际传感器数据（数据流，不加日志前缀）
+    Serial_Printf("sensor%d:%.2f, %.2f, %.2f\r\n",
             sensor_index,
             sensor_data[sensor_index].actual.x,
             sensor_data[sensor_index].actual.y,
@@ -946,7 +946,7 @@ void print_sensor_data(uint8_t sensor_index)
 
 /**
  * 函数: print_processed_sensor_data
- * 功能: 打印处理后的传感器数据(用于调试)
+ * 功能: 打印处理后的传感器数据（数据流输出）
  * 参数: sensor_index - 传感器索引 (0-4)
  * 返回: 无
  */
@@ -954,14 +954,14 @@ void print_processed_sensor_data(uint8_t sensor_index)
 {
     if(processed_sensor_data[sensor_index].valid == 0) return;
 
-    // 打印实际传感器处理后数据
-    LOG_I("DATA", "sensor%d:%.2f, %.2f, %.2f",
+    // 打印实际传感器处理后数据（数据流，不加日志前缀）
+    Serial_Printf("sensor%d:%.2f,%.2f,%.2f\r\n",
             sensor_index,
             processed_sensor_data[sensor_index].actual.x,
             processed_sensor_data[sensor_index].actual.y,
             processed_sensor_data[sensor_index].actual.z);
 //    // 打印参考传感器处理后数据
-//    Serial_Printf("sensor%d:%.2f, %.2f, %.2f\n",
+//    Serial_Printf("sensor%d:%.2f, %.2f, %.2f\r\n",
 //            sensor_index+5,
 //            processed_sensor_data[sensor_index].reference.x,
 //            processed_sensor_data[sensor_index].reference.y,
