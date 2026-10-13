@@ -219,7 +219,7 @@ int main(void)
     Config_Init_All();
     ConfigImport_Init(); /* 初始化配置导入模块 */
 
-    Serial_Printf("System_Reset\r\n");
+    LOG_I("SYS", "System Reset");
     IWDG_Feed();        /* 初始化耗时较长，喂一次防止在此处复位 */
     Scan_Ports();
     IWDG_Feed();        /* Scan_Ports 含 I2C 通信，完成后再喂一次 */
