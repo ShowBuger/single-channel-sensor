@@ -1,0 +1,1 @@
+{"sensor":{"gain":7,"osr":3,"filt":0,"resx":0,"resy":0,"resz":0,"tcmp":0},"algo":{"flag":"0x3B","xmap":0.100,"ymap":0.100,"zmap":-0.100,"dead":8.5,"spike":20.0,"stab":0.1},"log":{"level":3}}

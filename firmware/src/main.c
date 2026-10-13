@@ -6,6 +6,7 @@
 #include "drivers/sensors/tca9548a/tca9548a.h"
 #include "app/sensor_manager.h"
 #include "app/algo_params.h"
+#include "app/config_import.h"
 #include "drivers/sensors/sensor_hal.h"
 #include "drivers/bsp/log_manager.h"
 #include <string.h>
@@ -42,6 +43,20 @@ static void serial_command_process(void)
     if (!Serial_GetCommandFlag()) return;
 
     char *cmd = Serial_GetCommandBuffer();
+
+    /* Check if in import state — delegate to import handler */
+    if (ConfigImport_GetState() != IMPORT_STATE_IDLE)
+    {
+        ConfigImport_ProcessCommand(cmd);
+        return;
+    }
+
+    /* Handle import commands */
+    if (strncmp(cmd, "ML IMPORT_", 10) == 0)
+    {
+        ConfigImport_ProcessCommand(cmd);
+        return;
+    }
 
     if (strcmp(cmd, "ML START") == 0)
     {
@@ -195,6 +210,7 @@ int main(void)
     Serial_Init();
     IWDG_Init();        /* 启动看门狗，统一在代码里管理，避免依赖 option bytes */
     Config_Init_All();
+    ConfigImport_Init(); /* 初始化配置导入模块 */
 
     Serial_Printf("System_Reset\r\n");
     IWDG_Feed();        /* 初始化耗时较长，喂一次防止在此处复位 */
