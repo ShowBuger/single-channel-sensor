@@ -1,6 +1,6 @@
 #include "bsp_i2c_soft.h"
 #include "bsp_delay.h"
-#include "bsp_uart.h"
+#include "log_manager.h"
 #include "stm32f1xx_hal.h"
 #include "board_config.h"
 
@@ -141,21 +141,21 @@ void I2C_SendAck(uint8_t idx, uint8_t ack)
 void I2C_ScanDevices(uint8_t idx)
 {
     uint8_t addr, found = 0;
-    Serial_Printf("Scanning I2C bus...\r\n");
+    LOG_I("I2C", "Scanning I2C bus...");
     for (addr = 0x00; addr < 0x80; addr++)
     {
         IIC_Start(idx);
         I2C_WriteByte(idx, addr << 1);
         if (I2C_WaitAck(idx) == 0)
         {
-            Serial_Printf("Found device at 0x%02X\r\n", addr);
+            LOG_I("I2C", "Found device at 0x%02X", addr);
             found++;
         }
         IIC_Stop(idx);
         Delay_us(10);
     }
     if (found == 0)
-        Serial_Printf("No I2C devices found.\r\n");
+        LOG_W("I2C", "No I2C devices found.");
     else
-        Serial_Printf("Total %d device(s) found.\r\n", found);
+        LOG_I("I2C", "Total %d device(s) found.", found);
 }

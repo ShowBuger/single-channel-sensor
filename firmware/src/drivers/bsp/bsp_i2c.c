@@ -1,5 +1,5 @@
 #include "stm32f10x.h"
-#include "bsp_uart.h"
+#include "log_manager.h"
 #include "bsp_delay.h"
 
 /**
@@ -138,17 +138,17 @@ uint8_t HardI2C_WaitAck(uint8_t id)
 void HardI2C_Scan(uint8_t id)
 {
 	uint8_t addr;
-	Serial_Printf("I2C%d scan start\r\n", (id == 0) ? 1 : 2);
+	LOG_I("I2C", "I2C%d scan start", (id == 0) ? 1 : 2);
 	for (addr = 1; addr < 128; addr++)
 	{
 		HardI2C_Start(id);
 		HardI2C_SendByte(id, addr << 1); // 发送写地址
 		if (HardI2C_WaitAck(id) == 0)
 		{
-			Serial_Printf("Found device at 0x%02X\r\n", addr);
+			LOG_I("I2C", "Found device at 0x%02X", addr);
 		}
 		HardI2C_Stop(id);
 		Delay_ms(5);
 	}
-	Serial_Printf("I2C scan finished\r\n");
+	LOG_I("I2C", "I2C scan finished");
 }
