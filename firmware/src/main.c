@@ -7,6 +7,7 @@
 #include "app/sensor_manager.h"
 #include "app/algo_params.h"
 #include "drivers/sensors/sensor_hal.h"
+#include "drivers/bsp/log_manager.h"
 #include <string.h>
 #include <math.h>
 #include <stdlib.h>
@@ -161,6 +162,22 @@ static void serial_command_process(void)
                       g_config.FLAG_RES,
                       g_config.X_MAPPING_VALUE, g_config.Y_MAPPING_VALUE, g_config.Z_MAPPING_VALUE,
                       g_config.dead_value, g_config.spike_multiplier, g_config.stability_threshold);
+    }
+    else if (strncmp(cmd, "ML LOGLEVEL ", 12) == 0)
+    {
+        int lvl;
+        if (sscanf(cmd + 12, "%d", &lvl) == 1 && lvl >= 0 && lvl <= 4)
+        {
+            Log_SetLevel((LogLevel_t)lvl);
+            g_config.log_level = (uint8_t)lvl;
+            Config_Save_All();
+            Serial_Printf("LogLevel=%d\r\n", lvl);
+        }
+        else Serial_Printf("Usage: ML LOGLEVEL <0-4>\r\n");
+    }
+    else if (strcmp(cmd, "ML LOGLEVEL") == 0)
+    {
+        Serial_Printf("LogLevel=%d (0=NONE 1=E 2=W 3=I 4=D)\r\n", (int)Log_GetLevel());
     }
     else Serial_Printf("Unknown: %s\r\n", cmd);
 }

@@ -4,6 +4,7 @@
 #include "../drivers/bsp/bsp_delay.h"
 #include <math.h>
 #include "../drivers/bsp/bsp_uart.h"
+#include "../drivers/bsp/log_manager.h"
 #include "config_manager.h"
 #include "algo_params.h"
 
@@ -64,25 +65,25 @@ uint8_t Scan_Ports(void)
     uint8_t sensor_count = 0;
     uint8_t r_actual, r_ref;
 
-    Serial_Printf("[scan] Init actual sensor (A1=0 A0=0, addr=0x0C)...\r\n");
+    LOG_D("SCAN", "[scan] Init actual sensor (A1=0 A0=0, addr=0x0C)...");
     r_actual = MLX90393_begin(&mlx_actual_sensors[0], 0, 0, -1, 0);
-    Serial_Printf("[scan] actual begin -> %s\r\n", r_actual == 0 ? "OK" : "FAIL");
+    LOG_D("SCAN", "[scan] actual begin -> %s", r_actual == 0 ? "OK" : "FAIL");
 
-    Serial_Printf("[scan] Init reference sensor (A1=1 A0=0, addr=0x0E)...\r\n");
+    LOG_D("SCAN", "[scan] Init reference sensor (A1=1 A0=0, addr=0x0E)...");
     r_ref = MLX90393_begin(&mlx_reference_sensors[0], 1, 0, -1, 0);
-    Serial_Printf("[scan] reference begin -> %s\r\n", r_ref == 0 ? "OK" : "FAIL");
+    LOG_D("SCAN", "[scan] reference begin -> %s", r_ref == 0 ? "OK" : "FAIL");
 
     if(r_actual == 0 && r_ref == 0)
     {
         SENSOR_List[0] = 1;
         sensor_count++;
-        Serial_Printf("[scan] Both sensors ready\r\n");
+        LOG_D("SCAN", "[scan] Both sensors ready");
     }
     else
     {
         SENSOR_List[0] = 0;
         SENSOR_Run[0] = 0;
-        Serial_Printf("[scan] FAIL: actual=%d ref=%d\r\n", r_actual, r_ref);
+        LOG_D("SCAN", "[scan] FAIL: actual=%d ref=%d", r_actual, r_ref);
     }
     return sensor_count;
 }
@@ -194,12 +195,12 @@ uint8_t sensor_start()
    // 执行标定
    if(perform_sensor_calibration() == 0)
    {
-       Serial_Printf("Sensor ready for measurement.\r\n");
+       LOG_I("SENSOR", "Sensor ready for measurement.");
        return 0;
    }
    else
    {
-       Serial_Printf("Sensor start failed!\r\n");
+       LOG_W("SENSOR", "Sensor start failed!");
        return 1;
    }
 }
@@ -233,7 +234,7 @@ uint8_t get_sensor_data()
     status = MLX90393_startMeasurement(&mlx_actual_sensors[i], 0, XYZT_FLAGS);
     if(error_process(status) != MLX90393_ERROR_NONE)
     {
-        Serial_Printf("[get] actual startMeasurement FAIL status=0x%02X\r\n", status);
+        LOG_D("SCAN", "[get] actual startMeasurement FAIL status=0x%02X", status);
         sensor_data[i].valid = 0;
         return 1;
     }
@@ -241,7 +242,7 @@ uint8_t get_sensor_data()
     status = MLX90393_startMeasurement(&mlx_reference_sensors[i], 0, XYZT_FLAGS);
     if(error_process(status) != MLX90393_ERROR_NONE)
     {
-        Serial_Printf("[get] ref startMeasurement FAIL status=0x%02X\r\n", status);
+        LOG_D("SCAN", "[get] ref startMeasurement FAIL status=0x%02X", status);
         sensor_data[i].valid = 0;
         return 1;
     }
@@ -253,7 +254,7 @@ uint8_t get_sensor_data()
     status = MLX90393_readMeasurement(&mlx_actual_sensors[i], 0, XYZT_FLAGS, &raw_actual);
     if(error_process(status) != MLX90393_ERROR_NONE)
     {
-        Serial_Printf("[get] actual readMeasurement FAIL status=0x%02X\r\n", status);
+        LOG_D("SCAN", "[get] actual readMeasurement FAIL status=0x%02X", status);
         sensor_data[i].valid = 0;
         return 1;
     }
@@ -262,7 +263,7 @@ uint8_t get_sensor_data()
     status = MLX90393_readMeasurement(&mlx_reference_sensors[i], 0, XYZT_FLAGS, &raw_reference);
     if(error_process(status) != MLX90393_ERROR_NONE)
     {
-        Serial_Printf("[get] ref readMeasurement FAIL status=0x%02X\r\n", status);
+        LOG_D("SCAN", "[get] ref readMeasurement FAIL status=0x%02X", status);
         sensor_data[i].valid = 0;
         return 1;
     }
@@ -909,16 +910,16 @@ void print_calibration_data(uint8_t sensor_index)
     if(sensor_index >= 1) return;
     if(sensor_calibration[sensor_index].calibrated == 0) return;
 
-    Serial_Printf("=== Calibration Data [%d] ===\n", sensor_index);
-    Serial_Printf("Actual Offset: X=%.2f, Y=%.2f, Z=%.2f\n",
+    LOG_D("CALIB", "=== Calibration Data [%d] ===", sensor_index);
+    LOG_D("CALIB", "Actual Offset: X=%.2f, Y=%.2f, Z=%.2f",
             sensor_calibration[sensor_index].actual_offset.x,
             sensor_calibration[sensor_index].actual_offset.y,
             sensor_calibration[sensor_index].actual_offset.z);
-    Serial_Printf("Reference Offset: X=%.2f, Y=%.2f, Z=%.2f\n",
+    LOG_D("CALIB", "Reference Offset: X=%.2f, Y=%.2f, Z=%.2f",
             sensor_calibration[sensor_index].reference_offset.x,
             sensor_calibration[sensor_index].reference_offset.y,
             sensor_calibration[sensor_index].reference_offset.z);
-    Serial_Printf("Actual Std: X=%.2f, Y=%.2f, Z=%.2f\n",
+    LOG_D("CALIB", "Actual Std: X=%.2f, Y=%.2f, Z=%.2f",
             sensor_calibration[sensor_index].actual_std.x,
             sensor_calibration[sensor_index].actual_std.y,
             sensor_calibration[sensor_index].actual_std.z);
@@ -936,7 +937,7 @@ void print_sensor_data(uint8_t sensor_index)
     if(sensor_data[sensor_index].valid == 0) return;
 
     // 打印实际传感器数据
-    Serial_Printf("sensor%d:%.2f, %.2f, %.2f\n",
+    LOG_I("DATA", "sensor%d:%.2f, %.2f, %.2f",
             sensor_index,
             sensor_data[sensor_index].actual.x,
             sensor_data[sensor_index].actual.y,
@@ -954,7 +955,7 @@ void print_processed_sensor_data(uint8_t sensor_index)
     if(processed_sensor_data[sensor_index].valid == 0) return;
 
     // 打印实际传感器处理后数据
-    Serial_Printf("sensor%d:%.2f, %.2f, %.2f\n",
+    LOG_I("DATA", "sensor%d:%.2f, %.2f, %.2f",
             sensor_index,
             processed_sensor_data[sensor_index].actual.x,
             processed_sensor_data[sensor_index].actual.y,
@@ -1002,11 +1003,11 @@ uint8_t perform_sensor_calibration(void)
     /* 传感器未启动则直接报错，避免后续死循环 */
     if(SENSOR_Run[i] == 0)
     {
-        Serial_Printf("Calibration skipped: sensor not running\r\n");
+        LOG_W("CALIB", "Calibration skipped: sensor not running");
         return 1;
     }
 
-    Serial_Printf("Calibrating sensors (10 samples)...\r\n");
+    LOG_I("CALIB", "Calibrating sensors (10 samples)...");
 
     // 连续读取10次数据
     uint8_t retry_count = 0;
@@ -1017,7 +1018,7 @@ uint8_t perform_sensor_calibration(void)
         {
             if(++retry_count > 20)  // 最多允许20次连续失败，防止死循环
             {
-                Serial_Printf("Calibration aborted: sensor read failed repeatedly\r\n");
+                LOG_W("CALIB", "Calibration aborted: sensor read failed repeatedly");
                 return 1;
             }
             j--;
@@ -1050,7 +1051,7 @@ uint8_t perform_sensor_calibration(void)
     // 计算均值、标准差并保存为标定值
     if(SENSOR_Run[i] == 0)
     {
-        Serial_Printf("please start sensor!");
+        LOG_W("CALIB", "please start sensor!");
         return 1;  // 传感器未运行,跳过
     }
 
@@ -1058,7 +1059,7 @@ uint8_t perform_sensor_calibration(void)
     if(accumulator[i].sample_count < 5)
     {
         sensor_calibration[i].calibrated = 0;  // 标定失败
-        Serial_Printf("sensor calibrate failed!");
+        LOG_W("CALIB", "sensor calibrate failed!");
         return 1;
     }
 
@@ -1130,12 +1131,12 @@ uint8_t perform_sensor_calibration(void)
     // 检查传感器是否标定成功 - 仅1个传感器
     if(sensor_calibration[i].calibrated == 1)
     {
-        Serial_Printf("Calibration complete! Sensor calibrated.\r\n");
+        LOG_I("CALIB", "Calibration complete! Sensor calibrated.");
         return 0;  // 标定成功
     }
     else
     {
-        Serial_Printf("Calibration failed! Sensor not calibrated.\r\n");
+        LOG_W("CALIB", "Calibration failed! Sensor not calibrated.");
         return 1;  // 标定失败
     }
 }
@@ -1153,11 +1154,11 @@ void Config_Init_All(void)
 
     if (Config_Load(&g_config) == 0)
     {
-        Serial_Printf("Config loaded (schema v%u):\r\n", g_config.schema_ver);
+        LOG_I("CFG", "Config loaded (schema v%u):", g_config.schema_ver);
     }
     else
     {
-        Serial_Printf("Config defaults applied.\r\n");
+        LOG_I("CFG", "Config defaults applied.");
         Config_Save(&g_config);
     }
 
@@ -1167,10 +1168,11 @@ void Config_Init_All(void)
     Y_MAPPING_VALUE = g_config.Y_MAPPING_VALUE;
     Z_MAPPING_VALUE = g_config.Z_MAPPING_VALUE;
     AlgoParams_Load(&g_config);
+    Log_Init((LogLevel_t)g_config.log_level);
 
-    Serial_Printf("  FLAG_RES=0x%02X  Map:%.2f,%.2f,%.2f\r\n",
+    LOG_D("CFG", "FLAG_RES=0x%02X  Map:%.2f,%.2f,%.2f",
                   FLAG_RES, X_MAPPING_VALUE, Y_MAPPING_VALUE, Z_MAPPING_VALUE);
-    Serial_Printf("  dead=%.2f  spike=%.2f  stab=%.3f\r\n",
+    LOG_D("CFG", "dead=%.2f  spike=%.2f  stab=%.3f",
                   g_algo.dead_value, g_algo.spike_multiplier, g_algo.stability_threshold);
 }
 
@@ -1193,10 +1195,10 @@ uint8_t Config_Save_All(void)
 
     if (Config_Save(&g_config) == 0)
     {
-        Serial_Printf("Config saved.\r\n");
+        LOG_I("CFG", "Config saved.");
         return 0;
     }
-    Serial_Printf("Config save FAILED.\r\n");
+    LOG_W("CFG", "Config save FAILED.");
     return 1;
 }
 

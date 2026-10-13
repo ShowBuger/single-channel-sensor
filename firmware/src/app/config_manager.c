@@ -35,6 +35,7 @@ void Config_SetDefaults(Config_TypeDef *cfg)
     cfg->res_y               = CONFIG_DEFAULT_RES;
     cfg->res_z               = CONFIG_DEFAULT_RES;
     cfg->tcmp_en             = CONFIG_DEFAULT_TCMP_EN;
+    cfg->log_level           = CONFIG_DEFAULT_LOG_LEVEL;
     cfg->X_MAPPING_VALUE     = CONFIG_DEFAULT_X_MAP;
     cfg->Y_MAPPING_VALUE     = CONFIG_DEFAULT_Y_MAP;
     cfg->Z_MAPPING_VALUE     = CONFIG_DEFAULT_Z_MAP;

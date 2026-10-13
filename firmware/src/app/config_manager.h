@@ -17,7 +17,7 @@
  * bump CONFIG_SCHEMA_VERSION when doing so (old Flash is detected and defaults applied).
  */
 
-#define CONFIG_SCHEMA_VERSION  2U   /* bump when layout changes */
+#define CONFIG_SCHEMA_VERSION  3U   /* bump when layout changes */
 
 typedef struct {
     /* -- Schema version -------------------------------- */
@@ -32,6 +32,7 @@ typedef struct {
     uint8_t  dig_filt;               /* 0-7, default 0                   */
     uint8_t  res_x, res_y, res_z;   /* 0-3 per axis, default 0          */
     uint8_t  tcmp_en;                /* 0/1, default 0                   */
+    uint8_t  log_level;              /* LogLevel_t stored as uint8_t     */
 
     /* -- Axis mapping coefficients --------------------- */
     float    X_MAPPING_VALUE;        /* default  0.100f                  */
@@ -44,7 +45,7 @@ typedef struct {
     float    stability_threshold;    /* stability delta uT, def 0.1           */
 
     /* -- Padding for 4-byte alignment ------------------ */
-    uint8_t  _pad[3];
+    uint8_t  _pad[2];
 
     /* -- Integrity ------------------------------------- */
     uint32_t checksum;
@@ -57,6 +58,7 @@ typedef struct {
 #define CONFIG_DEFAULT_DIG_FILT         0U
 #define CONFIG_DEFAULT_RES              0U
 #define CONFIG_DEFAULT_TCMP_EN          0U
+#define CONFIG_DEFAULT_LOG_LEVEL        3U
 #define CONFIG_DEFAULT_X_MAP            0.100f
 #define CONFIG_DEFAULT_Y_MAP            0.100f
 #define CONFIG_DEFAULT_Z_MAP           -0.100f
