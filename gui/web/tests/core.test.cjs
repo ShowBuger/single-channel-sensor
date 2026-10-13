@@ -2,6 +2,30 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const C=require('../core.js');
 
+test('serial log retains full RX text and all sessions beyond UI preview limits',()=>{
+  const archive=new C.SerialLog(),start=Date.UTC(2026,9,13,18,0,0);
+  archive.append('系统','未连接的演示事件',start);assert.equal(archive.count,0);
+  archive.begin('COM4',115200,start);
+  for(let i=0;i<600;i++)archive.append('RX',`[I][DATA] sensor0:${i},0,0`,start+i);
+  archive.append('TX','ML GETCFG',start+601);archive.end('连接中断',start+602);
+  const first=archive.snapshot().join('');assert(first.startsWith('\uFEFF'));assert(first.includes('[RX] [I][DATA] sensor0:0,0,0'));assert(first.includes('sensor0:599,0,0'));assert(first.includes('[TX] ML GETCFG'));
+  archive.begin('COM5',57600,start+603);archive.append('错误','第一行\n第二行',start+604);
+  const second=archive.snapshot().join('');assert(second.includes('会话 1 · COM4'));assert(second.includes('会话 2 · COM5'));assert(second.includes('[错误] 第二行'));
+  assert(!first.includes('COM5'));assert.equal(archive.count,605);assert(second.indexOf('连接中断')<second.indexOf('COM5'));
+});
+
+test('surface deformation retains Z sign, XY tilt, fixed edges and zero baseline',()=>{
+  assert.equal(C.surfaceHeight(0,0,[0,0,1],1),1.55);
+  assert.equal(C.surfaceHeight(0,0,[0,0,-1],1),-1.55);
+  assert(C.surfaceHeight(-1,0,[1,0,0],1)>0);
+  assert(C.surfaceHeight(1,0,[1,0,0],1)<0);
+  for(const x of [-2.5,-1,0,1,2.5])for(const y of [-2.5,-1,0,1,2.5]){
+    assert.equal(C.surfaceHeight(x,y,[0,0,0],1),0);
+    const z=C.surfaceHeight(x,y,[.4,-.3,.8],1);
+    assert(Number.isFinite(z));if(Math.abs(x)===2.5||Math.abs(y)===2.5)assert.equal(z,0);
+  }
+});
+
 function mockDevice(options={}){
   const state={flags:59,maps:[.1,.1,-.1],commands:[],closed:false}, encoder=new TextEncoder();let controller;
   const port={readable:new ReadableStream({start(c){controller=c;}}),writable:new WritableStream({write(bytes){
@@ -62,6 +86,14 @@ test('command timeout closes transport and invalidates queued commands',async()=
 });
 test('disconnect immediately rejects pending command and releases reader',async()=>{
   const{client}=mockDevice({ignore:true});await client.connect();const pending=client.readConfig();await new Promise(r=>setImmediate(r));const check=assert.rejects(pending,/断开/);await client.disconnect();await check;assert.equal(client.reader,null);
+});
+
+test('timeout disconnect preserves the failing command and last reply for diagnosis',async()=>{
+  const {client,inject}=mockDevice({ignore:true,timeout:30});await client.connect();let detail='';
+  client.on('state',e=>{if(e.state==='disconnected')detail=e.detail;});
+  const pending=client.readConfig();await new Promise(r=>setImmediate(r));inject('unexpected response\r\n');
+  await assert.rejects(pending,/ML FLAG.*最后回复：unexpected response/);await client.disconnect();
+  assert.match(detail,/ML FLAG.*最后回复：unexpected response/);
 });
 test('device restart while a command is pending cannot be accepted as a reply',async()=>{
   const{client,inject}=mockDevice({ignore:true});await client.connect();const pending=client.readConfig();await new Promise(r=>setImmediate(r));const check=assert.rejects(pending,/重启/);inject('System_Reset\r\n');await check;await client.disconnect();

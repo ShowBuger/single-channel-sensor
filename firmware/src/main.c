@@ -167,16 +167,23 @@ static void serial_command_process(void)
     }
     else if (strcmp(cmd, "ML GETCFG") == 0)
     {
-        Serial_Printf("{\"sensor\":{\"gain\":%u,\"osr\":%u,\"filt\":%u,"
-                      "\"resx\":%u,\"resy\":%u,\"resz\":%u,\"tcmp\":%u},"
-                      "\"algo\":{\"flag\":\"0x%02X\",\"xmap\":%.3f,"
-                      "\"ymap\":%.3f,\"zmap\":%.3f,\"dead\":%.3f,"
-                      "\"spike\":%.3f,\"stab\":%.3f}}\r\n",
-                      g_config.gain_sel, g_config.osr, g_config.dig_filt,
-                      g_config.res_x, g_config.res_y, g_config.res_z, g_config.tcmp_en,
-                      g_config.FLAG_RES,
-                      g_config.X_MAPPING_VALUE, g_config.Y_MAPPING_VALUE, g_config.Z_MAPPING_VALUE,
-                      g_config.dead_value, g_config.spike_multiplier, g_config.stability_threshold);
+        /* Each printf stays below the UART's 100-byte formatting buffer.
+         * This read-only snapshot reports configured sensor values and live
+         * algorithm/log values; it is not an I2C register readback. */
+        Serial_Printf("CFG_BEGIN\r\n");
+        Serial_Printf("{\"sensor\":{\"gain\":%u,\"osr\":%u,\"filt\":%u,",
+                      g_config.gain_sel, g_config.osr, g_config.dig_filt);
+        Serial_Printf("\"resx\":%u,\"resy\":%u,\"resz\":%u,\"tcmp\":%u},",
+                      g_config.res_x, g_config.res_y, g_config.res_z, g_config.tcmp_en);
+        /* Nine significant digits round-trip an IEEE float32. */
+        Serial_Printf("\"algo\":{\"flag\":\"0x%02X\",\"xmap\":%.9g,",
+                      FLAG_RES, (double)X_MAPPING_VALUE);
+        Serial_Printf("\"ymap\":%.9g,\"zmap\":%.9g,",
+                      (double)Y_MAPPING_VALUE, (double)Z_MAPPING_VALUE);
+        Serial_Printf("\"dead\":%.9g,\"spike\":%.9g,\"stab\":%.9g},",
+                      (double)g_algo.dead_value, (double)g_algo.spike_multiplier,
+                      (double)g_algo.stability_threshold);
+        Serial_Printf("\"log\":{\"level\":%u}}\r\nCFG_END\r\n", (unsigned)Log_GetLevel());
     }
     else if (strncmp(cmd, "ML LOGLEVEL ", 12) == 0)
     {

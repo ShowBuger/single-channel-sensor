@@ -14,6 +14,12 @@ test('Windows backend serves offline UI, lists ports, rejects unauthorized and i
     assert.equal((await fetch(origin+'/bridge/Server.cs')).status,404);
     const invalid=await fetch(origin+'/api/connect',{method:'POST',headers,body:JSON.stringify({port:'COM999999',baudRate:115200})});assert.equal(invalid.status,400);assert.match((await invalid.json()).error,/端口/);
     const injection=await fetch(origin+'/api/write',{method:'POST',headers,body:JSON.stringify({command:'ML STOP\nML START'})});assert.equal(injection.status,400);assert.match((await injection.json()).error,/命令/);
+    for(const command of ['ML IMPORT_START 250','ML IMPORT_DATA '+ 'a'.repeat(47),'ML IMPORT_END','ML IMPORT_CANCEL','ML LOGLEVEL']){
+      const result=await fetch(origin+'/api/write',{method:'POST',headers,body:JSON.stringify({command})});assert.equal(result.status,400);assert.match((await result.json()).error,/会话/);
+    }
+    for(const command of ['ML IMPORT_START 1024','ML IMPORT_DATA '+ 'a'.repeat(48),'ML IMPORT_END\n']){
+      const result=await fetch(origin+'/api/write',{method:'POST',headers,body:JSON.stringify({command})});assert.equal(result.status,400);assert.match((await result.json()).error,/命令/);
+    }
     const read=await fetch(origin+'/api/read',{headers});assert.equal(read.status,400);
     const badBaud=await fetch(origin+'/api/connect',{method:'POST',headers,body:JSON.stringify({port:'COM999999',baudRate:0})});assert.equal(badBaud.status,400);
   }finally{server.kill();}

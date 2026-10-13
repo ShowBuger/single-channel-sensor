@@ -86,8 +86,15 @@ internal static class FieldBridge {
     }
     static void Write(string id,string command) {
         // Only the existing firmware protocol is accepted; each request is one line.
-        if(command==null||command.Length>62||!Regex.IsMatch(command,@"^ML (START|STOP|CALIB|FLAG|MAPPING|MERSURE|CHFLAG (0x[0-9A-Fa-f]{1,2}|[0-9]{1,3})|SETMAP [XYZ] [+-]?[0-9]+(\.[0-9]+)?)$")) throw new ArgumentException("无效的设备命令。");
+        if(!ValidCommand(command)) throw new ArgumentException("无效的设备命令。");
         lock(Gate) { CheckConnection(id);if(serial==null)throw new InvalidOperationException("串口已断开。");serial.Write(command+"\n"); }
+    }
+    static bool ValidCommand(string command) {
+        if(command==null||command.Length>62||command.Any(c=>c<32||c>126))return false;
+        if(Regex.IsMatch(command,@"^ML (START|STOP|CALIB|FLAG|MAPPING|MERSURE|LOGLEVEL|GETCFG|IMPORT_END|IMPORT_CANCEL|CHFLAG (0x[0-9A-Fa-f]{1,2}|[0-9]{1,3})|SETMAP [XYZ] [+-]?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?)$"))return true;
+        var start=Regex.Match(command,@"^ML IMPORT_START ([0-9]{1,4})$");
+        if(start.Success){int n=int.Parse(start.Groups[1].Value);return n>0&&n<=1023;}
+        return Regex.IsMatch(command,"^ML IMPORT_DATA [A-Za-z0-9_{}\":,.+ -]{1,47}$");
     }
     static string Value(Dictionary<string,object> data,string name) { object value;return data!=null&&data.TryGetValue(name,out value)?Convert.ToString(value):""; }
     static void Handle(TcpClient client) {
@@ -124,7 +131,7 @@ internal static class FieldBridge {
                 }
                 if(method!="GET") { Reply(stream,405,new{error="Method not allowed"});return; }
                 string file=path=="/"?"index.html":path.TrimStart('/');
-                if(!new[]{"index.html","app.js","core.js","bridge-client.js"}.Contains(file)) { Reply(stream,404,new{error="File not found"});return; }
+                if(!new[]{"index.html","app.js","core.js","bridge-client.js","import-ui.js"}.Contains(file)) { Reply(stream,404,new{error="File not found"});return; }
                 var bytes=File.ReadAllBytes(Path.Combine(Root,file));Respond(stream,200,file.EndsWith(".js")?"text/javascript; charset=utf-8":"text/html; charset=utf-8",bytes);
             } } catch { /* A closed browser socket must not stop the listener. */ }
         }

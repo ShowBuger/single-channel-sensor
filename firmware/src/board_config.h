@@ -30,7 +30,7 @@
  * UART (USART1: TX = PA9, RX = PA10)
  * ========================================================================= */
 #define BSP_UART_INSTANCE           USART1
-#define BSP_UART_BAUD               115200U
+#define BSP_UART_BAUD               921600U   /* Max stable rate: 8x faster than 115200 */
 
 #define BSP_UART_TX_PORT            GPIOA
 #define BSP_UART_TX_PIN             GPIO_PIN_9
