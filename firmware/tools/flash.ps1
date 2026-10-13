@@ -1,16 +1,20 @@
 # STM32 flash script (PowerShell)
-# Supports HEX flashing via OpenOCD / DAPLink / ST-Link / J-Link
+# Supports: cubeprog (STM32CubeProgrammer) / openocd / daplink / stlink / jlink
+#
+# WARNING: Never run "openocd ... stm32f1x unlock" or "stm32f1x lock" manually.
+# These commands set Flash read protection (RDP Level 1) and will prevent future
+# flashing. Use STM32CubeProgrammer OB panel to clear RDP if this happens.
 
 param(
-    [ValidateSet("openocd", "daplink", "stlink", "jlink")]
-    [string]$Method = "daplink",
+    [ValidateSet("auto", "cubeprog", "openocd", "daplink", "stlink", "jlink")]
+    [string]$Method = "auto",
     [string]$HexFile = "",
     [switch]$NoVerify,
     [switch]$NoReset,
     [switch]$Help
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 
 function Write-Sep  { Write-Host ("=" * 44) -ForegroundColor Blue  }
 function Write-Info { param($m) Write-Host "  $m"   -ForegroundColor Cyan   }
@@ -21,19 +25,19 @@ function Write-Err  { param($m) Write-Host "  x $m" -ForegroundColor Red    }
 if ($Help) {
     Write-Host "Usage: .\tools\flash.ps1 [options]"
     Write-Host ""
-    Write-Host "  -Method   openocd|daplink|stlink|jlink   Flash tool (default: daplink)"
-    Write-Host "  -HexFile  <path>                         HEX file path (default: build\)"
-    Write-Host "  -NoVerify                                Skip post-flash verify"
-    Write-Host "  -NoReset                                 Do not reset after flash"
-    Write-Host "  -Help                                    Show this help"
+    Write-Host "  -Method   auto|cubeprog|openocd|daplink|stlink|jlink"
+    Write-Host "            Flash tool (default: auto)"
+    Write-Host "            auto: tries cubeprog first, then openocd/daplink"
+    Write-Host "  -HexFile  <path>   HEX file path (default: build\)"
+    Write-Host "  -NoVerify          Skip post-flash verify"
+    Write-Host "  -NoReset           Do not reset after flash"
+    Write-Host "  -Help              Show this help"
     Write-Host ""
     Write-Host "Examples:"
-    Write-Host "  .\tools\flash.ps1                    # DAPLink (default)"
-    Write-Host "  .\tools\flash.ps1 -Method openocd    # OpenOCD + ST-Link"
-    Write-Host "  .\tools\flash.ps1 -Method stlink"
-    Write-Host "  .\tools\flash.ps1 -Method jlink"
-    Write-Host "  .\tools\flash.ps1 -HexFile D:\my.hex"
-    Write-Host "  .\tools\flash.ps1 -NoVerify"
+    Write-Host "  .\tools\flash.ps1                      # auto-detect"
+    Write-Host "  .\tools\flash.ps1 -Method cubeprog     # STM32CubeProgrammer (recommended)"
+    Write-Host "  .\tools\flash.ps1 -Method openocd      # OpenOCD + ST-Link"
+    Write-Host "  .\tools\flash.ps1 -Method daplink      # OpenOCD + DAPLink"
     exit 0
 }
 
@@ -55,8 +59,6 @@ Write-Host "  HEX file : $HexFile"
 Write-Host "  Verify   : $(if ($NoVerify) { 'skip' } else { 'yes' })"
 Write-Host "  Reset    : $(if ($NoReset)  { 'skip' } else { 'yes' })"
 Write-Sep
-
-# Check HEX file
 if (-not (Test-Path $HexFile)) {
     Write-Err "HEX file not found: $HexFile"
     Write-Warn "Build first: .\tools\build.ps1"
@@ -81,8 +83,84 @@ function Assert-Tool {
     Write-Ok "Found $Name : $((Get-Command $Name).Source)"
 }
 
+# Find STM32CubeProgrammer CLI
+function Get-CubeProg {
+    $cmd = Get-Command "STM32_Programmer_CLI" -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    $common = @(
+        "D:\STM32Cube\STM32CubeProgrammer\bin\STM32_Programmer_CLI.exe",
+        "C:\Program Files\STMicroelectronics\STM32Cube\STM32CubeProgrammer\bin\STM32_Programmer_CLI.exe",
+        "C:\Program Files (x86)\STMicroelectronics\STM32Cube\STM32CubeProgrammer\bin\STM32_Programmer_CLI.exe"
+    )
+    foreach ($p in $common) { if (Test-Path $p) { return $p } }
+    return $null
+}
+
+# Auto-detect available debugger (actually probe each tool for a live connection)
+function Get-AutoMethod {
+    # Try STM32CubeProgrammer first -- probe with connect-only, no write
+    $cube = Get-CubeProg
+    if ($cube) {
+        $out = (& $cube -c port=SWD freq=4000 2>&1 | Out-String)
+        if ($out -match "Device name|Device ID|Cortex") {
+            return "cubeprog"
+        }
+        Write-Warn "cubeprog: ST-Link not reachable, trying OpenOCD..."
+    }
+
+    # Fall back to OpenOCD
+    if (-not (Get-Command "openocd" -ErrorAction SilentlyContinue)) { return $null }
+
+    $out = (openocd -f interface/cmsis-dap.cfg -f target/stm32f1x.cfg -c "init" -c "exit" 2>&1 | Out-String)
+    if ($out -match "Examination succeed") { return "daplink" }
+
+    $out = (openocd -f interface/stlink.cfg -f target/stm32f1x.cfg -c "init" -c "exit" 2>&1 | Out-String)
+    if ($out -match "Examination succeed") { return "openocd" }
+
+    return $null
+}
+
+# Resolve auto method
+if ($Method -eq "auto") {
+    Write-Info "Auto-detecting debugger..."
+    $detected = Get-AutoMethod
+    if ($detected) {
+        $Method = $detected
+        Write-Ok "Detected: $Method"
+    } else {
+        Write-Err "No debugger detected. Connect DAPLink or ST-Link and retry."
+        Write-Warn "Or specify manually: .\tools\flash.ps1 -Method daplink|openocd|stlink|jlink"
+        exit 1
+    }
+    Write-Host ""
+}
+
 # Flash
 switch ($Method) {
+
+    "cubeprog" {
+        $cube = Get-CubeProg
+        if (-not $cube) {
+            Write-Err "STM32CubeProgrammer not found"
+            Write-Warn "Download: https://www.st.com/en/development-tools/stm32cubeprog.html"
+            exit 1
+        }
+        Write-Ok "Found STM32CubeProgrammer: $cube"
+
+        $verifyArg = if ($NoVerify) { "" } else { "-v" }
+        $resetArg  = if ($NoReset)  { "" } else { "-rst" }
+
+        Write-Warn ">> Running STM32CubeProgrammer..."
+        Write-Host "   STM32_Programmer_CLI -c port=SWD -w `"$HexFile`" $verifyArg $resetArg"
+        Write-Host ""
+
+        & $cube -c port=SWD freq=4000 -w $HexFile $verifyArg $resetArg
+
+        if ($LASTEXITCODE -ne 0) {
+            Write-Err "STM32CubeProgrammer failed (exit $LASTEXITCODE)"
+            exit 1
+        }
+    }
 
     "daplink" {
         Assert-Tool "openocd" "winget install xpack-dev-tools.openocd-xpack"

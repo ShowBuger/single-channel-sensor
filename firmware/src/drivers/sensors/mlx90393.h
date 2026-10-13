@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 // 基础 I2C 地址（修改为 0x10）
-#define MLX90393_I2C_BASE_ADDR   0x10
+#define MLX90393_I2C_BASE_ADDR   0x0C
 
 // 命令定义
 #define MLX90393_CMD_EXIT             0x80
