@@ -5,9 +5,12 @@
 #include "drivers/sensors/mlx90393.h"
 #include "drivers/sensors/tca9548a.h"
 #include "app/sensor_manager.h"
+#include "app/algo_params.h"
+#include "drivers/sensors/sensor_hal.h"
 #include <string.h>
 #include <math.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 /* Forward declaration */
 static void SystemClock_Config(void);
@@ -31,7 +34,7 @@ void IWDG_Feed(void)
 }
 
 /* -----------------------------------------------------------------------
- * Serial command processing (same logic as before)
+ * Serial command processing
  * ----------------------------------------------------------------------- */
 static void serial_command_process(void)
 {
@@ -43,34 +46,29 @@ static void serial_command_process(void)
     {
         if (sensor_start() == 0)
         {
-            Serial_Printf("Sensor started successfully\r\n");
-            Serial_Printf("Running sensor: ");
-            Serial_Printf(SENSOR_Run[0] == 1 ? "0\r\n" : "None\r\n");
+            Serial_Printf("Sensor started\r\n");
+            Serial_Printf("Running: %s\r\n", SENSOR_Run[0] ? "sensor0" : "none");
         }
-        else Serial_Printf("Failed to start sensors\r\n");
+        else Serial_Printf("Failed to start\r\n");
     }
     else if (strcmp(cmd, "ML STOP") == 0)
     {
-        Serial_Printf(sensor_stop() == 0 ? "Sensor stopped\r\n" : "Failed to stop sensor\r\n");
+        Serial_Printf(sensor_stop() == 0 ? "Stopped\r\n" : "Stop failed\r\n");
     }
     else if (strcmp(cmd, "ML MERSURE") == 0)
     {
         if (sensor_start() == 0)
         {
-            Serial_Printf("Sensor started for single measurement\r\n");
             get_sensor_data();
-            if (SENSOR_Run[0] == 1) print_processed_sensor_data(0);
-            Serial_Printf(sensor_stop() == 0
-                   ? "Single measurement completed\r\n"
-                   : "Warning: Failed to stop sensor\r\n");
+            if (SENSOR_Run[0]) print_processed_sensor_data(0);
+            sensor_stop();
         }
-        else Serial_Printf("Failed to start sensor for measurement\r\n");
+        else Serial_Printf("Start failed\r\n");
     }
     else if (strcmp(cmd, "ML CALIB") == 0)
     {
         Serial_Printf(perform_sensor_calibration() == 0
-               ? "Calibration completed\r\n"
-               : "Calibration failed\r\n");
+               ? "Calibration OK\r\n" : "Calibration FAIL\r\n");
     }
     else if (strncmp(cmd, "ML CHFLAG ", 10) == 0)
     {
@@ -81,45 +79,90 @@ static void serial_command_process(void)
         {
             if (val <= 0xFF)
             {
-                uint8_t old = FLAG_RES;
                 FLAG_RES = (uint8_t)val;
-                Serial_Printf("FLAG_RES updated: 0x%02X -> 0x%02X\r\n", old, FLAG_RES);
                 Config_Save_All();
+                Serial_Printf("FLAG_RES=0x%02X\r\n", FLAG_RES);
             }
-            else Serial_Printf("Error: Value out of range (0-255)\r\n");
+            else Serial_Printf("Out of range\r\n");
         }
-        else
-        {
-            Serial_Printf("Error: Invalid format. Usage: ML CHFLAG <value>\r\n");
-            Serial_Printf("Example: ML CHFLAG 0x1B or ML CHFLAG 27\r\n");
-        }
+        else Serial_Printf("Usage: ML CHFLAG <hex|dec>\r\n");
     }
     else if (strcmp(cmd, "ML FLAG") == 0)
         Serial_Printf("FLAG_RES: 0x%02X\r\n", FLAG_RES);
     else if (strcmp(cmd, "ML MAPPING") == 0)
     {
-        Serial_Printf("Mapping values:\r\n");
-        Serial_Printf("  X: %.3f\r\n", X_MAPPING_VALUE);
-        Serial_Printf("  Y: %.3f\r\n", Y_MAPPING_VALUE);
-        Serial_Printf("  Z: %.3f\r\n", Z_MAPPING_VALUE);
+        Serial_Printf("X=%.3f Y=%.3f Z=%.3f\r\n",
+                      X_MAPPING_VALUE, Y_MAPPING_VALUE, Z_MAPPING_VALUE);
     }
     else if (strncmp(cmd, "ML SETMAP ", 10) == 0)
     {
         char axis; float val;
         if (sscanf(cmd + 10, "%c %f", &axis, &val) == 2)
         {
-            if      (axis == 'X' || axis == 'x') { X_MAPPING_VALUE = val; Mapping_Value_Save(); Serial_Printf("X_MAPPING_VALUE updated: %.3f\r\n", val); }
-            else if (axis == 'Y' || axis == 'y') { Y_MAPPING_VALUE = val; Mapping_Value_Save(); Serial_Printf("Y_MAPPING_VALUE updated: %.3f\r\n", val); }
-            else if (axis == 'Z' || axis == 'z') { Z_MAPPING_VALUE = val; Mapping_Value_Save(); Serial_Printf("Z_MAPPING_VALUE updated: %.3f\r\n", val); }
-            else Serial_Printf("Error: Invalid axis '%c'. Use X, Y, or Z\r\n", axis);
+            if      (axis=='X'||axis=='x') { X_MAPPING_VALUE=val; Mapping_Value_Save(); Serial_Printf("X=%.3f\r\n",val); }
+            else if (axis=='Y'||axis=='y') { Y_MAPPING_VALUE=val; Mapping_Value_Save(); Serial_Printf("Y=%.3f\r\n",val); }
+            else if (axis=='Z'||axis=='z') { Z_MAPPING_VALUE=val; Mapping_Value_Save(); Serial_Printf("Z=%.3f\r\n",val); }
+            else Serial_Printf("Axis X/Y/Z\r\n");
         }
-        else
-        {
-            Serial_Printf("Error: Invalid format. Usage: ML SETMAP <X|Y|Z> <value>\r\n");
-            Serial_Printf("Example: ML SETMAP X 0.5\r\n");
-        }
+        else Serial_Printf("Usage: ML SETMAP <X|Y|Z> <val>\r\n");
     }
-    else Serial_Printf("Unknown command: %s\r\n", cmd);
+    /* ── New commands ─────────────────────────────────────────────────── */
+    else if (strncmp(cmd, "ML SET ", 7) == 0)
+    {
+        char key[24];
+        float fval;
+        int   ival;
+        if (sscanf(cmd + 7, "%23s %f", key, &fval) == 2)
+        {
+            ival = (int)fval;
+            uint8_t ok = 1;
+            if      (!strcmp(key,"sensor.gain"))  { g_config.gain_sel=(uint8_t)ival; }
+            else if (!strcmp(key,"sensor.osr"))   { g_config.osr=(uint8_t)ival; }
+            else if (!strcmp(key,"sensor.filt"))  { g_config.dig_filt=(uint8_t)ival; }
+            else if (!strcmp(key,"sensor.resx"))  { g_config.res_x=(uint8_t)ival; }
+            else if (!strcmp(key,"sensor.resy"))  { g_config.res_y=(uint8_t)ival; }
+            else if (!strcmp(key,"sensor.resz"))  { g_config.res_z=(uint8_t)ival; }
+            else if (!strcmp(key,"sensor.tcmp"))  { g_config.tcmp_en=(uint8_t)ival; }
+            else if (!strcmp(key,"algo.flag"))    { g_config.FLAG_RES=(uint8_t)ival; FLAG_RES=g_config.FLAG_RES; }
+            else if (!strcmp(key,"algo.xmap"))    { g_config.X_MAPPING_VALUE=fval; X_MAPPING_VALUE=fval; }
+            else if (!strcmp(key,"algo.ymap"))    { g_config.Y_MAPPING_VALUE=fval; Y_MAPPING_VALUE=fval; }
+            else if (!strcmp(key,"algo.zmap"))    { g_config.Z_MAPPING_VALUE=fval; Z_MAPPING_VALUE=fval; }
+            else if (!strcmp(key,"algo.dead"))    { g_config.dead_value=fval; g_algo.dead_value=fval; }
+            else if (!strcmp(key,"algo.spike"))   { g_config.spike_multiplier=fval; g_algo.spike_multiplier=fval; }
+            else if (!strcmp(key,"algo.stab"))    { g_config.stability_threshold=fval; g_algo.stability_threshold=fval; }
+            else { Serial_Printf("Unknown key: %s\r\n", key); ok=0; }
+            if (ok) Serial_Printf("SET %s=%.3f\r\n", key, fval);
+        }
+        else Serial_Printf("Usage: ML SET <key> <value>\r\n");
+    }
+    else if (strcmp(cmd, "ML SAVECFG") == 0)
+    {
+        Serial_Printf(Config_Save_All() == 0 ? "Saved\r\n" : "Save FAIL\r\n");
+    }
+    else if (strcmp(cmd, "ML APPLYCFG") == 0)
+    {
+        FLAG_RES        = g_config.FLAG_RES;
+        X_MAPPING_VALUE = g_config.X_MAPPING_VALUE;
+        Y_MAPPING_VALUE = g_config.Y_MAPPING_VALUE;
+        Z_MAPPING_VALUE = g_config.Z_MAPPING_VALUE;
+        AlgoParams_Load(&g_config);
+        if (SENSOR_Run[0]) { sensor_stop(); sensor_start(); }
+        Serial_Printf("Config applied.\r\n");
+    }
+    else if (strcmp(cmd, "ML GETCFG") == 0)
+    {
+        Serial_Printf("{\"sensor\":{\"gain\":%u,\"osr\":%u,\"filt\":%u,"
+                      "\"resx\":%u,\"resy\":%u,\"resz\":%u,\"tcmp\":%u},"
+                      "\"algo\":{\"flag\":\"0x%02X\",\"xmap\":%.3f,"
+                      "\"ymap\":%.3f,\"zmap\":%.3f,\"dead\":%.3f,"
+                      "\"spike\":%.3f,\"stab\":%.3f}}\r\n",
+                      g_config.gain_sel, g_config.osr, g_config.dig_filt,
+                      g_config.res_x, g_config.res_y, g_config.res_z, g_config.tcmp_en,
+                      g_config.FLAG_RES,
+                      g_config.X_MAPPING_VALUE, g_config.Y_MAPPING_VALUE, g_config.Z_MAPPING_VALUE,
+                      g_config.dead_value, g_config.spike_multiplier, g_config.stability_threshold);
+    }
+    else Serial_Printf("Unknown: %s\r\n", cmd);
 }
 
 /* -----------------------------------------------------------------------

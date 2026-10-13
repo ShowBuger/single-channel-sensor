@@ -1,0 +1,21 @@
+{
+  "$schema": "sensor_config_v1",
+  "sensor": {
+    "gain_sel":  7,
+    "res_x":     0,
+    "res_y":     0,
+    "res_z":     0,
+    "osr":       3,
+    "dig_filt":  0,
+    "tcmp_en":   0
+  },
+  "algorithm": {
+    "flag_res":          "0x3B",
+    "x_map":              0.100,
+    "y_map":              0.100,
+    "z_map":             -0.100,
+    "dead_value":         8.5,
+    "spike_multiplier":  20.0,
+    "stability":          0.1
+  }
+}

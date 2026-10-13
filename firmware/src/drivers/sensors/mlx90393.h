@@ -139,7 +139,26 @@ uint8_t MLX90393_readMeasurement(MLX90393_Handle *handle, uint8_t i2c_id, uint8_
 // 温度转换公式： T = 25 + (raw.t - 46244) / 45.2
 MLX90393_Data MLX90393_convertRaw(MLX90393_RawData raw);
 
-// 以下为配置接口，复现 Arduino 初始化时的设置
+// 一次性配置结构体 — 3次寄存器写入覆盖所有可配字段
+typedef struct {
+    uint8_t gain_sel;    // CONF1[6:4]  0-7, 7=×1 最低增益
+    uint8_t res_x;       // CONF3[6:5]  0-3
+    uint8_t res_y;       // CONF3[8:7]  0-3
+    uint8_t res_z;       // CONF3[10:9] 0-3
+    uint8_t osr;         // CONF3[1:0]  0-3 (×1/2/4/8)
+    uint8_t dig_filt;    // CONF3[4:2]  0-7
+    uint8_t tcmp_en;     // CONF2[10]   0/1
+    uint8_t burst_rate;  // CONF2[5:0]  0-63
+} MLX90393_Config;
+
+// 与 begin() 默认行为一致：gain=7, osr=3, 其余=0
+#define MLX90393_DEFAULT_CONFIG  { 7U, 0U, 0U, 0U, 3U, 0U, 0U, 0U }
+
+// 以下为配置接口
+// configureAll: reset后调用，3次写入，无需RMW，一次性确定所有寄存器值
+uint8_t MLX90393_configureAll(MLX90393_Handle *handle, uint8_t i2c_id, const MLX90393_Config *cfg);
+
+// 以下set*函数适用于运行时单字段调整（内部使用read-modify-write）
 uint8_t MLX90393_setGainSel(MLX90393_Handle *handle, uint8_t i2c_id, uint8_t gain);
 uint8_t MLX90393_setResolution(MLX90393_Handle *handle, uint8_t i2c_id, uint8_t res_x, uint8_t res_y, uint8_t res_z);
 uint8_t MLX90393_setOverSampling(MLX90393_Handle *handle, uint8_t i2c_id, uint8_t osr);

@@ -54,6 +54,7 @@ add_link_options(
     -Wl,--print-memory-usage
     --specs=nano.specs
     --specs=nosys.specs
+    -u _printf_float      # enable %f in nano.specs
 )
 
 # ── HAL driver root ───────────────────────────────────────────────────────────

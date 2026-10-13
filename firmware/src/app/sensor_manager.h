@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include "mlx90393.h"
+#include "algo_params.h"
 
 // 传感器数据结构 - 包含实际传感器和参考传感器的数据
 typedef struct {
@@ -30,7 +31,7 @@ typedef struct {
 } SensorHistory;
 
 // 滑动平均滤波结构
-#define SLIDING_WINDOW_SIZE 5  // 滑动窗口大小
+/* SLIDING_WINDOW_SIZE and STABILITY_CHECK_SAMPLES are defined in algo_params.h */
 typedef struct {
     float buffer_x[SLIDING_WINDOW_SIZE];  // X轴数据缓冲区
     float buffer_y[SLIDING_WINDOW_SIZE];  // Y轴数据缓冲区
@@ -41,8 +42,7 @@ typedef struct {
 } SlidingAverage;
 
 // 稳定性检测和平滑过渡结构
-#define STABILITY_CHECK_SAMPLES 10  // 稳定性检测所需的采样次数
-#define STABILITY_THRESHOLD 0.1f    // 稳定性阈值 (μT)，小于此值才考虑过渡到0
+/* STABILITY_CHECK_SAMPLES and stability_threshold are in algo_params.h / g_algo */
 typedef struct {
     uint8_t stable_count_x;         // X轴稳定计数
     uint8_t stable_count_y;         // Y轴稳定计数
@@ -52,9 +52,8 @@ typedef struct {
 } StabilityTracker;
 
 
-#define DEAD_VALUE 8.5f
 // 尖峰滤波结构
-#define SPIKE_FILTER_THRESHOLD_MULTIPLIER 20.0f  // 尖峰检测阈值倍数（相对于标准差）
+/* SPIKE_FILTER_THRESHOLD_MULTIPLIER moved to g_algo.spike_multiplier (algo_params.h) */
 typedef struct {
     MLX90393_Data last_valid_actual;      // 上一次有效的实际传感器数据
     MLX90393_Data last_valid_reference;   // 上一次有效的参考传感器数据
@@ -115,6 +114,10 @@ uint8_t perform_sensor_calibration(void);
 void Config_Init_All(void);
 uint8_t Config_Save_All(void);
 uint8_t Mapping_Value_Save(void);
+
+/* Global runtime config — set by Config_Init_All, read/written by ML SET / ML GETCFG */
+#include "config_manager.h"
+extern Config_TypeDef g_config;
 
 #endif
 

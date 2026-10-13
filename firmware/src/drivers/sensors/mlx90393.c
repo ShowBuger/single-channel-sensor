@@ -113,6 +113,8 @@ uint8_t MLX90393_exit_mode(MLX90393_Handle *handle, uint8_t i2c_id)
 uint8_t MLX90393_begin(MLX90393_Handle *handle, uint8_t A1, uint8_t A0, int DRDY_pin, uint8_t id)
 {
     uint8_t status;
+    MLX90393_Config cfg = MLX90393_DEFAULT_CONFIG;
+
     handle->I2C_Address = MLX90393_I2C_BASE_ADDR | ((A1 ? 2 : 0) | (A0 ? 1 : 0));
     handle->DRDY_pin    = DRDY_pin;
 
@@ -124,13 +126,9 @@ uint8_t MLX90393_begin(MLX90393_Handle *handle, uint8_t A1, uint8_t A0, int DRDY
     if (error_process(status) == MLX90393_ERROR_BIT_SET) return 1;
     Delay_ms(2);
 
-    status = MLX90393_setOverSampling(handle, id, 3);
+    /* 一次性写入3个寄存器，确保OSR/DIG_FILT/GAIN等字段都正确设置 */
+    status = MLX90393_configureAll(handle, id, &cfg);
     if (error_process(status) == MLX90393_ERROR_BIT_SET) return 1;
-    Delay_ms(1);
-
-    status = MLX90393_setDigitalFiltering(handle, id, 0);
-    if (error_process(status) == MLX90393_ERROR_BIT_SET) return 1;
-    Delay_ms(1);
 
     return 0;
 }
@@ -212,26 +210,62 @@ MLX90393_Data MLX90393_convertRaw(MLX90393_RawData raw)
     return d;
 }
 
+/* read-modify-write helper — 用于运行时单字段调整 */
+static uint8_t rmw_reg(MLX90393_Handle *h, uint8_t id,
+                       uint8_t reg, uint16_t mask, uint16_t value)
+{
+    uint16_t cur;
+    uint8_t  st = MLX90393_readRegister(h, id, reg, &cur);
+    if (error_process(st) != MLX90393_ERROR_NONE) return st;
+    return MLX90393_writeRegister(h, id, reg, (cur & ~mask) | (value & mask));
+}
+
 uint8_t MLX90393_setGainSel(MLX90393_Handle *h, uint8_t id, uint8_t gain)
-    { return MLX90393_writeRegister(h, id, GAIN_SEL_REG, (uint16_t)(gain << GAIN_SEL_SHIFT)); }
+    { return rmw_reg(h, id, GAIN_SEL_REG,        GAIN_SEL_MASK,        (uint16_t)(gain      << GAIN_SEL_SHIFT)); }
 
 uint8_t MLX90393_setResolution(MLX90393_Handle *h, uint8_t id, uint8_t rx, uint8_t ry, uint8_t rz)
 {
-    uint16_t v = (uint16_t)(((rz&3)<<4)|((ry&3)<<2)|(rx&3)) << RES_XYZ_SHIFT;
-    return MLX90393_writeRegister(h, id, RES_XYZ_REG, v);
+    uint16_t v = (uint16_t)((((rz&3)<<4)|((ry&3)<<2)|(rx&3)) << RES_XYZ_SHIFT);
+    return rmw_reg(h, id, RES_XYZ_REG, RES_XYZ_MASK, v);
 }
 
 uint8_t MLX90393_setOverSampling(MLX90393_Handle *h, uint8_t id, uint8_t osr)
-    { return MLX90393_writeRegister(h, id, OSR_REG, (uint16_t)(osr << OSR_SHIFT)); }
+    { return rmw_reg(h, id, OSR_REG,              OSR_MASK,             (uint16_t)(osr       << OSR_SHIFT)); }
 
 uint8_t MLX90393_setDigitalFiltering(MLX90393_Handle *h, uint8_t id, uint8_t flt)
-    { return MLX90393_writeRegister(h, id, DIG_FLT_REG, (uint16_t)(flt << DIG_FLT_SHIFT)); }
+    { return rmw_reg(h, id, DIG_FLT_REG,          DIG_FLT_MASK,         (uint16_t)(flt       << DIG_FLT_SHIFT)); }
 
 uint8_t MLX90393_setTemperatureCompensation(MLX90393_Handle *h, uint8_t id, uint8_t en)
-    { return MLX90393_writeRegister(h, id, TCMP_EN_REG, (uint16_t)((en?1:0) << TCMP_EN_SHIFT)); }
+    { return rmw_reg(h, id, TCMP_EN_REG,           TCMP_EN_MASK,         (uint16_t)((en?1:0)  << TCMP_EN_SHIFT)); }
 
 uint8_t MLX90393_setBurstDataRate(MLX90393_Handle *h, uint8_t id, uint8_t rate)
-    { return MLX90393_writeRegister(h, id, BURST_DATA_RATE_REG, (uint16_t)((rate&0x7F) << BURST_DATA_RATE_SHIFT)); }
+    { return rmw_reg(h, id, BURST_DATA_RATE_REG,   BURST_DATA_RATE_MASK, (uint16_t)((rate&0x3F) << BURST_DATA_RATE_SHIFT)); }
+
+/* 一次性配置 — reset后调用，寄存器为全0，直接写3个寄存器 */
+uint8_t MLX90393_configureAll(MLX90393_Handle *h, uint8_t id, const MLX90393_Config *cfg)
+{
+    uint8_t  st;
+    uint16_t r;
+
+    /* REG 0x00: GAIN_SEL[6:4] */
+    r  = (uint16_t)((cfg->gain_sel & 0x07U) << GAIN_SEL_SHIFT);
+    st = MLX90393_writeRegister(h, id, 0x00U, r);
+    if (error_process(st) == MLX90393_ERROR_BIT_SET) return st;
+
+    /* REG 0x01: TCMP_EN[10] | BURST_DATA_RATE[5:0] */
+    r  = (uint16_t)((cfg->tcmp_en ? 1U : 0U) << TCMP_EN_SHIFT)
+       | (uint16_t)((cfg->burst_rate & 0x3FU) << BURST_DATA_RATE_SHIFT);
+    st = MLX90393_writeRegister(h, id, 0x01U, r);
+    if (error_process(st) == MLX90393_ERROR_BIT_SET) return st;
+
+    /* REG 0x02: RES_XYZ[10:5] | DIG_FILT[4:2] | OSR[1:0] */
+    r  = (uint16_t)((((cfg->res_z & 3U) << 4) |
+                     ((cfg->res_y & 3U) << 2) |
+                      (cfg->res_x & 3U)) << RES_XYZ_SHIFT)
+       | (uint16_t)((cfg->dig_filt & 0x07U) << DIG_FLT_SHIFT)
+       | (uint16_t)((cfg->osr      & 0x03U) << OSR_SHIFT);
+    return MLX90393_writeRegister(h, id, 0x02U, r);
+}
 
 uint8_t MLX90393_startBurst(MLX90393_Handle *h, uint8_t id, uint8_t flags)
     { return MLX90393_sendCommand(h, id, MLX90393_CMD_START_BURST | (flags & 0x0F)); }

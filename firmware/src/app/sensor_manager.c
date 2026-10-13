@@ -5,6 +5,7 @@
 #include <math.h>
 #include "../drivers/bsp/bsp_uart.h"
 #include "config_manager.h"
+#include "algo_params.h"
 
 #define XYZT_FLAGS (MLX90393_FLAG_X | MLX90393_FLAG_Y | MLX90393_FLAG_Z ) // 测量所有轴
 #define MEASURE_INTERVAL 8  //测量延时根据OSR和FLT决定
@@ -51,6 +52,8 @@ StabilityTracker reference_sensor_stability[1] = {0};
 // 尖峰滤波器存储
 SpikeFilter spike_filters[1] = {0};
 
+/* Global runtime config — loaded from Flash at boot, used by main.c for ML SET/GETCFG */
+Config_TypeDef g_config;
 
 uint8_t Scan_Ports(void)
 {
@@ -369,9 +372,9 @@ void apply_dead_band_filter(uint8_t sensor_index)
     float threshold_x, threshold_y, threshold_z;
 
     // 实际传感器死区滤波
-    threshold_x = DEAD_VALUE * sensor_calibration[sensor_index].actual_std.x;
-    threshold_y = DEAD_VALUE * sensor_calibration[sensor_index].actual_std.y;
-    threshold_z = DEAD_VALUE * sensor_calibration[sensor_index].actual_std.z;
+    threshold_x = g_algo.dead_value * sensor_calibration[sensor_index].actual_std.x;
+    threshold_y = g_algo.dead_value * sensor_calibration[sensor_index].actual_std.y;
+    threshold_z = g_algo.dead_value * sensor_calibration[sensor_index].actual_std.z;
 
     if(fabsf(processed_sensor_data[sensor_index].actual.x) < threshold_x)
         processed_sensor_data[sensor_index].actual.x = 0.0f;
@@ -381,9 +384,9 @@ void apply_dead_band_filter(uint8_t sensor_index)
         processed_sensor_data[sensor_index].actual.z = 0.0f;
 
     // 参考传感器死区滤波
-    threshold_x = DEAD_VALUE * sensor_calibration[sensor_index].reference_std.x;
-    threshold_y = DEAD_VALUE * sensor_calibration[sensor_index].reference_std.y;
-    threshold_z = DEAD_VALUE * sensor_calibration[sensor_index].reference_std.z;
+    threshold_x = g_algo.dead_value * sensor_calibration[sensor_index].reference_std.x;
+    threshold_y = g_algo.dead_value * sensor_calibration[sensor_index].reference_std.y;
+    threshold_z = g_algo.dead_value * sensor_calibration[sensor_index].reference_std.z;
 
     if(fabsf(processed_sensor_data[sensor_index].reference.x) < threshold_x)
         processed_sensor_data[sensor_index].reference.x = 0.0f;
@@ -418,13 +421,13 @@ void apply_spike_filter(uint8_t sensor_index)
     }
 
     // 计算尖峰检测阈值（10倍标准差）
-    float threshold_x_actual = SPIKE_FILTER_THRESHOLD_MULTIPLIER * sensor_calibration[sensor_index].actual_std.x;
-    float threshold_y_actual = SPIKE_FILTER_THRESHOLD_MULTIPLIER * sensor_calibration[sensor_index].actual_std.y;
-    float threshold_z_actual = SPIKE_FILTER_THRESHOLD_MULTIPLIER * sensor_calibration[sensor_index].actual_std.z;
+    float threshold_x_actual = g_algo.spike_multiplier * sensor_calibration[sensor_index].actual_std.x;
+    float threshold_y_actual = g_algo.spike_multiplier * sensor_calibration[sensor_index].actual_std.y;
+    float threshold_z_actual = g_algo.spike_multiplier * sensor_calibration[sensor_index].actual_std.z;
 
-    float threshold_x_ref = SPIKE_FILTER_THRESHOLD_MULTIPLIER * sensor_calibration[sensor_index].reference_std.x;
-    float threshold_y_ref = SPIKE_FILTER_THRESHOLD_MULTIPLIER * sensor_calibration[sensor_index].reference_std.y;
-    float threshold_z_ref = SPIKE_FILTER_THRESHOLD_MULTIPLIER * sensor_calibration[sensor_index].reference_std.z;
+    float threshold_x_ref = g_algo.spike_multiplier * sensor_calibration[sensor_index].reference_std.x;
+    float threshold_y_ref = g_algo.spike_multiplier * sensor_calibration[sensor_index].reference_std.y;
+    float threshold_z_ref = g_algo.spike_multiplier * sensor_calibration[sensor_index].reference_std.z;
 
     // ========== 处理实际传感器 ==========
     float delta_x = fabsf(processed_sensor_data[sensor_index].actual.x - filter->last_valid_actual.x);
@@ -650,7 +653,7 @@ void apply_stability_and_transition(uint8_t sensor_index)
     float abs_z = fabsf(processed_sensor_data[sensor_index].actual.z);
 
     // X轴稳定性检测
-    if(abs_x < threshold_x_actual && abs_x < STABILITY_THRESHOLD)
+    if(abs_x < threshold_x_actual && abs_x < g_algo.stability_threshold)
     {
         if(actual_tracker->stable_count_x < STABILITY_CHECK_SAMPLES)
         {
@@ -665,7 +668,7 @@ void apply_stability_and_transition(uint8_t sensor_index)
     }
 
     // Y轴稳定性检测
-    if(abs_y < threshold_y_actual && abs_y < STABILITY_THRESHOLD)
+    if(abs_y < threshold_y_actual && abs_y < g_algo.stability_threshold)
     {
         if(actual_tracker->stable_count_y < STABILITY_CHECK_SAMPLES)
         {
@@ -680,7 +683,7 @@ void apply_stability_and_transition(uint8_t sensor_index)
     }
 
     // Z轴稳定性检测
-    if(abs_z < threshold_z_actual && abs_z < STABILITY_THRESHOLD)
+    if(abs_z < threshold_z_actual && abs_z < g_algo.stability_threshold)
     {
         if(actual_tracker->stable_count_z < STABILITY_CHECK_SAMPLES)
         {
@@ -726,7 +729,7 @@ void apply_stability_and_transition(uint8_t sensor_index)
     abs_z = fabsf(processed_sensor_data[sensor_index].reference.z);
 
     // X轴稳定性检测
-    if(abs_x < threshold_x_ref && abs_x < STABILITY_THRESHOLD)
+    if(abs_x < threshold_x_ref && abs_x < g_algo.stability_threshold)
     {
         if(ref_tracker->stable_count_x < STABILITY_CHECK_SAMPLES)
             ref_tracker->stable_count_x++;
@@ -739,7 +742,7 @@ void apply_stability_and_transition(uint8_t sensor_index)
     }
 
     // Y轴稳定性检测
-    if(abs_y < threshold_y_ref && abs_y < STABILITY_THRESHOLD)
+    if(abs_y < threshold_y_ref && abs_y < g_algo.stability_threshold)
     {
         if(ref_tracker->stable_count_y < STABILITY_CHECK_SAMPLES)
             ref_tracker->stable_count_y++;
@@ -752,7 +755,7 @@ void apply_stability_and_transition(uint8_t sensor_index)
     }
 
     // Z轴稳定性检测
-    if(abs_z < threshold_z_ref && abs_z < STABILITY_THRESHOLD)
+    if(abs_z < threshold_z_ref && abs_z < g_algo.stability_threshold)
     {
         if(ref_tracker->stable_count_z < STABILITY_CHECK_SAMPLES)
             ref_tracker->stable_count_z++;
@@ -1113,38 +1116,29 @@ uint8_t perform_sensor_calibration(void)
  */
 void Config_Init_All(void)
 {
-    uint8_t loaded_flag;
-    float loaded_x_map, loaded_y_map, loaded_z_map;
-
-    // 初始化配置存储模块
     Config_Init();
 
-    // 从Flash读取配置
-    if(Config_Load(&loaded_flag, &loaded_x_map, &loaded_y_map, &loaded_z_map) == 0)
+    if (Config_Load(&g_config) == 0)
     {
-        // 成功读取到有效配置
-        FLAG_RES = loaded_flag;
-        X_MAPPING_VALUE = loaded_x_map;
-        Y_MAPPING_VALUE = loaded_y_map;
-        Z_MAPPING_VALUE = loaded_z_map;
-        Serial_Printf("Config loaded from Flash:\r\n");
-        Serial_Printf("  FLAG_RES = 0x%02X\r\n", FLAG_RES);
-        Serial_Printf("  Mapping: X=%.2f, Y=%.2f, Z=%.2f\r\n",
-               X_MAPPING_VALUE, Y_MAPPING_VALUE, Z_MAPPING_VALUE);
+        Serial_Printf("Config loaded (schema v%u):\r\n", g_config.schema_ver);
     }
     else
     {
-        // Flash中无有效数据，使用默认值并保存
-        FLAG_RES = 0x3B;
-        X_MAPPING_VALUE = 0.1f;
-        Y_MAPPING_VALUE = 0.1f;
-        Z_MAPPING_VALUE = -0.1f;
-        Config_Save(FLAG_RES, X_MAPPING_VALUE, Y_MAPPING_VALUE, Z_MAPPING_VALUE);
-        Serial_Printf("Config restored to default:\r\n");
-        Serial_Printf("  FLAG_RES = 0x%02X\r\n", FLAG_RES);
-        Serial_Printf("  Mapping: X=%.2f, Y=%.2f, Z=%.2f\r\n",
-               X_MAPPING_VALUE, Y_MAPPING_VALUE, Z_MAPPING_VALUE);
+        Serial_Printf("Config defaults applied.\r\n");
+        Config_Save(&g_config);
     }
+
+    /* Apply to runtime variables */
+    FLAG_RES        = g_config.FLAG_RES;
+    X_MAPPING_VALUE = g_config.X_MAPPING_VALUE;
+    Y_MAPPING_VALUE = g_config.Y_MAPPING_VALUE;
+    Z_MAPPING_VALUE = g_config.Z_MAPPING_VALUE;
+    AlgoParams_Load(&g_config);
+
+    Serial_Printf("  FLAG_RES=0x%02X  Map:%.2f,%.2f,%.2f\r\n",
+                  FLAG_RES, X_MAPPING_VALUE, Y_MAPPING_VALUE, Z_MAPPING_VALUE);
+    Serial_Printf("  dead=%.2f  spike=%.2f  stab=%.3f\r\n",
+                  g_algo.dead_value, g_algo.spike_multiplier, g_algo.stability_threshold);
 }
 
 /**
@@ -1155,19 +1149,22 @@ void Config_Init_All(void)
  */
 uint8_t Config_Save_All(void)
 {
-    if(Config_Save(FLAG_RES, X_MAPPING_VALUE, Y_MAPPING_VALUE, Z_MAPPING_VALUE) == 0)
+    /* Sync runtime vars back to g_config before saving */
+    g_config.FLAG_RES            = FLAG_RES;
+    g_config.X_MAPPING_VALUE     = X_MAPPING_VALUE;
+    g_config.Y_MAPPING_VALUE     = Y_MAPPING_VALUE;
+    g_config.Z_MAPPING_VALUE     = Z_MAPPING_VALUE;
+    g_config.dead_value          = g_algo.dead_value;
+    g_config.spike_multiplier    = g_algo.spike_multiplier;
+    g_config.stability_threshold = g_algo.stability_threshold;
+
+    if (Config_Save(&g_config) == 0)
     {
-        Serial_Printf("Config saved to Flash:\r\n");
-        Serial_Printf("  FLAG_RES = 0x%02X\r\n", FLAG_RES);
-        Serial_Printf("  Mapping: X=%.2f, Y=%.2f, Z=%.2f\r\n",
-               X_MAPPING_VALUE, Y_MAPPING_VALUE, Z_MAPPING_VALUE);
+        Serial_Printf("Config saved.\r\n");
         return 0;
     }
-    else
-    {
-        Serial_Printf("Failed to save config to Flash\r\n");
-        return 1;
-    }
+    Serial_Printf("Config save FAILED.\r\n");
+    return 1;
 }
 
 /**

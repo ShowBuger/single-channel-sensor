@@ -3,20 +3,72 @@
 
 #include <stdint.h>
 
-// 配置参数结构体
+/**
+ * @file config_manager.h
+ * @brief Persistent configuration -- Flash storage.
+ *
+ * Config_TypeDef holds ALL tunable parameters:
+ *   - Sensor hardware settings (written to sensor registers via configureAll)
+ *   - Algorithm parameters (runtime-tunable, formerly hardcoded macros)
+ *   - Axis mapping coefficients
+ *   - Feature enable flags (FLAG_RES)
+ *
+ * Layout is append-only for forward compatibility: add fields before checksum,
+ * bump CONFIG_SCHEMA_VERSION when doing so (old Flash is detected and defaults applied).
+ */
+
+#define CONFIG_SCHEMA_VERSION  2U   /* bump when layout changes */
+
 typedef struct {
-    uint8_t FLAG_RES;           // FLAG_RES标志位
-    uint8_t reserved[3];        // 保留字节，用于4字节对齐
-    float X_MAPPING_VALUE;      // X轴映射系数
-    float Y_MAPPING_VALUE;      // Y轴映射系数
-    float Z_MAPPING_VALUE;      // Z轴映射系数
-    uint32_t checksum;          // 校验和，用于验证数据完整性
-} Config_TypeDef;
+    /* -- Schema version -------------------------------- */
+    uint8_t  schema_ver;             /* CONFIG_SCHEMA_VERSION            */
 
-// 函数声明
-void Config_Init(void);
-uint8_t Config_Save(uint8_t flag_res, float x_map, float y_map, float z_map);
-uint8_t Config_Load(uint8_t *flag_res, float *x_map, float *y_map, float *z_map);
-void Config_RestoreDefault(void);
+    /* -- Feature flags (FLAG_RES) ---------------------- */
+    uint8_t  FLAG_RES;               /* bit-mask; see FLAG_* defines      */
 
-#endif
+    /* -- Sensor hardware config ------------------------ */
+    uint8_t  gain_sel;               /* 0-7, default 7 (x1)              */
+    uint8_t  osr;                    /* 0-3, default 3 (x8)              */
+    uint8_t  dig_filt;               /* 0-7, default 0                   */
+    uint8_t  res_x, res_y, res_z;   /* 0-3 per axis, default 0          */
+    uint8_t  tcmp_en;                /* 0/1, default 0                   */
+
+    /* -- Axis mapping coefficients --------------------- */
+    float    X_MAPPING_VALUE;        /* default  0.100f                  */
+    float    Y_MAPPING_VALUE;        /* default  0.100f                  */
+    float    Z_MAPPING_VALUE;        /* default -0.100f                  */
+
+    /* -- Algorithm parameters -------------------------- */
+    float    dead_value;             /* dead-band x-sigma multiplier, def 8.5 */
+    float    spike_multiplier;       /* spike filter x-sigma, def 20.0        */
+    float    stability_threshold;    /* stability delta uT, def 0.1           */
+
+    /* -- Padding for 4-byte alignment ------------------ */
+    uint8_t  _pad[3];
+
+    /* -- Integrity ------------------------------------- */
+    uint32_t checksum;
+} Config_TypeDef;                   /* ~52 bytes; fits in 1 KB page    */
+
+/* Default values */
+#define CONFIG_DEFAULT_FLAG_RES         0x3BU
+#define CONFIG_DEFAULT_GAIN_SEL         7U
+#define CONFIG_DEFAULT_OSR              3U
+#define CONFIG_DEFAULT_DIG_FILT         0U
+#define CONFIG_DEFAULT_RES              0U
+#define CONFIG_DEFAULT_TCMP_EN          0U
+#define CONFIG_DEFAULT_X_MAP            0.100f
+#define CONFIG_DEFAULT_Y_MAP            0.100f
+#define CONFIG_DEFAULT_Z_MAP           -0.100f
+#define CONFIG_DEFAULT_DEAD_VALUE       8.5f
+#define CONFIG_DEFAULT_SPIKE_MULT       20.0f
+#define CONFIG_DEFAULT_STABILITY_THR    0.1f
+
+/* Public API */
+void    Config_Init(void);
+uint8_t Config_Save(const Config_TypeDef *cfg);
+uint8_t Config_Load(Config_TypeDef *cfg);
+void    Config_SetDefaults(Config_TypeDef *cfg);
+void    Config_RestoreDefault(void);
+
+#endif /* __CONFIG_STORAGE_H */
