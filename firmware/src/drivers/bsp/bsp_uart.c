@@ -1,10 +1,10 @@
 #include "bsp_uart.h"
 #include "stm32f1xx_hal.h"
+#include "board_config.h"
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
 
-/* USART1: TX=PA9, RX=PA10 */
 static UART_HandleTypeDef huart1;
 
 uint8_t Serial_RxData;
@@ -17,26 +17,26 @@ static uint8_t cmdReadyFlag = 0;
 
 void Serial_Init(void)
 {
-    /* GPIO clocks */
-    __HAL_RCC_GPIOA_CLK_ENABLE();
-    __HAL_RCC_USART1_CLK_ENABLE();
+    /* GPIO + peripheral clocks */
+    BSP_UART_GPIO_CLK_EN();
+    BSP_UART_PERIPH_CLK_EN();
 
     GPIO_InitTypeDef gpio = {0};
 
-    /* PA9 TX */
-    gpio.Pin       = GPIO_PIN_9;
+    /* TX */
+    gpio.Pin       = BSP_UART_TX_PIN;
     gpio.Mode      = GPIO_MODE_AF_PP;
     gpio.Speed     = GPIO_SPEED_FREQ_HIGH;
-    HAL_GPIO_Init(GPIOA, &gpio);
+    HAL_GPIO_Init(BSP_UART_TX_PORT, &gpio);
 
-    /* PA10 RX */
-    gpio.Pin  = GPIO_PIN_10;
+    /* RX */
+    gpio.Pin  = BSP_UART_RX_PIN;
     gpio.Mode = GPIO_MODE_INPUT;
     gpio.Pull = GPIO_PULLUP;
-    HAL_GPIO_Init(GPIOA, &gpio);
+    HAL_GPIO_Init(BSP_UART_RX_PORT, &gpio);
 
-    huart1.Instance          = USART1;
-    huart1.Init.BaudRate     = 115200;
+    huart1.Instance          = BSP_UART_INSTANCE;
+    huart1.Init.BaudRate     = BSP_UART_BAUD;
     huart1.Init.WordLength   = UART_WORDLENGTH_8B;
     huart1.Init.StopBits     = UART_STOPBITS_1;
     huart1.Init.Parity       = UART_PARITY_NONE;
@@ -48,8 +48,8 @@ void Serial_Init(void)
     /* Enable RX interrupt */
     __HAL_UART_ENABLE_IT(&huart1, UART_IT_RXNE);
 
-    HAL_NVIC_SetPriority(USART1_IRQn, 1, 1);
-    HAL_NVIC_EnableIRQ(USART1_IRQn);
+    HAL_NVIC_SetPriority(BSP_UART_IRQn, 1, 1);
+    HAL_NVIC_EnableIRQ(BSP_UART_IRQn);
 }
 
 void Serial_SendByte(uint8_t byte)
@@ -139,8 +139,8 @@ void Serial_ProcessCommand(void)
     /* Command processing delegated to main.c */
 }
 
-/* USART1 IRQ handler */
-void USART1_IRQHandler(void)
+/* UART IRQ handler — symbol resolved from board_config.h */
+void BSP_UART_IRQHandler(void)
 {
     if (__HAL_UART_GET_FLAG(&huart1, UART_FLAG_RXNE))
     {

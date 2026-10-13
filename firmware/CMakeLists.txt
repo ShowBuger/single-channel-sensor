@@ -62,7 +62,7 @@ set(CMSIS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libs/CMSIS)
 
 # ── Include directories ───────────────────────────────────────────────────────
 include_directories(
-    src
+    src                      # board_config.h lives here
     src/app
     src/drivers/bsp
     src/drivers/sensors

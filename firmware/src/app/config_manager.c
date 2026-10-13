@@ -1,10 +1,10 @@
 #include "config_manager.h"
 #include "stm32f1xx_hal.h"
+#include "board_config.h"
 #include <string.h>
 
 /* STM32F103C8T6: 64 KB Flash, 1 KB pages.
- * Store config in the last page: 0x0800FC00. */
-#define CONFIG_FLASH_PAGE_ADDR 0x0800FC00U
+ * Store config in the last page — address from board_config.h */
 #define CONFIG_MAGIC_NUMBER    0x52454C54U   /* "RELT" */
 
 typedef struct {

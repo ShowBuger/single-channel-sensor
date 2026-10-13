@@ -2,6 +2,7 @@
 #include "bsp_delay.h"
 #include "bsp_uart.h"
 #include "stm32f1xx_hal.h"
+#include "board_config.h"
 
 typedef struct {
     GPIO_TypeDef* scl_port;
@@ -13,7 +14,8 @@ typedef struct {
 #define IIC_NUM 1
 
 static i2c_group iic[IIC_NUM] = {
-    { GPIOB, GPIO_PIN_6, GPIOB, GPIO_PIN_7 }
+    { BSP_I2C_SCL_PORT, BSP_I2C_SCL_PIN,
+      BSP_I2C_SDA_PORT, BSP_I2C_SDA_PIN }
 };
 
 #define IIC_SCL_HIGH(i)  HAL_GPIO_WritePin(iic[i].scl_port, iic[i].scl_pin, GPIO_PIN_SET)
@@ -24,7 +26,7 @@ static i2c_group iic[IIC_NUM] = {
 
 void SoftI2C_Init(void)
 {
-    __HAL_RCC_GPIOB_CLK_ENABLE();
+    BSP_I2C_GPIO_CLK_EN();
 
     GPIO_InitTypeDef gpio = {0};
     gpio.Mode  = GPIO_MODE_OUTPUT_OD;   /* open-drain */
