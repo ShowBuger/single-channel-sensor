@@ -4,7 +4,7 @@
 
 $ErrorActionPreference = "Stop"
 
-$RepoRoot  = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
+$RepoRoot  = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSCommandPath))
 $SkillsDir = Join-Path $RepoRoot "docs\skills"
 
 function Write-Sep { Write-Host ("-" * 44) -ForegroundColor DarkGray }
