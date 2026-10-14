@@ -8,12 +8,11 @@
 #include "config_manager.h"
 #include "algo_params.h"
 
-#define XYZT_FLAGS (MLX90393_FLAG_X | MLX90393_FLAG_Y | MLX90393_FLAG_Z ) // 测量所有轴
+#define XYZT_FLAGS (MLX90393_FLAG_X | MLX90393_FLAG_Y | MLX90393_FLAG_Z) // 仅测量XYZ轴，不测量温度
 // 测量延时根据OSR和FLT决定
 // MLX90393 转换时间 ≈ 2^OSR × 1.27ms × N轴
-// OSR=3 (×8), 3轴: 8 × 1.27ms × 3 ≈ 30ms → 留50ms余量
-// 旧代码因register clobber bug实际跑OSR=0所以8ms够用，现已修复
-#define MEASURE_INTERVAL 50
+// OSR=2 (×4), 3轴: 4 × 1.27ms × 3 ≈ 15ms → 留20ms余量
+#define MEASURE_INTERVAL 20
 
 // FLAG_RES: 使用每一位代表不同的使能标志
 // Bit 0: 标定使能
@@ -65,12 +64,12 @@ uint8_t Scan_Ports(void)
     uint8_t sensor_count = 0;
     uint8_t r_actual, r_ref;
 
-    LOG_D("SCAN", "[scan] Init actual sensor (A1=0 A0=0, addr=0x0C)...");
+    LOG_D("SCAN", "[scan] Init actual sensor (A1=0 A0=0, addr=0x10)...");
     r_actual = MLX90393_begin(&mlx_actual_sensors[0], 0, 0, -1, 0);
     LOG_D("SCAN", "[scan] actual begin -> %s", r_actual == 0 ? "OK" : "FAIL");
 
-    LOG_D("SCAN", "[scan] Init reference sensor (A1=1 A0=0, addr=0x0E)...");
-    r_ref = MLX90393_begin(&mlx_reference_sensors[0], 1, 0, -1, 0);
+    LOG_D("SCAN", "[scan] Init reference sensor (A1=0 A0=1, addr=0x11)...");
+    r_ref = MLX90393_begin(&mlx_reference_sensors[0], 0, 1, -1, 0);
     LOG_D("SCAN", "[scan] reference begin -> %s", r_ref == 0 ? "OK" : "FAIL");
 
     if(r_actual == 0 && r_ref == 0)

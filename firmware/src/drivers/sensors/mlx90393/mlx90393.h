@@ -3,8 +3,8 @@
 
 #include <stdint.h>
 
-// 基础 I2C 地址（修改为 0x10）
-#define MLX90393_I2C_BASE_ADDR   0x0C
+// 基础 I2C 地址（A1=0, A0=1）
+#define MLX90393_I2C_BASE_ADDR   0x10
 
 // 命令定义
 #define MLX90393_CMD_EXIT             0x80
@@ -151,8 +151,8 @@ typedef struct {
     uint8_t burst_rate;  // CONF2[5:0]  0-63
 } MLX90393_Config;
 
-// 与 begin() 默认行为一致：gain=7, osr=3, 其余=0
-#define MLX90393_DEFAULT_CONFIG  { 7U, 0U, 0U, 0U, 3U, 0U, 0U, 0U }
+// 与 begin() 默认行为一致：gain=7, osr=2, 其余=0
+#define MLX90393_DEFAULT_CONFIG  { 7U, 0U, 0U, 0U, 2U, 0U, 0U, 0U }
 
 // 以下为配置接口
 // configureAll: reset后调用，3次写入，无需RMW，一次性确定所有寄存器值

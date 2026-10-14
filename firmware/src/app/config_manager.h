@@ -54,7 +54,7 @@ typedef struct {
 /* Default values */
 #define CONFIG_DEFAULT_FLAG_RES         0x3BU
 #define CONFIG_DEFAULT_GAIN_SEL         7U
-#define CONFIG_DEFAULT_OSR              3U
+#define CONFIG_DEFAULT_OSR              2U
 #define CONFIG_DEFAULT_DIG_FILT         0U
 #define CONFIG_DEFAULT_RES              0U
 #define CONFIG_DEFAULT_TCMP_EN          0U
