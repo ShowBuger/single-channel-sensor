@@ -1,4 +1,5 @@
 {
+  "product": "MA01",
   "sensor": {
     "gain": 7,
     "osr": 3,
@@ -9,7 +10,7 @@
     "tcmp": 0
   },
   "algo": {
-    "flag": "0x3B",
+    "flag": "0x7B",
     "xmap": 0.100,
     "ymap": 0.100,
     "zmap": -0.100,

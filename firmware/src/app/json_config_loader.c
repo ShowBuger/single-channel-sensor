@@ -76,7 +76,19 @@ uint8_t JsonConfig_Parse(char *json_str, Config_TypeDef *cfg, JsonParseResult_t 
         p = skip_ws(p + 1, &line);
 
         /* Parse value based on key */
-        if (strcmp(key, "sensor") == 0 || strcmp(key, "algo") == 0 || strcmp(key, "log") == 0)
+        if (strcmp(key, "product") == 0)
+        {
+            char *next = parse_string(p, cfg->product_model, sizeof(cfg->product_model));
+            if (!next || cfg->product_model[0] == '\0')
+            {
+                result->status = JSON_PARSE_VALUE_ERR;
+                result->error_line = line;
+                strncpy(result->error_key, "product", sizeof(result->error_key) - 1);
+                return 1;
+            }
+            p = next;
+        }
+        else if (strcmp(key, "sensor") == 0 || strcmp(key, "algo") == 0 || strcmp(key, "log") == 0)
         {
             /* Nested object */
             if (*p != '{') { result->status = JSON_PARSE_SYNTAX_ERR; result->error_line = line; return 1; }
@@ -200,6 +212,13 @@ parse_err:
 
 uint8_t JsonConfig_Validate(const Config_TypeDef *cfg)
 {
+    const char *model = cfg->product_model;
+    if (!model[0] || !memchr(model, '\0', sizeof(cfg->product_model))) return 1;
+    for (; *model; model++)
+    {
+        if (!((*model >= 'A' && *model <= 'Z') || (*model >= 'a' && *model <= 'z') ||
+              (*model >= '0' && *model <= '9') || *model == '_' || *model == '-' || *model == '.')) return 1;
+    }
     if (cfg->gain_sel > 7) return 1;
     if (cfg->osr > 3) return 1;
     if (cfg->dig_filt > 7) return 1;

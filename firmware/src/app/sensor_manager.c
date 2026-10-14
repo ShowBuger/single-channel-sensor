@@ -21,8 +21,9 @@
 // Bit 3: 预测补偿使能
 // Bit 4: 映射使能
 // Bit 5: 平滑过渡使能
-// 初始值: 0x3B = 0011 1011 (标定、死区、预测补偿、映射、平滑过渡 开启，滑动窗口滤波 关闭)
-uint8_t FLAG_RES = 0x01;
+// Bit 6: Z轴正值过滤使能
+// 初始值: 0x7B = 0111 1011 (标定、死区、预测补偿、映射、平滑过渡、Z轴正值过滤 开启，滑动窗口滤波 关闭)
+uint8_t FLAG_RES = 0x7B;
 
 uint8_t SENSOR_List[1] = {0};   // 传感器状态列表,0-无传感器,1-有传感器
 uint8_t SENSOR_Run[1] = {0};    // 传感器运行状态
@@ -413,6 +414,30 @@ void apply_dead_band_filter(uint8_t sensor_index)
         processed_sensor_data[sensor_index].reference.y = 0.0f;
     if(fabsf(processed_sensor_data[sensor_index].reference.z) < threshold_z)
         processed_sensor_data[sensor_index].reference.z = 0.0f;
+}
+
+/**
+ * 函数: apply_z_positive_filter
+ * 功能: Z轴正值过滤 - 将正值的z轴数据改为0
+ * 参数: sensor_index - 传感器索引 (0-4)
+ * 返回: 无
+ * 说明: 自动过滤掉值为正的z轴数据，将其置为0
+ */
+void apply_z_positive_filter(uint8_t sensor_index)
+{
+    if(sensor_index >= 1) return;
+
+    // 实际传感器Z轴正值过滤
+    if(processed_sensor_data[sensor_index].actual.z > 0.0f)
+    {
+        processed_sensor_data[sensor_index].actual.z = 0.0f;
+    }
+
+    // 参考传感器Z轴正值过滤
+    if(processed_sensor_data[sensor_index].reference.z > 0.0f)
+    {
+        processed_sensor_data[sensor_index].reference.z = 0.0f;
+    }
 }
 
 /**
@@ -871,6 +896,13 @@ void data_process()
             apply_dead_band_filter(i);
         }
     }
+
+    // Z轴正值过滤 - 在死区滤波后执行
+    if(FLAG_RES & FLAG_Z_POSITIVE_FILTER)
+    {
+        apply_z_positive_filter(i);
+    }
+
     // 滑动平均滤波
     if(FLAG_RES & FLAG_SLIDING_WINDOW_FILTER)
     {

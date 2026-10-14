@@ -189,6 +189,7 @@ class SerialClient{
         if(startAfter){onProgress({stage:'starting',sent,total:prepared.bytes});await this.ack('ML START',/^Sensor started(?: successfully)?$/, /Failed to start|Sensor start failed|^Start failed/i,15000);}
         onProgress({stage:'verifying',sent,total:prepared.bytes});
         const actual=await this.readFullConfigDirect(),expected=prepared.config;
+        if(actual.product!==expected.product)throw new Error('配置读回不一致：product。');
         for(const [group,fields]of Object.entries(IMPORT_FIELDS))for(const key of Object.keys(fields))if(Math.fround(actual[group][key])!==Math.fround(expected[group][key]))throw new Error(`配置读回不一致：${group}.${key}。`);
         const runtime={flags:actual.algo.flag,maps:[actual.algo.xmap,actual.algo.ymap,actual.algo.zmap]};
         onProgress({stage:'done',sent,total:prepared.bytes});return{config:actual,runtime,logLevel:actual.log.level,verification:'full-config',started:startAfter};
@@ -202,7 +203,7 @@ class SerialClient{
   }
 }
 function readbackEqual(actual,expected){return Math.abs(actual-Math.fround(expected))<=Math.max(.00051,Math.abs(expected)*1e-6);}
-const IMPORT_DEFAULTS={sensor:{gain:7,osr:3,filt:0,resx:0,resy:0,resz:0,tcmp:0},algo:{flag:59,xmap:.1,ymap:.1,zmap:-.1,dead:8.5,spike:20,stab:.1},log:{level:3}};
+const IMPORT_DEFAULTS={product:'MA01',sensor:{gain:7,osr:3,filt:0,resx:0,resy:0,resz:0,tcmp:0},algo:{flag:59,xmap:.1,ymap:.1,zmap:-.1,dead:8.5,spike:20,stab:.1},log:{level:3}};
 const IMPORT_FIELDS={sensor:{gain:['增益 GAIN_SEL',0,7],osr:['过采样 OSR',0,3],filt:['数字滤波 DIG_FILT',0,7],resx:['X 分辨率',0,3],resy:['Y 分辨率',0,3],resz:['Z 分辨率',0,3],tcmp:['温度补偿 TCMP_EN',0,1]},algo:{flag:['算法标志位',0,255],xmap:['X 映射系数'],ymap:['Y 映射系数'],zmap:['Z 映射系数'],dead:['死区倍数'],spike:['尖峰滤波倍数'],stab:['稳定性阈值']},log:{level:['日志等级',0,4]}};
 const ALIASES={sensor:{gain_sel:'gain',dig_filt:'filt',res_x:'resx',res_y:'resy',res_z:'resz',tcmp_en:'tcmp'},algo:{FLAG_RES:'flag',flag_res:'flag',X_MAPPING_VALUE:'xmap',Y_MAPPING_VALUE:'ymap',Z_MAPPING_VALUE:'zmap',x_map:'xmap',y_map:'ymap',z_map:'zmap',dead_value:'dead',spike_multiplier:'spike',stability_threshold:'stab',stability:'stab'},log:{}};
 function prepareImport(input){
@@ -213,6 +214,10 @@ function prepareImport(input){
   const config=JSON.parse(JSON.stringify(IMPORT_DEFAULTS)),seen=new Set(),groups=new Set();
   for(const[group,value]of Object.entries(obj)){
     if(group==='$schema'){if(value!=='sensor_config_v1')throw new Error('不支持的 $schema。');continue;}
+    if(group==='product'){
+      if(typeof value!=='string'||!/^[A-Za-z0-9_.-]{1,7}$/.test(value))throw new Error('product 产品型号须为 1–7 个字母、数字、下划线、点或短横线。');
+      config.product=value;seen.add('product');continue;
+    }
     const section=group==='algorithm'?'algo':group;
     if(!Object.hasOwn(IMPORT_FIELDS,section))throw new Error('未知配置分组：'+group);
     if(groups.has(section))throw new Error('配置分组重复：'+section);groups.add(section);
@@ -228,7 +233,7 @@ function prepareImport(input){
     }
   }
   if(!seen.size)throw new Error('配置文件未包含任何可用参数。');
-  const missing=[];for(const[group,fields]of Object.entries(IMPORT_FIELDS))for(const key of Object.keys(fields))if(!seen.has(group+'.'+key))missing.push(group+'.'+key);
+  const missing=seen.has('product')?[]:['product'];for(const[group,fields]of Object.entries(IMPORT_FIELDS))for(const key of Object.keys(fields))if(!seen.has(group+'.'+key))missing.push(group+'.'+key);
   const wire=JSON.stringify({...config,algo:{...config.algo,flag:'0x'+config.algo.flag.toString(16).toUpperCase().padStart(2,'0')}}),bytes=new TextEncoder().encode(wire).length;
   if(bytes>1023)throw new Error('规范化配置超过 1023 字节，无法导入。');
   // All canonical keys/values are ASCII. 15-byte prefix + 47-byte chunk = 62.

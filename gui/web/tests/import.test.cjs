@@ -24,7 +24,9 @@ function firmware(options={}){
         if(options.badReadback)snapshot.log.level=0;
         if(options.badSensor)snapshot.sensor.gain=0;
         if(options.badThreshold)snapshot.algo.dead=1;
+        if(options.badProduct)snapshot.product='OTHER';
         if(options.missingField)delete snapshot.log;
+        if(options.missingProduct)delete snapshot.product;
         response=options.legacy?JSON.stringify(snapshot).slice(0,99):options.unsupported?'Unknown: ML GETCFG':
           'CFG_BEGIN\r\n[I][SYS] reading\r\n'+JSON.stringify(snapshot)+'\r\n'+(options.noEnd?'':'CFG_END');
       }
@@ -40,9 +42,21 @@ function firmware(options={}){
 
 test('all repository JSON examples normalize to the import schema',()=>{
   const repo=path.resolve(__dirname,'../../..');
-  for(const filename of ['firmware/config_example.json','firmware/config_custom.json','firmware/config_compact.json','tools/sensor_config.json']){
+  for(const filename of ['firmware/config/config_example.json','tools/sensor_config.json']){
     const p=C.prepareImport(fs.readFileSync(path.join(repo,filename),'utf8'));assert(p.bytes<1024);assert.equal(p.chunks.join(''),p.wire);assert(p.chunks.every(c=>c.length<=47));assert.deepEqual(C.prepareImport(p.wire).config,p.config);
   }
+});
+
+test('product model is preserved in imported and exported JSON and defaults for older files',()=>{
+  const p=C.prepareImport({product:'MA02-A',log:{level:3}});
+  assert.equal(p.config.product,'MA02-A');assert.equal(JSON.parse(p.wire).product,'MA02-A');
+  assert(!p.missing.includes('product'));
+  const old=C.prepareImport({log:{level:3}});assert.equal(old.config.product,'MA01');assert(old.missing.includes('product'));
+  for(const value of ['',123,null,'ABCDEFGH','磁传感器','MA 01','MA"01','MA\\01','MA\n01'])assert.throws(()=>C.prepareImport({product:value}),/产品型号/);
+});
+test('non-default product model imports and is verified by full device readback',async()=>{
+  const f=firmware();await f.client.connect();const result=await f.client.importConfig({product:'MA02-A',algo:{flag:31}});
+  assert.equal(result.config.product,'MA02-A');assert.equal(f.config.product,'MA02-A');await f.client.disconnect();
 });
 test('validation rejects unknown fields, wrong types, out of range, duplicate aliases and unsafe floats',()=>{
   for(const input of ['{broken','[]','null','{}','{"sensor":{"gain":8}}','{"sensor":{"osr":1.5}}','{"log":{"level":"3"}}','{"algo":{"flag":"0x100"}}','{"sensor":{"typo":1}}','{"algo":{"xmap":1e100}}','{"sensor":{"resx":1,"res_x":2}}','{"algo":{},"algorithm":{"flag":1}}'])assert.throws(()=>C.prepareImport(input),undefined,input);
@@ -73,7 +87,7 @@ test('Flash failure reports uncertain device state and resets ERROR state',async
   const f=firmware({flashFail:true});await f.client.connect();await assert.rejects(f.client.importConfig(C.IMPORT_DEFAULTS),error=>error.submitted===true&&/save to flash failed/.test(error.message));assert.equal(f.state,'idle');await f.client.disconnect();
 });
 test('readback or start failure after IMPORT_OK is not reported as success',async()=>{
-  for(const options of [{badReadback:true},{badSensor:true},{badThreshold:true},{startFail:true}]){const f=firmware(options);await f.client.connect();await assert.rejects(f.client.importConfig(C.IMPORT_DEFAULTS,{startAfter:true}),error=>error.applied===true);assert.equal(f.state,'idle');await f.client.disconnect();}
+  for(const options of [{badReadback:true},{badSensor:true},{badThreshold:true},{badProduct:true},{startFail:true}]){const f=firmware(options);await f.client.connect();await assert.rejects(f.client.importConfig(C.IMPORT_DEFAULTS,{startAfter:true}),error=>error.applied===true);assert.equal(f.state,'idle');await f.client.disconnect();}
 });
 test('current firmware start/stop/calibration acknowledgements work',async()=>{
   const f=firmware();await f.client.connect();await f.client.start();await f.client.stop();await f.client.calibrate();await f.client.disconnect();
@@ -90,7 +104,7 @@ test('full snapshot reads every field amid split serial traffic without writes',
   assert.deepEqual(f.commands,['ML GETCFG']);await f.client.disconnect();
 });
 test('missing fields, legacy replies and unsupported readback fail before import writes',async()=>{
-  for(const options of [{missingField:true},{legacy:true},{unsupported:true}]){
+  for(const options of [{missingField:true},{missingProduct:true},{legacy:true},{unsupported:true}]){
     const f=firmware(options);await f.client.connect();await assert.rejects(f.client.importConfig(C.IMPORT_DEFAULTS),/完整配置读取失败/);
     assert(!f.commands.some(c=>c.startsWith('ML IMPORT_START')));await f.client.disconnect();
   }

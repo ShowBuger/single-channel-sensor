@@ -77,6 +77,7 @@ extern uint8_t FLAG_RES;
 #define FLAG_PREDICTIVE_COMPENSATION    (1 << 3)  // Bit 3: 预测补偿使能标志
 #define FLAG_MAPPING_ENABLE             (1 << 4)  // Bit 4: 映射使能标志
 #define FLAG_SMOOTH_TRANSITION_ENABLE   (1 << 5)  // Bit 5: 平滑过渡使能标志
+#define FLAG_Z_POSITIVE_FILTER          (1 << 6)  // Bit 6: Z轴正值过滤使能标志
 
 // 参考传感器历史数据（用于预测补偿）
 extern SensorHistory reference_sensor_history[1];

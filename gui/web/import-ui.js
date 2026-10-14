@@ -26,7 +26,29 @@ class ImportPanel {
   }
   sync(externalBusy=false){this.externalBusy=externalBusy;const locked=this.busy||externalBusy;for(const id of ['chooseJson','jsonEditor','validateJson','downloadTemplate','importClose','startAfterImport'])$(id).disabled=locked;$('exportJson').disabled=locked||!this.prepared;$('readDeviceConfig').disabled=locked||!this.device.connected;$('applyJson').disabled=locked||!this.device.connected||!this.prepared;$('cancelImport').hidden=!this.busy;if(!this.busy)$('cancelImport').disabled=false;$('importConnection').textContent=this.device.connected?'已连接 · 可应用到设备':'未连接 · 可导入预览，连接后应用';}
   validate(){try{this.prepared=C.prepareImport($('jsonEditor').value);this.render();this.status(`校验通过 · ${this.prepared.bytes} 字节 · ${this.prepared.chunks.length} 个传输块`,'success');}catch(error){this.prepared=null;$('jsonPreview').replaceChildren();$('importNotes').textContent='修正配置后重新校验。';this.status(error.message,'error');}this.sync(this.externalBusy);}
-  render(){const {config,missing}=this.prepared;$('jsonPreview').replaceChildren();for(const[group,title]of[['sensor','传感器寄存器参数'],['algo','算法参数'],['log','系统日志']]){const section=document.createElement('section'),heading=document.createElement('h3');heading.textContent=title;section.append(heading);const table=document.createElement('table');for(const[key,rule]of Object.entries(C.IMPORT_FIELDS[group])){const tr=document.createElement('tr'),name=document.createElement('th'),value=document.createElement('td'),source=document.createElement('td');name.textContent=rule[0];value.className='mono';value.textContent=group==='algo'&&key==='flag'?'0x'+config[group][key].toString(16).toUpperCase().padStart(2,'0'):group==='log'?`${config.log.level} · ${['NONE','ERROR','WARN','INFO','DEBUG'][config.log.level]}`:String(config[group][key]);source.textContent=missing.includes(group+'.'+key)?'默认补全':this.sourceLabel;source.className='muted';tr.append(name,value,source);table.append(tr);}section.append(table);$('jsonPreview').append(section);}
+  render(){
+    const {config,missing}=this.prepared;
+    const groups=[['产品信息',[['产品型号',config.product,'product']]]];
+    for(const[group,title]of [['sensor','传感器寄存器参数'],['algo','算法参数'],['log','系统日志']]){
+      const rows=Object.entries(C.IMPORT_FIELDS[group]).map(([key,rule])=>{
+        const value=group==='algo'&&key==='flag'?'0x'+config.algo.flag.toString(16).toUpperCase().padStart(2,'0'):
+          group==='log'?`${config.log.level} · ${['NONE','ERROR','WARN','INFO','DEBUG'][config.log.level]}`:String(config[group][key]);
+        return[rule[0],value,group+'.'+key];
+      });
+      groups.push([title,rows]);
+    }
+    $('jsonPreview').replaceChildren();
+    for(const[title,rows]of groups){
+      const section=document.createElement('section'),heading=document.createElement('h3'),table=document.createElement('table');
+      heading.textContent=title;section.append(heading);
+      for(const[label,text,field]of rows){
+        const tr=document.createElement('tr'),name=document.createElement('th'),value=document.createElement('td'),source=document.createElement('td');
+        name.textContent=label;value.className='mono';value.textContent=text;
+        source.textContent=missing.includes(field)?'默认补全':this.sourceLabel;source.className='muted';
+        tr.append(name,value,source);table.append(tr);
+      }
+      section.append(table);$('jsonPreview').append(section);
+    }
     $('importNotes').textContent=(missing.length?`缺少的 ${missing.length} 个字段使用固件默认值，不会保留设备旧值。 `:'这是完整配置，将替换设备对应参数。 ')+(config.log.level<3?'当前固件在日志等级低于 INFO 时不输出采样数据；应用后曲线会停止更新。':'应用可能重启传感器并重新标定，请保持传感器静止。');
   }
   download(value,name){const url=URL.createObjectURL(new Blob([JSON.stringify(value,null,2)+'\n'],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
