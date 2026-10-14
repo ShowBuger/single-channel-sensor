@@ -57,6 +57,19 @@ function surfaceHeight(x,y,values,reference=1){
   const envelope=Math.cos(x*Math.PI/5)**2*Math.cos(y*Math.PI/5)**2;
   return envelope*(1.55*nz-.5*(nx*x+ny*y));
 }
+// Follow the local downhill gradient, independently of the global XY vector.
+function surfaceArrow(x,y,values,reference=1){
+  const height=(a,b)=>surfaceHeight(a,b,values,reference),e=.01;
+  const dx=(height(x-e,y)-height(x+e,y))/(2*e),dy=(height(x,y-e)-height(x,y+e))/(2*e),slope=Math.hypot(dx,dy);
+  if(slope<1e-4)return null;
+  const z=height(x,y),ux=dx/slope,uy=dy/slope;
+  // Shorten near extrema so the tip cannot overshoot the depression and climb.
+  for(let length=.36*Math.tanh(slope*2);length>=.012;length*=.5){
+    const tx=x+ux*length,ty=y+uy*length,tz=height(tx,ty);
+    if(Math.abs(tx)<=2.5&&Math.abs(ty)<=2.5&&tz<z-1e-8)return{start:[x,y,z+.075],end:[tx,ty,tz+.075]};
+  }
+  return null;
+}
 // Cylinder + cone, Rodrigues rotation from +Z to the force direction. Mirrors
 // DISPLAY/gui/pages/force_3d_page.py, scaled to the flat single-channel pad.
 function arrowMesh(start,end,shaftRadius=.019,headRadius=.05,sections=8){
@@ -73,7 +86,7 @@ class SerialClient{
   emit(name,value){for(const fn of this.listeners.get(name)||[])fn(value);}
   get connected(){return this.state==='connected';}
   setState(state,detail=''){this.state=state;this.emit('state',{state,detail});}
-  async connect(baudRate=115200){
+  async connect(baudRate=921600){
     if(!this.api)throw new Error('当前浏览器未提供 Web Serial，请用桌面版 Edge / Chrome 打开此页面。');
     if(this.state!=='disconnected')throw new Error('连接正在使用，请先断开。');
     this.setState('connecting');let port;
@@ -222,5 +235,5 @@ function prepareImport(input){
   const chunks=wire.match(/.{1,47}/g)||[];
   return{config,wire,bytes,chunks,missing};
 }
-return{parseLine,LineFramer,SampleBuffer,validateConfig,configCommands,csv,SerialLog,percentile95,vectorStyle,surfaceHeight,arrowMesh,SerialClient,prepareImport,IMPORT_DEFAULTS,IMPORT_FIELDS,readbackEqual};
+return{parseLine,LineFramer,SampleBuffer,validateConfig,configCommands,csv,SerialLog,percentile95,vectorStyle,surfaceHeight,surfaceArrow,arrowMesh,SerialClient,prepareImport,IMPORT_DEFAULTS,IMPORT_FIELDS,readbackEqual};
 });

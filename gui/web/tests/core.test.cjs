@@ -26,6 +26,24 @@ test('surface deformation retains Z sign, XY tilt, fixed edges and zero baseline
   }
 });
 
+test('surface arrows converge on a depression even without any XY input',()=>{
+  for(const [x,y]of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,-1]]){
+    const arrow=C.surfaceArrow(x,y,[0,0,-1],1);assert(arrow);
+    assert(Math.hypot(arrow.end[0],arrow.end[1])<Math.hypot(x,y));
+    assert(arrow.end[2]<arrow.start[2]);
+  }
+  assert.equal(C.surfaceArrow(0,0,[0,0,-1],1),null);
+  assert.equal(C.surfaceArrow(1,1,[0,0,0],1),null);
+});
+test('local arrows stay downhill and inside the surface for tilted and raised shapes',()=>{
+  for(const values of [[.6,-.8,-.3],[.6,-.8,.3],[0,0,1],[1,0,0]])
+    for(let x=-2;x<=2;x+=.2)for(let y=-2;y<=2;y+=.2){
+      const arrow=C.surfaceArrow(x,y,values,1);if(!arrow)continue;
+      assert(arrow.end.every(Number.isFinite));assert(arrow.end[2]<arrow.start[2]);
+      assert(Math.abs(arrow.end[0])<=2.5&&Math.abs(arrow.end[1])<=2.5);
+    }
+});
+
 function mockDevice(options={}){
   const state={flags:59,maps:[.1,.1,-.1],commands:[],closed:false}, encoder=new TextEncoder();let controller;
   const port={readable:new ReadableStream({start(c){controller=c;}}),writable:new WritableStream({write(bytes){

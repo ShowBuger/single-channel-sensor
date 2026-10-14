@@ -3,20 +3,20 @@
 'use strict';
 const $=id=>document.getElementById(id), axes=['X','Y','Z'], colors=['#507fe0','#20a28d','#dba253'];
 const C=FieldCore, storageKey='field-workspace-v2';
-let config={flags:59,maps:[.1,.1,-.1]}, settings={port:'',baud:'115200'}, autoLoad=true, showArrows=true, storageAvailable=true;
-try{const saved=JSON.parse(localStorage.getItem(storageKey)||'null');if(saved){showArrows=saved.showArrows!==false;autoLoad=saved.autoLoad!==false;if(saved.settings&&['9600','57600','115200','230400','460800'].includes(saved.settings.baud))settings={port:String(saved.settings.port||''),baud:saved.settings.baud};}}catch{storageAvailable=false;}
+let config={flags:59,maps:[.1,.1,-.1]}, settings={port:'',baud:'921600'}, autoLoad=true, showArrows=true, storageAvailable=true;
+try{const saved=JSON.parse(localStorage.getItem(storageKey)||'null');if(saved){showArrows=saved.showArrows!==false;autoLoad=saved.autoLoad!==false;if(saved.settings&&['9600','57600','115200','230400','460800','921600'].includes(saved.settings.baud))settings={port:String(saved.settings.port||''),baud:saved.baudDefaultVersion!==1&&saved.settings.baud==='115200'?'921600':saved.settings.baud};}}catch{storageAvailable=false;}
 const api=new LocalSerialApi(), device=new C.SerialClient(api), samples=new C.SampleBuffer(12000),serialLog=new C.SerialLog();
-let mode='demo',running=true,acquisition='waiting',busy=false,configVerified=false,logs=[],tick=600,epoch=performance.now()-30000,wallEpoch=Date.now()-30000,dirty=true;
+let mode='device',running=false,acquisition='waiting',busy=false,configVerified=false,logs=[],tick=0,epoch=performance.now(),wallEpoch=Date.now(),dirty=true;
 let yaw=-.64,pitch=.65,zoom=1,topView=false,drag=null,toastTimer,portTimer,scanning=false,magnitudes=[],lastSampleAt=0,lastWarningAt=0,calibTimer=null;
 let importPanel=null,deviceLogLevel=null;
 let rateMarks=[], hover=[null,null,null],lastStatus=0,calibrationActive=false;
 const fmt=x=>(x>=0?'+':'')+x.toFixed(3), icon=name=>`<svg class="icon"><use href="#i-${name}"/></svg>`;
 function toast(message){$('toast').textContent=message;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),4500);}
-function persist(){try{localStorage.setItem(storageKey,JSON.stringify({settings,autoLoad,showArrows}));return true;}catch{toast('浏览器无法保存本地设置，本次会话内仍然有效。');return false;}}
+function persist(){try{localStorage.setItem(storageKey,JSON.stringify({settings,autoLoad,showArrows,baudDefaultVersion:1}));return true;}catch{toast('浏览器无法保存本地设置，本次会话内仍然有效。');return false;}}
 function log(message,type='系统',record=true){if(record&&(serialLog.active||(mode==='device'&&type==='错误')))serialLog.append(type,message);const time=new Date().toLocaleTimeString('zh-CN',{hour12:false});logs.unshift({time,type,message});logs=logs.slice(0,150);$('eventTime').textContent=time;$('eventText').textContent=message;if($('logDialog').open)renderLogs();}
 function renderLogs(){$('recordCount').textContent=samples.length.toLocaleString();$('logList').replaceChildren(...logs.map(l=>{const row=document.createElement('div');row.className='log-row';for(const[tag,cls,value]of[['time','mono',l.time],['span','log-type',l.type],['span','log-description',l.message]]){const el=document.createElement(tag);el.className=cls;el.textContent=value;row.append(el);}return row;}));}
-function currentUnit(){return mode==='demo'?(config.flags&16?'a.u.':'μT'):configVerified?(config.flags&16?'a.u.':'μT'):'待确认';}
-function unitCode(){const u=currentUnit();return u==='待确认'?'unknown':u==='μT'?'uT':'a.u.';}
+function currentUnit(){return 'N';}
+function unitCode(){return 'N';}
 function demoValues(t){const raw=[7.3*Math.sin(t*.52)+1.7*Math.sin(t*1.54)+.25*Math.sin(t*16),5.2*Math.sin(t*.52+1.35)+1.3*Math.cos(t*1.3)+.18*Math.sin(t*14),-3-2.7*Math.sin(t*.52+2.5)-.65*Math.cos(t*1.8)-.12*Math.sin(t*18)];return raw.map((v,i)=>config.flags&16?v*config.maps[i]:v);}
 function addSample(v,t,time){samples.push({v:[...v],t,time,source:mode,unit:unitCode()});magnitudes.push(Math.hypot(...v));if(magnitudes.length>100)magnitudes.shift();dirty=true;}
 function resetSession(next,seed=false){mode=next;samples.clear();magnitudes=[];rateMarks=[];tick=seed?600:0;epoch=performance.now()-(seed?30000:0);wallEpoch=Date.now()-(seed?30000:0);lastSampleAt=0;configVerified=false;acquisition='waiting';running=next==='demo';if(seed)for(let i=1;i<=600;i++)addSample(demoValues(i/20),i/20,wallEpoch+i*50);hover=[null,null,null];document.querySelectorAll('.chart-tooltip').forEach(t=>t.style.display='none');dirty=true;syncStatus();}
@@ -24,8 +24,6 @@ function syncStatus(){
   const connected=device.connected,stale=connected&&acquisition!=='stopped'&&lastSampleAt&&performance.now()-lastSampleAt>2500;
   importPanel?.sync(busy);$('exportSerialLog').disabled=!serialLog.count;$('serialLogCount').textContent=serialLog.count.toLocaleString();
   $('sourceSelect').value=mode;
-  $('runState').textContent=mode==='demo'?(running?'演示数据运行中':'演示数据已暂停'):connected?(acquisition==='stopped'?'设备采集已停止':stale?'已连接 · 暂无新数据':lastSampleAt?'设备数据采集中':deviceLogLevel!==null&&deviceLogLevel<3?'日志等级限制采样输出':'已连接 · 等待数据'):'设备未连接';
-  $('connectionState').textContent=connected?`${settings.port} · ${settings.baud} bps`:mode==='demo'?'演示模式 · 设备未连接':'已保留本次数据';
   $('systemTag').textContent=mode==='demo'?'演示模式':connected?(stale?'等待数据':'设备连接'):'已断开';
   $('connectButton').innerHTML=icon('plug')+(connected?'断开串口':'连接串口');$('connectButton').disabled=device.state==='connecting'||device.state==='disconnecting';
   const pauseName=mode==='demo'?(running?'暂停演示':'继续演示'):(acquisition==='stopped'?'启动采集':'停止采集');
@@ -35,7 +33,7 @@ function syncStatus(){
   $('rateLabel').textContent=mode==='demo'?'演示采样':'接收速率';
   const now=performance.now();rateMarks=rateMarks.filter(t=>now-t<2000);$('rate').textContent=mode==='demo'?(running?'20 Hz':'0 Hz'):(rateMarks.length>1?((rateMarks.length-1)/Math.max(.1,(now-rateMarks[0])/1000)).toFixed(1):'0.0')+' Hz';
   $('sampleCount').textContent=samples.length.toLocaleString();const seconds=Math.floor(samples.at(-1)?.t||0);$('duration').textContent=String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0');
-  const unit=currentUnit();document.querySelectorAll('.unit').forEach(e=>e.textContent=unit);$('unitNote').textContent=unit==='待确认'?'设备配置尚未读取 · 输出单位待确认':unit==='μT'?'未映射输出 · μT':'映射输出 · a.u.（任意单位）';
+  const unit=currentUnit();document.querySelectorAll('.unit').forEach(e=>e.textContent=unit);
   $('startCalib').disabled=busy||(mode==='device'&&!connected);$('autoLoad').disabled=busy;
 }
 async function operation(fn){if(busy)return;busy=true;syncStatus();try{return await fn();}catch(error){log(error.message,'错误');toast(error.message);return null;}finally{busy=false;dirty=true;syncStatus();}}
@@ -98,13 +96,13 @@ function drawSurface(){const{ctx:c,w,h}=context(surface);if(!w||!h)return;const 
     faces.push({p,depth:p.reduce((n,p)=>n+p[2],0)/4,color:`rgb(${color.join(',')})`,stroke:'rgba(100,151,143,.26)'});
   }
   if(showArrows)for(let x=-2;x<=2.01;x+=.4)for(let y=-2;y<=2.01;y+=.4){
-    if(style.length<.012)continue;
-    const half=style.direction.map(v=>v*style.length/2),mesh=C.arrowMesh([x-half[0],y-half[1],height(x-half[0],y-half[1])+.075],[x+half[0],y+half[1],height(x+half[0],y+half[1])+.075]);
+    const arrow=C.surfaceArrow(x,y,values,style.reference);if(!arrow)continue;
+    const mesh=C.arrowMesh(arrow.start,arrow.end);
     for(const face of mesh.faces){const vertices=face.map(i=>mesh.vertices[i]),p=vertices.map(v=>project(...v)),a=vertices[1].map((v,i)=>v-vertices[0][i]),b=vertices[2].map((v,i)=>v-vertices[0][i]),normal=[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]],norm=Math.hypot(...normal)||1,light=.62+.38*Math.abs((normal[0]*.3-normal[1]*.4+normal[2]*.85)/norm);faces.push({p,depth:p.reduce((n,p)=>n+p[2],0)/3,color:`rgb(${style.color.map(v=>Math.round(v*light)).join(',')})`});}
   }
   faces.sort((a,b)=>a.depth-b.depth);for(const face of faces)path(face.p,face.stroke||null,face.color,.65);
   const origin=project(-2.8,2.8,.02);[['X',project(-1.7,2.8,.02),colors[0]],['Y',project(-2.8,1.7,.02),colors[1]],['Z',project(-2.8,2.8,1.02),colors[2]]].forEach(([label,end,color])=>{path([origin,end],color,null,1.5);const a=Math.atan2(end[1]-origin[1],end[0]-origin[0]);path([[end[0]-5*Math.cos(a-.4),end[1]-5*Math.sin(a-.4)],end,[end[0]-5*Math.cos(a+.4),end[1]-5*Math.sin(a+.4)]],color,null,1.5);c.fillStyle=color;c.font='10px Segoe UI';c.fillText(label,end[0]+5,end[1]-4);});
-  c.font='10px Segoe UI';c.fillStyle='#9aa9a5';c.textAlign='center';c.fillText(samples.length?(showArrows?'示意形变 · 方向箭头已显示':'示意形变 · 方向箭头已隐藏'):'等待 sensor0 数据',w/2,h-44);c.textAlign='left';
+  c.font='10px Segoe UI';c.fillStyle='#9aa9a5';c.textAlign='center';c.fillText(samples.length?(showArrows?'示意形变 · 箭头沿坡面指向低处':'示意形变 · 方向箭头已隐藏'):'',w/2,h-44);c.textAlign='left';
 }
 axes.forEach((axis,i)=>{const canvas=$('chart'+axis);canvas.onpointermove=e=>{hover[i]=e.offsetX;drawChart(i);};canvas.onpointerleave=()=>{hover[i]=null;canvas.nextElementSibling.style.display='none';drawChart(i);};});
 function drawChart(i){const canvas=$('chart'+axes[i]),{ctx:c,w,h}=context(canvas);if(!w||!h)return;const data=samples.recent(30),left=36,right=w-9,upper=12,lower=h-23;let range=.2;for(const p of data)range=Math.max(range,Math.abs(p.v[i]));range*=1.2;const now=data.at(-1)?.t||0,px=t=>left+(t-(now-30))/30*(right-left),py=v=>upper+(1-v/range)/2*(lower-upper);c.font='9px Segoe UI';c.textBaseline='middle';
@@ -121,5 +119,5 @@ let last=performance.now(),accumulator=0,lastDraw=0;
 function frame(now){const dt=Math.min(now-last,250);last=now;if(mode==='demo'&&running){accumulator+=dt;while(accumulator>=50){accumulator-=50;tick++;addSample(demoValues(tick/20),tick/20,wallEpoch+tick*50);}}else accumulator=0;if(dirty&&now-lastDraw>=50){draw();lastDraw=now;}if(now-lastStatus>500){syncStatus();lastStatus=now;}requestAnimationFrame(frame);}
 new ResizeObserver(()=>{dirty=true;draw();}).observe(document.querySelector('.workspace'));
 importPanel=new FieldImportPanel({device,operation,toast,log,onRead:readDeviceConfig,onUncertain:()=>{configVerified=false;deviceLogLevel=null;syncStatus();},onApplied:result=>{config=result.runtime;configVerified=true;deviceLogLevel=result.logLevel;if(result.started)acquisition='waiting';persist();samples.clear();magnitudes=[];rateMarks=[];lastSampleAt=0;epoch=performance.now();dirty=true;syncStatus();}});
-resetSession('demo',true);draw();log('演示数据已加载。连接串口后自动切换真实设备数据。');if(!storageAvailable)toast('本地设置不可读取，本次使用默认配置。');requestAnimationFrame(frame);
+resetSession('device');draw();log('设备模式已就绪，请连接串口开始采集。');if(!storageAvailable)toast('本地设置不可读取，本次使用默认配置。');requestAnimationFrame(frame);
 })();

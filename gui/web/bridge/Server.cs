@@ -56,7 +56,7 @@ internal static class FieldBridge {
         lock(Gate) {
             if(serial != null) throw new InvalidOperationException("串口正在使用，请在原页面断开后重试。");
             if(!Ports().Contains(port)) throw new ArgumentException("端口已移除，请刷新端口列表。");
-            if(!new[]{9600,57600,115200,230400,460800}.Contains(baud)) throw new ArgumentException("不支持的波特率。");
+            if(!new[]{9600,57600,115200,230400,460800,921600}.Contains(baud)) throw new ArgumentException("不支持的波特率。");
             var candidate = new SerialPort(port,baud,Parity.None,8,StopBits.One) { Handshake=Handshake.None,ReadTimeout=250,WriteTimeout=2000,ReadBufferSize=65536,DtrEnable=false,RtsEnable=false };
             try { candidate.Open(); } catch { candidate.Dispose(); throw; }
             serial=candidate; connection=Guid.NewGuid().ToString("N");lastError="";lastPoll=DateTime.UtcNow;Received.Clear();
