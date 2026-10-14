@@ -17,7 +17,7 @@
  * bump CONFIG_SCHEMA_VERSION when doing so (old Flash is detected and defaults applied).
  */
 
-#define CONFIG_SCHEMA_VERSION  3U   /* bump when layout changes */
+#define CONFIG_SCHEMA_VERSION  4U   /* bump when layout changes */
 
 typedef struct {
     /* -- Schema version -------------------------------- */
@@ -44,12 +44,15 @@ typedef struct {
     float    spike_multiplier;       /* spike filter x-sigma, def 20.0        */
     float    stability_threshold;    /* stability delta uT, def 0.1           */
 
+    /* -- Product information --------------------------- */
+    char     product_model[8];       /* product model, e.g. "MA01"            */
+
     /* -- Padding for 4-byte alignment ------------------ */
     uint8_t  _pad[2];
 
     /* -- Integrity ------------------------------------- */
     uint32_t checksum;
-} Config_TypeDef;                   /* ~52 bytes; fits in 1 KB page    */
+} Config_TypeDef;                   /* ~60 bytes; fits in 1 KB page    */
 
 /* Default values */
 #define CONFIG_DEFAULT_FLAG_RES         0x3BU
@@ -65,6 +68,7 @@ typedef struct {
 #define CONFIG_DEFAULT_DEAD_VALUE       8.5f
 #define CONFIG_DEFAULT_SPIKE_MULT       20.0f
 #define CONFIG_DEFAULT_STABILITY_THR    0.1f
+#define CONFIG_DEFAULT_PRODUCT_MODEL    "MA01"
 
 /* Public API */
 void    Config_Init(void);

@@ -42,6 +42,8 @@ void Config_SetDefaults(Config_TypeDef *cfg)
     cfg->dead_value          = CONFIG_DEFAULT_DEAD_VALUE;
     cfg->spike_multiplier    = CONFIG_DEFAULT_SPIKE_MULT;
     cfg->stability_threshold = CONFIG_DEFAULT_STABILITY_THR;
+    strncpy(cfg->product_model, CONFIG_DEFAULT_PRODUCT_MODEL, sizeof(cfg->product_model) - 1);
+    cfg->product_model[sizeof(cfg->product_model) - 1] = '\0';
     cfg->checksum            = calculate_checksum(cfg);
 }
 

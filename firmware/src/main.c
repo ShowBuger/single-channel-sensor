@@ -171,7 +171,8 @@ static void serial_command_process(void)
          * This read-only snapshot reports configured sensor values and live
          * algorithm/log values; it is not an I2C register readback. */
         Serial_Printf("CFG_BEGIN\r\n");
-        Serial_Printf("{\"sensor\":{\"gain\":%u,\"osr\":%u,\"filt\":%u,",
+        Serial_Printf("{\"product\":\"%s\",", g_config.product_model);
+        Serial_Printf("\"sensor\":{\"gain\":%u,\"osr\":%u,\"filt\":%u,",
                       g_config.gain_sel, g_config.osr, g_config.dig_filt);
         Serial_Printf("\"resx\":%u,\"resy\":%u,\"resz\":%u,\"tcmp\":%u},",
                       g_config.res_x, g_config.res_y, g_config.res_z, g_config.tcmp_en);
