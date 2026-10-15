@@ -70,17 +70,8 @@ uint8_t Scan_Ports(void)
     tmag_actual_sensors[0].i2c_addr = TMAG3001_I2C_ADDR_GND;
     r_actual = SENSOR_HAL.init(&tmag_actual_sensors[0], 0, 0, -1, 0);
     if(r_actual == 0) {
-        // 配置传感器
-        SensorHwConfig_t cfg = {
-            .gain = 5,  // TMAG3001_GAIN_1_0
-            .osr = TMAG3001_AVG_4X,
-            .dig_filt = 0,
-            .res_x = 0, .res_y = 0, .res_z = 0,
-            .tcmp_en = 0
-        };
-        SENSOR_HAL.configure(&tmag_actual_sensors[0], 0, &cfg);
-        TMAG3001_SetRange(&tmag_actual_sensors[0], TMAG3001_RANGE_40mT);
-        TMAG3001_SetOperatingMode(&tmag_actual_sensors[0], TMAG3001_MODE_STANDBY);
+        // 应用配置到实际传感器
+        Config_ApplyToSensor(&g_config, &tmag_actual_sensors[0], 0);
     }
     LOG_D("SCAN", "[scan] actual begin -> %s", r_actual == 0 ? "OK" : "FAIL");
 
@@ -89,17 +80,8 @@ uint8_t Scan_Ports(void)
     tmag_reference_sensors[0].i2c_addr = TMAG3001_I2C_ADDR_VCC;
     r_ref = SENSOR_HAL.init(&tmag_reference_sensors[0], 0, 1, -1, 0);
     if(r_ref == 0) {
-        // 配置传感器
-        SensorHwConfig_t cfg = {
-            .gain = 5,  // TMAG3001_GAIN_1_0
-            .osr = TMAG3001_AVG_4X,
-            .dig_filt = 0,
-            .res_x = 0, .res_y = 0, .res_z = 0,
-            .tcmp_en = 0
-        };
-        SENSOR_HAL.configure(&tmag_reference_sensors[0], 0, &cfg);
-        TMAG3001_SetRange(&tmag_reference_sensors[0], TMAG3001_RANGE_40mT);
-        TMAG3001_SetOperatingMode(&tmag_reference_sensors[0], TMAG3001_MODE_STANDBY);
+        // 应用配置到参考传感器
+        Config_ApplyToSensor(&g_config, &tmag_reference_sensors[0], 0);
     }
     LOG_D("SCAN", "[scan] reference begin -> %s", r_ref == 0 ? "OK" : "FAIL");
 
