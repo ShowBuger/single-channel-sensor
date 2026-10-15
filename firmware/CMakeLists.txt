@@ -65,6 +65,7 @@ set(CMSIS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libs/CMSIS)
 include_directories(
     src                      # board_config.h lives here
     src/app
+    src/mcu/stm32f10x        # MCU-specific config and interrupt handlers
     src/drivers/bsp
     src/drivers/sensors
     src/drivers/sensors/mlx90393
@@ -112,7 +113,7 @@ file(GLOB_RECURSE SENSOR_SOURCES  src/drivers/sensors/**/*.c)
 
 set(MAIN_SOURCES
     src/main.c
-    src/stm32f10x_it.c
+    src/mcu/stm32f10x/stm32f10x_it.c
 )
 
 set(STARTUP_ASM
