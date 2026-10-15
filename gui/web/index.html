@@ -76,7 +76,7 @@ dialog{border:1px solid var(--line);padding:0;border-radius:14px;width:min(480px
 <div class="dialog-content"><div class="import-tools"><button id="chooseJson" class="primary">选择配置文件</button><button id="readDeviceConfig" disabled>读取设备配置</button><button id="downloadTemplate">下载默认模板</button><button id="exportJson" disabled>导出配置</button></div><div style="margin-bottom:16px"><label class="toggle-label" title="连接时读取设备配置，已连接时开启将立即读取。"><input class="switch" id="autoLoad" type="checkbox" checked>自动加载配置</label></div><input type="file" id="jsonFile" accept=".json,application/json" hidden><p id="jsonFileName">支持固件示例配置，也可粘贴 JSON。</p>
 <div class="import-columns"><div><label class="field" for="jsonEditor">配置内容<textarea id="jsonEditor" spellcheck="false" placeholder='{"product":"MA01","sensor":{"gain":7},"algo":{"flag":"0x3B"},"log":{"level":3}}'></textarea></label><button id="validateJson">校验配置</button><p id="importNotes" class="import-notes">导入文件只生成预览，点击“应用到设备”才会发送。</p></div><div id="jsonPreview" aria-label="配置预览"></div></div>
 <div id="importStatus" class="import-status" role="status">选择文件后可查看参数、默认补全项和传输大小。</div><div id="importProgress" hidden><progress id="importProgressBar" max="100" value="0" aria-label="配置传输进度"></progress></div>
-<label class="toggle-label"><input id="startAfterImport" type="checkbox" checked>应用后启动采集（执行标定）</label><p class="import-notes">当前固件可保存寄存器参数，但尚未将导入值写入传感器芯片；需补齐下位机应用逻辑。</p></div>
+<label class="toggle-label"><input id="startAfterImport" type="checkbox" checked>应用后启动采集（执行标定）</label></div>
 <div class="dialog-actions"><button id="cancelImport" hidden>取消传输</button><button id="applyJson" class="primary" disabled>应用到设备</button></div></dialog>
 <div class="toast" id="toast" role="status"></div>
 <script src="core.js"></script>
