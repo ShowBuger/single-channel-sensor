@@ -1,5 +1,6 @@
 #include "sensor_manager.h"
-#include "../drivers/sensors/mlx90393/mlx90393.h"
+#include "../drivers/sensors/sensor_hal.h"
+#include "../drivers/sensors/tmag3001/tmag3001.h"
 #include "../drivers/sensors/tca9548a/tca9548a.h"
 #include "../drivers/bsp/bsp_delay.h"
 #include <math.h>
@@ -8,11 +9,10 @@
 #include "config_manager.h"
 #include "algo_params.h"
 
-#define XYZT_FLAGS (MLX90393_FLAG_X | MLX90393_FLAG_Y | MLX90393_FLAG_Z) // 仅测量XYZ轴，不测量温度
-// 测量延时根据OSR和FLT决定
-// MLX90393 转换时间 ≈ 2^OSR × 1.27ms × N轴
-// OSR=2 (×4), 3轴: 4 × 1.27ms × 3 ≈ 15ms → 留20ms余量
-#define MEASURE_INTERVAL 20
+// 使用TMAG3001传感器
+#define SENSOR_HAL g_hal_tmag3001
+// TMAG3001测量延时: 典型转换时间约2ms
+#define MEASURE_INTERVAL 5
 
 // FLAG_RES: 使用每一位代表不同的使能标志
 // Bit 0: 标定使能
@@ -28,12 +28,12 @@ uint8_t FLAG_RES = 0x7B;
 uint8_t SENSOR_List[1] = {0};   // 传感器状态列表,0-无传感器,1-有传感器
 uint8_t SENSOR_Run[1] = {0};    // 传感器运行状态
 
-// 定义2个MLX90393传感器句柄
+// 定义2个TMAG3001传感器句柄
 /*实际传感器数组 - 1个*/
-MLX90393_Handle mlx_actual_sensors[1];
+TMAG3001_Handle_t tmag_actual_sensors[1];
 
 /*参考传感器数组 - 1个*/
-MLX90393_Handle mlx_reference_sensors[1];
+TMAG3001_Handle_t tmag_reference_sensors[1];
 
 // 传感器数据存储 - 1对传感器的数据
 SensorPair_Data sensor_data[1] = {0};
@@ -65,19 +65,49 @@ uint8_t Scan_Ports(void)
     uint8_t sensor_count = 0;
     uint8_t r_actual, r_ref;
 
-    LOG_D("SCAN", "[scan] Init actual sensor (A1=0 A0=0, addr=0x10)...");
-    r_actual = MLX90393_begin(&mlx_actual_sensors[0], 0, 0, -1, 0);
+    LOG_D("SCAN", "[scan] Init actual sensor (TMAG3001, addr=0x34)...");
+    // TMAG3001: ADDR接GND, I2C地址0x34
+    tmag_actual_sensors[0].i2c_addr = TMAG3001_I2C_ADDR_GND;
+    r_actual = SENSOR_HAL.init(&tmag_actual_sensors[0], 0, 0, -1, 0);
+    if(r_actual == 0) {
+        // 配置传感器
+        SensorHwConfig_t cfg = {
+            .gain = 5,  // TMAG3001_GAIN_1_0
+            .osr = TMAG3001_AVG_4X,
+            .dig_filt = 0,
+            .res_x = 0, .res_y = 0, .res_z = 0,
+            .tcmp_en = 0
+        };
+        SENSOR_HAL.configure(&tmag_actual_sensors[0], 0, &cfg);
+        TMAG3001_SetRange(&tmag_actual_sensors[0], TMAG3001_RANGE_40mT);
+        TMAG3001_SetOperatingMode(&tmag_actual_sensors[0], TMAG3001_MODE_STANDBY);
+    }
     LOG_D("SCAN", "[scan] actual begin -> %s", r_actual == 0 ? "OK" : "FAIL");
 
-    LOG_D("SCAN", "[scan] Init reference sensor (A1=0 A0=1, addr=0x11)...");
-    r_ref = MLX90393_begin(&mlx_reference_sensors[0], 0, 1, -1, 0);
+    LOG_D("SCAN", "[scan] Init reference sensor (TMAG3001, addr=0x36)...");
+    // TMAG3001: ADDR接VCC, I2C地址0x36
+    tmag_reference_sensors[0].i2c_addr = TMAG3001_I2C_ADDR_VCC;
+    r_ref = SENSOR_HAL.init(&tmag_reference_sensors[0], 0, 1, -1, 0);
+    if(r_ref == 0) {
+        // 配置传感器
+        SensorHwConfig_t cfg = {
+            .gain = 5,  // TMAG3001_GAIN_1_0
+            .osr = TMAG3001_AVG_4X,
+            .dig_filt = 0,
+            .res_x = 0, .res_y = 0, .res_z = 0,
+            .tcmp_en = 0
+        };
+        SENSOR_HAL.configure(&tmag_reference_sensors[0], 0, &cfg);
+        TMAG3001_SetRange(&tmag_reference_sensors[0], TMAG3001_RANGE_40mT);
+        TMAG3001_SetOperatingMode(&tmag_reference_sensors[0], TMAG3001_MODE_STANDBY);
+    }
     LOG_D("SCAN", "[scan] reference begin -> %s", r_ref == 0 ? "OK" : "FAIL");
 
     if(r_actual == 0 && r_ref == 0)
     {
         SENSOR_List[0] = 1;
         sensor_count++;
-        LOG_D("SCAN", "[scan] Both sensors ready");
+        LOG_D("SCAN", "[scan] Both TMAG3001 sensors ready");
     }
     else
     {
@@ -222,7 +252,6 @@ uint8_t get_sensor_data()
 {
    int i = 0;
    uint8_t status;
-   MLX90393_RawData raw_actual, raw_reference;
 
     sensor_data[i].valid = 1;
     if(SENSOR_Run[i] == 0)
@@ -230,17 +259,19 @@ uint8_t get_sensor_data()
         sensor_data[i].valid = 0;  // 标记数据无效
         return 1;
     }
+
     /*启动实际传感器单次测量*/
-    status = MLX90393_startMeasurement(&mlx_actual_sensors[i], 0, XYZT_FLAGS);
-    if(error_process(status) != MLX90393_ERROR_NONE)
+    status = SENSOR_HAL.start_meas(&tmag_actual_sensors[i], 0);
+    if(status != 0)
     {
         LOG_D("SCAN", "[get] actual startMeasurement FAIL status=0x%02X", status);
         sensor_data[i].valid = 0;
         return 1;
     }
+
     /*启动参考传感器单次测量*/
-    status = MLX90393_startMeasurement(&mlx_reference_sensors[i], 0, XYZT_FLAGS);
-    if(error_process(status) != MLX90393_ERROR_NONE)
+    status = SENSOR_HAL.start_meas(&tmag_reference_sensors[i], 0);
+    if(status != 0)
     {
         LOG_D("SCAN", "[get] ref startMeasurement FAIL status=0x%02X", status);
         sensor_data[i].valid = 0;
@@ -250,31 +281,28 @@ uint8_t get_sensor_data()
     /*等待测量完成*/
     Delay_ms(MEASURE_INTERVAL);
 
-    /*读取实际传感器原始数据*/
-    status = MLX90393_readMeasurement(&mlx_actual_sensors[i], 0, XYZT_FLAGS, &raw_actual);
-    if(error_process(status) != MLX90393_ERROR_NONE)
+    /*读取实际传感器数据*/
+    status = SENSOR_HAL.read_meas(&tmag_actual_sensors[i], 0, &sensor_data[i].actual);
+    if(status != 0)
     {
         LOG_D("SCAN", "[get] actual readMeasurement FAIL status=0x%02X", status);
         sensor_data[i].valid = 0;
         return 1;
     }
 
-    /*读取参考传感器原始数据*/
-    status = MLX90393_readMeasurement(&mlx_reference_sensors[i], 0, XYZT_FLAGS, &raw_reference);
-    if(error_process(status) != MLX90393_ERROR_NONE)
+    /*读取参考传感器数据*/
+    status = SENSOR_HAL.read_meas(&tmag_reference_sensors[i], 0, &sensor_data[i].reference);
+    if(status != 0)
     {
         LOG_D("SCAN", "[get] ref readMeasurement FAIL status=0x%02X", status);
         sensor_data[i].valid = 0;
         return 1;
     }
-    /*转换为物理量*/
-    sensor_data[i].actual = MLX90393_convertRaw(raw_actual);
-    sensor_data[i].reference = MLX90393_convertRaw(raw_reference);
 
-       /*标记数据有效*/
-     sensor_data[i].valid = 1;
-	 data_process();
-   return 0;
+    /*标记数据有效*/
+    sensor_data[i].valid = 1;
+    data_process();
+    return 0;
 }
 
 
@@ -287,7 +315,7 @@ uint8_t get_sensor_data()
  *       newData - 新的参考传感器数据
  * 返回: 无
  */
-static void update_reference_history(uint8_t sensor_index, MLX90393_Data newData)
+static void update_reference_history(uint8_t sensor_index, SensorData newData)
 {
     if(sensor_index >= 1) return;
 
@@ -350,7 +378,7 @@ static void apply_predictive_compensation(uint8_t sensor_index)
     float timeDelta = MEASURE_INTERVAL / 1000.0f;  // 25ms = 0.025s
 
     // 预测参考传感器的当前值(使用线性预测)
-    MLX90393_Data predictedReference;
+    SensorData predictedReference;
     uint8_t currentIndex = (refHistory->historyIndex + 2) % 3;
 
     predictedReference.x = refHistory->history[currentIndex].x + refHistory->velocity.x * timeDelta;
@@ -365,7 +393,7 @@ static void apply_predictive_compensation(uint8_t sensor_index)
     }
 
     // 计算预测的参考传感器变化量(相对于标定值)
-    MLX90393_Data predictedRefDelta;
+    SensorData predictedRefDelta;
     predictedRefDelta.x = predictedReference.x - sensor_calibration[sensor_index].reference_offset.x;
     predictedRefDelta.y = predictedReference.y - sensor_calibration[sensor_index].reference_offset.y;
     predictedRefDelta.z = predictedReference.z - sensor_calibration[sensor_index].reference_offset.z;
@@ -1017,8 +1045,8 @@ uint8_t perform_sensor_calibration(void)
     uint8_t calibration_samples = 10;  // 标定采样次数
 
     // 数据缓冲区 - 存储所有采样数据用于计算标准差 - 仅1个传感器
-    MLX90393_Data actual_samples[1][10];    // 实际传感器采样数据
-    MLX90393_Data reference_samples[1][10]; // 参考传感器采样数据
+    SensorData actual_samples[1][10];    // 实际传感器采样数据
+    SensorData reference_samples[1][10]; // 参考传感器采样数据
     uint8_t sample_valid[1][10] = {0};      // 采样有效标志
 
     // 临时累加器 - 用于存储累加和 - 仅1个传感器

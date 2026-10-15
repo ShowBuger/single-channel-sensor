@@ -2,7 +2,7 @@
 #include "drivers/bsp/bsp_delay.h"
 #include "drivers/bsp/bsp_i2c_soft.h"
 #include "drivers/bsp/bsp_uart.h"
-#include "drivers/sensors/mlx90393/mlx90393.h"
+#include "drivers/sensors/sensor_hal.h"
 #include "drivers/sensors/tca9548a/tca9548a.h"
 #include "app/sensor_manager.h"
 #include "app/algo_params.h"

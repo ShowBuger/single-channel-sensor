@@ -2,30 +2,33 @@
 #define __SENSOR_MANAGER_H
 
 #include <stdint.h>
-#include "../drivers/sensors/mlx90393/mlx90393.h"
+#include "../drivers/sensors/sensor_hal.h"
 #include "algo_params.h"
+
+// 传感器数据类型定义（统一使用HAL层的SensorData_t）
+typedef SensorData_t SensorData;
 
 // 传感器数据结构 - 包含实际传感器和参考传感器的数据
 typedef struct {
-    MLX90393_Data actual;      // 实际传感器数据
-    MLX90393_Data reference;   // 参考传感器数据
+    SensorData actual;      // 实际传感器数据
+    SensorData reference;   // 参考传感器数据
     uint8_t valid;             // 数据有效标志 (0-无效, 1-有效)
 } SensorPair_Data;
 
 // 传感器标定值结构 - 存储每对传感器的标定值
 typedef struct {
-    MLX90393_Data actual_offset;      // 实际传感器标定偏移量（均值）
-    MLX90393_Data reference_offset;   // 参考传感器标定偏移量（均值）
-    MLX90393_Data actual_std;         // 实际传感器标准差
-    MLX90393_Data reference_std;      // 参考传感器标准差
+    SensorData actual_offset;      // 实际传感器标定偏移量（均值）
+    SensorData reference_offset;   // 参考传感器标定偏移量（均值）
+    SensorData actual_std;         // 实际传感器标准差
+    SensorData reference_std;      // 参考传感器标准差
     uint8_t calibrated;               // 标定完成标志 (0-未标定, 1-已标定)
 } SensorPair_Calibration;
 
 // 传感器历史数据结构 - 用于预测补偿
 typedef struct {
-    MLX90393_Data history[3];    // 历史数据缓冲区（3个数据点）
-    MLX90393_Data velocity;      // 速度（变化率）
-    MLX90393_Data acceleration;  // 加速度
+    SensorData history[3];    // 历史数据缓冲区（3个数据点）
+    SensorData velocity;      // 速度（变化率）
+    SensorData acceleration;  // 加速度
     uint8_t historyIndex;        // 当前写入索引
     uint8_t historyCount;        // 已存储的历史数据数量
 } SensorHistory;
@@ -55,8 +58,8 @@ typedef struct {
 // 尖峰滤波结构
 /* SPIKE_FILTER_THRESHOLD_MULTIPLIER moved to g_algo.spike_multiplier (algo_params.h) */
 typedef struct {
-    MLX90393_Data last_valid_actual;      // 上一次有效的实际传感器数据
-    MLX90393_Data last_valid_reference;   // 上一次有效的参考传感器数据
+    SensorData last_valid_actual;      // 上一次有效的实际传感器数据
+    SensorData last_valid_reference;   // 上一次有效的参考传感器数据
     uint8_t initialized;                   // 初始化标志
 } SpikeFilter;
 
