@@ -40,8 +40,11 @@ class SerialLog{
   }
   append(type,message,time=Date.now()){
     if(!this.sessions)return;
+    // 排除传感器数据行（sensor0:... 格式）
+    const msgStr = String(message);
+    if(type === 'RX' && /^sensor\d+\s*:/.test(msgStr.trim())) return;
     const prefix=`[${new Date(time).toISOString()}] [${type}] `;
-    this.tail.push(prefix+String(message).replace(/\r\n|\r|\n/g,'\r\n'+prefix)+'\r\n');this.count++;
+    this.tail.push(prefix+msgStr.replace(/\r\n|\r|\n/g,'\r\n'+prefix)+'\r\n');this.count++;
     if(this.tail.length>=256){this.parts.push(this.tail.join(''));this.tail=[];}
   }
   end(reason,time=Date.now()){if(!this.active)return;this.append('断开',reason||'串口已断开',time);this.active=false;}
@@ -203,9 +206,17 @@ class SerialClient{
   }
 }
 function readbackEqual(actual,expected){return Math.abs(actual-Math.fround(expected))<=Math.max(.00051,Math.abs(expected)*1e-6);}
-const IMPORT_DEFAULTS={product:'MA01',sensor:{gain:7,osr:3,filt:0,resx:0,resy:0,resz:0,tcmp:0},algo:{flag:59,xmap:.1,ymap:.1,zmap:-.1,dead:8.5,spike:20,stab:.1},log:{level:3}};
-const IMPORT_FIELDS={sensor:{gain:['增益 GAIN_SEL',0,7],osr:['过采样 OSR',0,3],filt:['数字滤波 DIG_FILT',0,7],resx:['X 分辨率',0,3],resy:['Y 分辨率',0,3],resz:['Z 分辨率',0,3],tcmp:['温度补偿 TCMP_EN',0,1]},algo:{flag:['算法标志位',0,255],xmap:['X 映射系数'],ymap:['Y 映射系数'],zmap:['Z 映射系数'],dead:['死区倍数'],spike:['尖峰滤波倍数'],stab:['稳定性阈值']},log:{level:['日志等级',0,4]}};
-const ALIASES={sensor:{gain_sel:'gain',dig_filt:'filt',res_x:'resx',res_y:'resy',res_z:'resz',tcmp_en:'tcmp'},algo:{FLAG_RES:'flag',flag_res:'flag',X_MAPPING_VALUE:'xmap',Y_MAPPING_VALUE:'ymap',Z_MAPPING_VALUE:'zmap',x_map:'xmap',y_map:'ymap',z_map:'zmap',dead_value:'dead',spike_multiplier:'spike',stability_threshold:'stab',stability:'stab'},log:{}};
+const IMPORT_DEFAULTS={product:'MA01',sensor:{type:1,gain:5,osr:2,filt:0,resx:0,resy:0,resz:0,tcmp:0,range:0,opmode:0,magch:7,version:0},algo:{flag:123,xmap:1,ymap:1,zmap:1,dead:8.5,spike:20,stab:.1},log:{level:3}};
+const IMPORT_FIELDS={sensor:{type:['sensor type',0,1],gain:['gain GAIN_SEL',0,15],osr:['oversampling OSR',0,5],filt:['digital filter DIG_FILT',0,7],resx:['X resolution',0,3],resy:['Y resolution',0,3],resz:['Z resolution',0,3],tcmp:['temperature compensation TCMP_EN',0,1],range:['TMAG range',0,1],opmode:['TMAG operating mode',0,3],magch:['TMAG magnetic channels',0,7],version:['TMAG sensor version',0,1]},algo:{flag:['algorithm flags',0,255],xmap:['X mapping coefficient'],ymap:['Y mapping coefficient'],zmap:['Z mapping coefficient'],dead:['dead-band multiplier'],spike:['spike filter multiplier'],stab:['stability threshold']},log:{level:['log level',0,4]}};
+const ALIASES={sensor:{sensor_type:'type',gain_sel:'gain',dig_filt:'filt',res_x:'resx',res_y:'resy',res_z:'resz',tcmp_en:'tcmp',op_mode:'opmode',mode:'opmode',mag_ch:'magch',channel:'magch',sensor_version:'version'},algo:{FLAG_RES:'flag',flag_res:'flag',X_MAPPING_VALUE:'xmap',Y_MAPPING_VALUE:'ymap',Z_MAPPING_VALUE:'zmap',x_map:'xmap',y_map:'ymap',z_map:'zmap',dead_value:'dead',spike_multiplier:'spike',stability_threshold:'stab',stability:'stab'},log:{}};
+function normalizeSensorType(value){
+  if(typeof value==='string'){
+    const name=value.trim().toUpperCase();
+    if(name==='TMAG3001')return 1;
+    if(name==='MLX90393')return 0;
+  }
+  return value;
+}
 function prepareImport(input){
   let obj=input;
   if(typeof input==='string'){if(input.length>65536)throw new Error('配置文件不能超过 64 KB。');try{obj=JSON.parse(input.replace(/^\uFEFF/,''));}catch(e){throw new Error('JSON 格式错误：'+e.message);}}
@@ -226,13 +237,16 @@ function prepareImport(input){
       const name=Object.hasOwn(ALIASES[section],key)?ALIASES[section][key]:key,field=section+'.'+name;
       if(!Object.hasOwn(IMPORT_FIELDS[section],name))throw new Error('未知配置字段：'+group+'.'+key);
       if(seen.has(field))throw new Error('同一字段使用了重复别名：'+field);seen.add(field);
-      const n=field==='algo.flag'&&typeof raw==='string'&&/^0x[\da-f]{1,2}$/i.test(raw)?parseInt(raw,16):raw,rule=IMPORT_FIELDS[section][name];
+      let n=field==='algo.flag'&&typeof raw==='string'&&/^0x[\da-f]{1,2}$/i.test(raw)?parseInt(raw,16):raw;
+      if(field==='sensor.type')n=normalizeSensorType(n);
+      const rule=IMPORT_FIELDS[section][name];
       if(typeof n!=='number'||!Number.isFinite(n)||!Number.isFinite(Math.fround(n)))throw new Error(field+' 必须是有限 float32 数值。');
       if(rule.length===3&&(!Number.isInteger(n)||n<rule[1]||n>rule[2]))throw new Error(`${field} 必须是 ${rule[1]}–${rule[2]} 的整数。`);
       config[section][name]=n;
     }
   }
   if(!seen.size)throw new Error('配置文件未包含任何可用参数。');
+  if(config.sensor.type!==IMPORT_DEFAULTS.sensor.type)throw new Error('sensor.type 必须是 TMAG3001（1）。');
   const missing=seen.has('product')?[]:['product'];for(const[group,fields]of Object.entries(IMPORT_FIELDS))for(const key of Object.keys(fields))if(!seen.has(group+'.'+key))missing.push(group+'.'+key);
   const wire=JSON.stringify({...config,algo:{...config.algo,flag:'0x'+config.algo.flag.toString(16).toUpperCase().padStart(2,'0')}}),bytes=new TextEncoder().encode(wire).length;
   if(bytes>1023)throw new Error('规范化配置超过 1023 字节，无法导入。');

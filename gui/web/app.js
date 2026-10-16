@@ -65,6 +65,18 @@ function exportSerialLog(){
   setTimeout(()=>URL.revokeObjectURL(url),1000);toast('串口日志已导出（.log）');
 }
 $('exportCsv').onclick=exportCsv;$('exportLog').onclick=exportCsv;$('exportSerialLog').onclick=exportSerialLog;
+$('clearData').onclick=()=>{
+  if(!samples.length){toast('暂无数据可清空。');return;}
+  if(!confirm(`确定要清空当前缓存的 ${samples.length.toLocaleString()} 个数据点吗？此操作不可恢复。`))return;
+  const count=samples.length;
+  samples.clear();magnitudes=[];rateMarks=[];tick=0;
+  epoch=performance.now();wallEpoch=Date.now();lastSampleAt=0;
+  hover=[null,null,null];
+  document.querySelectorAll('.chart-tooltip').forEach(t=>t.style.display='none');
+  dirty=true;renderLogs();syncStatus();draw();
+  log(`已清空 ${count.toLocaleString()} 个数据点。`,'系统');
+  toast('数据已清空');
+};
 device.on('state',({state,detail})=>{if(state==='connected'){serialLog.begin(settings.port,settings.baud);resetSession('device');}if(state==='disconnected')serialLog.end(detail);if(state==='disconnected'&&detail){log(detail,'连接');if(mode==='device')toast(detail);deviceLogLevel=null;}syncStatus();});
 device.on('sample',v=>{if(mode!=='device')return;const now=performance.now();lastSampleAt=now;rateMarks.push(now);if(rateMarks.length>10000)rateMarks=rateMarks.slice(-5000);acquisition='streaming';addSample(v,(now-epoch)/1000,Date.now());});
 device.on('tx',command=>{serialLog.append('TX',command);log(command,'发送',false);});

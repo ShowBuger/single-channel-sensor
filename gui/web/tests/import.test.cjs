@@ -59,13 +59,21 @@ test('non-default product model imports and is verified by full device readback'
   assert.equal(result.config.product,'MA02-A');assert.equal(f.config.product,'MA02-A');await f.client.disconnect();
 });
 test('validation rejects unknown fields, wrong types, out of range, duplicate aliases and unsafe floats',()=>{
-  for(const input of ['{broken','[]','null','{}','{"sensor":{"gain":8}}','{"sensor":{"osr":1.5}}','{"log":{"level":"3"}}','{"algo":{"flag":"0x100"}}','{"sensor":{"typo":1}}','{"algo":{"xmap":1e100}}','{"sensor":{"resx":1,"res_x":2}}','{"algo":{},"algorithm":{"flag":1}}'])assert.throws(()=>C.prepareImport(input),undefined,input);
+  for(const input of ['{broken','[]','null','{}','{"sensor":{"gain":16}}','{"sensor":{"osr":1.5}}','{"log":{"level":"3"}}','{"algo":{"flag":"0x100"}}','{"sensor":{"type":"MLX90393"}}','{"sensor":{"typo":1}}','{"algo":{"xmap":1e100}}','{"sensor":{"resx":1,"res_x":2}}','{"algo":{},"algorithm":{"flag":1}}'])assert.throws(()=>C.prepareImport(input),undefined,input);
   assert.throws(()=>C.prepareImport({algo:{xmap:Infinity}}));
   assert.throws(()=>C.prepareImport(' '.repeat(65537)));
 });
 test('missing fields use firmware defaults and BOM plus aliases are supported',()=>{
   const p=C.prepareImport('\uFEFF{"algo":{"FLAG_RES":"0X1F","X_MAPPING_VALUE":0.123456},"log":{"level":0}}');
-  assert.equal(p.config.algo.flag,31);assert.equal(p.config.algo.xmap,.123456);assert.equal(p.config.sensor.gain,7);assert(p.missing.includes('sensor.gain'));assert(!p.missing.includes('log.level'));
+  assert.equal(p.config.algo.flag,31);assert.equal(p.config.algo.xmap,.123456);assert.equal(p.config.sensor.type,1);assert.equal(p.config.sensor.gain,5);assert(p.missing.includes('sensor.gain'));assert(!p.missing.includes('log.level'));
+});
+test('TMAG3001 sensor type names, numeric values, aliases and fields normalize',()=>{
+  const named=C.prepareImport({sensor:{type:'TMAG3001',gain_sel:15,osr:5,dig_filt:0,res_x:3,res_y:2,res_z:1,tcmp_en:1,range:1,op_mode:3,mag_ch:6,sensor_version:1}});
+  assert.deepEqual(named.config.sensor,{type:1,gain:15,osr:5,filt:0,resx:3,resy:2,resz:1,tcmp:1,range:1,opmode:3,magch:6,version:1});
+  const numeric=C.prepareImport({sensor:{type:1,opmode:0,magch:7,version:0}});
+  assert.equal(numeric.config.sensor.type,1);
+  assert.throws(()=>C.prepareImport({sensor:{type:'MLX90393'}}),/sensor\.type/);
+  assert.throws(()=>C.prepareImport({sensor:{range:2}}));
 });
 test('new log-prefixed sensor data and compact configuration replies parse correctly',()=>{
   assert.deepEqual(C.parseLine('[I][DATA] sensor0:0.12,-0.05,0.33').values,[.12,-.05,.33]);
@@ -95,7 +103,7 @@ test('current firmware start/stop/calibration acknowledgements work',async()=>{
 
 test('reconnection can clear an interrupted import before automatic config read',async()=>{
   const f=firmware({initialState:'receiving'});await f.client.connect();await f.client.resetImport();
-  const actual=await f.client.readFullConfig();assert.equal(actual.algo.flag,59);assert.equal(actual.log.level,3);
+  const actual=await f.client.readFullConfig();assert.equal(actual.algo.flag,C.IMPORT_DEFAULTS.algo.flag);assert.equal(actual.log.level,3);
   assert.equal(f.commands[0],'ML IMPORT_CANCEL');assert.equal(f.state,'idle');await f.client.disconnect();
 });
 
@@ -122,7 +130,7 @@ test('old firmware rejects import reset immediately but remains usable for monit
   const f=firmware({oldFirmware:true,legacy:true});await f.client.connect();
   assert.equal(await f.client.resetImport({allowUnsupported:true}),false);
   await assert.rejects(f.client.readFullConfig(),/旧版配置回包/);
-  assert.equal(f.client.connected,true);assert.equal((await f.client.readConfig()).flags,59);
+  assert.equal(f.client.connected,true);assert.equal((await f.client.readConfig()).flags,C.IMPORT_DEFAULTS.algo.flag);
   await assert.rejects(f.client.resetImport(),/不支持配置导入/);assert.equal(f.client.connected,true);
   await f.client.disconnect();
 });
