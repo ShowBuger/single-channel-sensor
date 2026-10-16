@@ -1,255 +1,136 @@
 #include "json_config_loader.h"
+#include "config_parser.h"
 #include <string.h>
-#include <stdlib.h>
 #include <ctype.h>
 
-/* Helper: skip whitespace and count newlines */
 static char *skip_ws(char *p, uint16_t *line)
 {
-    while (*p && isspace((unsigned char)*p))
-    {
+    while (*p && isspace((unsigned char)*p)) {
         if (*p == '\n') (*line)++;
         p++;
     }
     return p;
 }
 
-/* Helper: parse number (int or float) */
-static char *parse_number(char *p, float *out)
+/* 配置中的键和值都是ASCII；不支持需要转义的字符串。 */
+static char *parse_string(char *p, char *out, size_t size)
 {
-    char *end;
-    *out = strtof(p, &end);
-    return (end > p) ? end : NULL;
-}
-
-/* Helper: parse string value (strip quotes) */
-static char *parse_string(char *p, char *buf, size_t bufsize)
-{
-    if (*p != '"') return NULL;
-    p++;
-    size_t i = 0;
-    while (*p && *p != '"' && i < bufsize - 1)
-        buf[i++] = *p++;
-    buf[i] = '\0';
-    return (*p == '"') ? (p + 1) : NULL;
-}
-
-/* Helper: parse hex string like "0x3B" */
-static char *parse_hex(char *p, uint32_t *out)
-{
-    if (p[0] == '"' && p[1] == '0' && (p[2] == 'x' || p[2] == 'X'))
-    {
-        char *end;
-        *out = strtoul(p + 3, &end, 16);
-        if (*end == '"') return end + 1;
+    if (*p++ != '"') return NULL;
+    size_t n = 0;
+    while (*p && *p != '"') {
+        if ((unsigned char)*p < 32 || *p == '\\' || n + 1 >= size) return NULL;
+        out[n++] = *p++;
     }
-    return NULL;
+    out[n] = '\0';
+    return *p == '"' ? p + 1 : NULL;
 }
 
-/* Main parser */
-uint8_t JsonConfig_Parse(char *json_str, Config_TypeDef *cfg, JsonParseResult_t *result)
+static char *parse_value(char *p, char *out, size_t size, uint8_t allow_string)
+{
+    if (*p == '"') return allow_string ? parse_string(p, out, size) : NULL;
+    char *start = p;
+    if (*p == '-') p++;
+    if (*p == '0') p++;
+    else {
+        if (*p < '1' || *p > '9') return NULL;
+        while (isdigit((unsigned char)*p)) p++;
+    }
+    if (*p == '.') {
+        p++;
+        if (!isdigit((unsigned char)*p)) return NULL;
+        while (isdigit((unsigned char)*p)) p++;
+    }
+    if (*p == 'e' || *p == 'E') {
+        p++;
+        if (*p == '+' || *p == '-') p++;
+        if (!isdigit((unsigned char)*p)) return NULL;
+        while (isdigit((unsigned char)*p)) p++;
+    }
+    size_t n = (size_t)(p - start);
+    if (!n || n >= size) return NULL;
+    memcpy(out, start, n);
+    out[n] = '\0';
+    return p;
+}
+
+uint8_t JsonConfig_Parse(char *json, Config_TypeDef *cfg, JsonParseResult_t *result)
 {
     memset(result, 0, sizeof(*result));
-    result->status = JSON_PARSE_OK;
-    uint16_t line = 1;
-
-    char *p = skip_ws(json_str, &line);
-    if (*p != '{') { result->status = JSON_PARSE_SYNTAX_ERR; result->error_line = line; return 1; }
-    p = skip_ws(p + 1, &line);
-
-    /* Start with defaults, then override from JSON */
     Config_SetDefaults(cfg);
-
-    while (*p && *p != '}')
-    {
-        /* Parse key */
-        char key[24];
+    uint16_t line = 1;
+    char key[24] = "";
+    /* 第一遍确定产品；第二遍应用字段，使默认补全与JSON键顺序无关。 */
+    for (uint8_t pass = 0; pass < 2; pass++) {
+        line = 1;
+        char *p = skip_ws(json, &line);
+        if (*p++ != '{') goto syntax_err;
         p = skip_ws(p, &line);
-        if (*p == ',') { p++; continue; }
-        if (*p == '}') break;
-
-        p = parse_string(p, key, sizeof(key));
-        if (!p) { result->status = JSON_PARSE_SYNTAX_ERR; result->error_line = line; return 1; }
-
-        p = skip_ws(p, &line);
-        if (*p != ':') { result->status = JSON_PARSE_SYNTAX_ERR; result->error_line = line; return 1; }
-        p = skip_ws(p + 1, &line);
-
-        /* Parse value based on key */
-        if (strcmp(key, "product") == 0)
-        {
-            char *next = parse_string(p, cfg->product_model, sizeof(cfg->product_model));
-            if (!next || cfg->product_model[0] == '\0')
-            {
-                result->status = JSON_PARSE_VALUE_ERR;
-                result->error_line = line;
-                strncpy(result->error_key, "product", sizeof(result->error_key) - 1);
-                return 1;
+        while (*p && *p != '}') {
+            char value[48];
+            p = parse_string(p, key, sizeof(key));
+            if (!p) goto syntax_err;
+            p = skip_ws(p, &line);
+            if (*p++ != ':') goto syntax_err;
+            p = skip_ws(p, &line);
+            if (!strcmp(key, "product") || !strcmp(key, "$schema")) {
+                p = parse_string(p, value, sizeof(value));
+                if (!p) goto value_err;
+                if (!strcmp(key, "product")) {
+                    if (!pass && Config_SetDefaultsForProduct(cfg, value)) goto value_err;
+                } else if (strcmp(value, "sensor_config_v1")) goto value_err;
+            } else {
+                const char *group = !strcmp(key, "algorithm") ? "algo" : key;
+                if (strcmp(group, "sensor") && strcmp(group, "algo") && strcmp(group, "log")) goto value_err;
+                if (*p++ != '{') goto syntax_err;
+                p = skip_ws(p, &line);
+                while (*p && *p != '}') {
+                    char subkey[24], field[48];
+                    p = parse_string(p, subkey, sizeof(subkey));
+                    if (!p) goto syntax_err;
+                    p = skip_ws(p, &line);
+                    if (*p++ != ':') goto syntax_err;
+                    p = skip_ws(p, &line);
+                    strcpy(field, group);
+                    strcat(field, ".");
+                    strcat(field, subkey);
+                    uint8_t string_ok = !strcmp(field, "sensor.type") || !strcmp(field, "sensor.sensor_type") ||
+                        !strcmp(field, "algo.flag") || !strcmp(field, "algo.FLAG_RES") || !strcmp(field, "algo.flag_res");
+                    p = parse_value(p, value, sizeof(value), string_ok);
+                    if (!p) goto value_err;
+                    if (pass && Config_ParseSingleKV(cfg, field, value)) {
+                        strncpy(key, subkey, sizeof(key) - 1);
+                        goto value_err;
+                    }
+                    p = skip_ws(p, &line);
+                    if (*p == '}') break;
+                    if (*p++ != ',') goto syntax_err;
+                    p = skip_ws(p, &line);
+                    if (*p == '}') goto syntax_err;
+                }
+                if (*p++ != '}') goto syntax_err;
             }
-            p = next;
+            p = skip_ws(p, &line);
+            if (*p == '}') break;
+            if (*p++ != ',') goto syntax_err;
+            p = skip_ws(p, &line);
+            if (*p == '}') goto syntax_err;
         }
-        else if (strcmp(key, "sensor") == 0 || strcmp(key, "algo") == 0 || strcmp(key, "log") == 0)
-        {
-            /* Nested object */
-            if (*p != '{') { result->status = JSON_PARSE_SYNTAX_ERR; result->error_line = line; return 1; }
-            p = skip_ws(p + 1, &line);
-
-            while (*p && *p != '}')
-            {
-                char subkey[24];
-                p = skip_ws(p, &line);
-                if (*p == ',') { p++; continue; }
-                if (*p == '}') break;
-
-                p = parse_string(p, subkey, sizeof(subkey));
-                if (!p) { result->status = JSON_PARSE_SYNTAX_ERR; result->error_line = line; return 1; }
-
-                p = skip_ws(p, &line);
-                if (*p != ':') { result->status = JSON_PARSE_SYNTAX_ERR; result->error_line = line; return 1; }
-                p = skip_ws(p + 1, &line);
-
-                float fval;
-                uint32_t uval;
-                char *np;
-
-                /* Sensor config */
-                if (strcmp(key, "sensor") == 0)
-                {
-                    if (strcmp(subkey, "type") == 0 || strcmp(subkey, "sensor_type") == 0) {
-                        if (!(np = parse_number(p, &fval))) goto parse_err;
-                        cfg->sensor_type = (uint8_t)fval; p = np;
-                    }
-                    else if (strcmp(subkey, "gain") == 0 || strcmp(subkey, "gain_sel") == 0) {
-                        if (!(np = parse_number(p, &fval))) goto parse_err;
-                        cfg->gain_sel = (uint8_t)fval; p = np;
-                    }
-                    else if (strcmp(subkey, "osr") == 0) {
-                        if (!(np = parse_number(p, &fval))) goto parse_err;
-                        cfg->osr = (uint8_t)fval; p = np;
-                    }
-                    else if (strcmp(subkey, "filt") == 0 || strcmp(subkey, "dig_filt") == 0) {
-                        if (!(np = parse_number(p, &fval))) goto parse_err;
-                        cfg->dig_filt = (uint8_t)fval; p = np;
-                    }
-                    else if (strcmp(subkey, "resx") == 0 || strcmp(subkey, "res_x") == 0) {
-                        if (!(np = parse_number(p, &fval))) goto parse_err;
-                        cfg->res_x = (uint8_t)fval; p = np;
-                    }
-                    else if (strcmp(subkey, "resy") == 0 || strcmp(subkey, "res_y") == 0) {
-                        if (!(np = parse_number(p, &fval))) goto parse_err;
-                        cfg->res_y = (uint8_t)fval; p = np;
-                    }
-                    else if (strcmp(subkey, "resz") == 0 || strcmp(subkey, "res_z") == 0) {
-                        if (!(np = parse_number(p, &fval))) goto parse_err;
-                        cfg->res_z = (uint8_t)fval; p = np;
-                    }
-                    else if (strcmp(subkey, "tcmp") == 0 || strcmp(subkey, "tcmp_en") == 0) {
-                        if (!(np = parse_number(p, &fval))) goto parse_err;
-                        cfg->tcmp_en = (uint8_t)fval; p = np;
-                    }
-                    else if (strcmp(subkey, "range") == 0) {
-                        if (!(np = parse_number(p, &fval))) goto parse_err;
-                        cfg->range = (uint8_t)fval; p = np;
-                    }
-                    else if (strcmp(subkey, "opmode") == 0 || strcmp(subkey, "op_mode") == 0 || strcmp(subkey, "mode") == 0) {
-                        if (!(np = parse_number(p, &fval))) goto parse_err;
-                        cfg->op_mode = (uint8_t)fval; p = np;
-                    }
-                    else if (strcmp(subkey, "magch") == 0 || strcmp(subkey, "mag_ch") == 0 || strcmp(subkey, "channel") == 0) {
-                        if (!(np = parse_number(p, &fval))) goto parse_err;
-                        cfg->mag_ch = (uint8_t)fval; p = np;
-                    }
-                    else if (strcmp(subkey, "version") == 0 || strcmp(subkey, "sensor_version") == 0) {
-                        if (!(np = parse_number(p, &fval))) goto parse_err;
-                        cfg->sensor_version = (uint8_t)fval; p = np;
-                    }
-                }
-                /* Algorithm config */
-                else if (strcmp(key, "algo") == 0)
-                {
-                    if (strcmp(subkey, "flag") == 0 || strcmp(subkey, "FLAG_RES") == 0) {
-                        /* Try hex first, then decimal */
-                        if ((np = parse_hex(p, &uval))) {
-                            cfg->FLAG_RES = (uint8_t)uval; p = np;
-                        }
-                        else if ((np = parse_number(p, &fval))) {
-                            cfg->FLAG_RES = (uint8_t)fval; p = np;
-                        }
-                        else goto parse_err;
-                    }
-                    else if (strcmp(subkey, "xmap") == 0 || strcmp(subkey, "X_MAPPING_VALUE") == 0) {
-                        if (!(np = parse_number(p, &fval))) goto parse_err;
-                        cfg->X_MAPPING_VALUE = fval; p = np;
-                    }
-                    else if (strcmp(subkey, "ymap") == 0 || strcmp(subkey, "Y_MAPPING_VALUE") == 0) {
-                        if (!(np = parse_number(p, &fval))) goto parse_err;
-                        cfg->Y_MAPPING_VALUE = fval; p = np;
-                    }
-                    else if (strcmp(subkey, "zmap") == 0 || strcmp(subkey, "Z_MAPPING_VALUE") == 0) {
-                        if (!(np = parse_number(p, &fval))) goto parse_err;
-                        cfg->Z_MAPPING_VALUE = fval; p = np;
-                    }
-                    else if (strcmp(subkey, "dead") == 0 || strcmp(subkey, "dead_value") == 0) {
-                        if (!(np = parse_number(p, &fval))) goto parse_err;
-                        cfg->dead_value = fval; p = np;
-                    }
-                    else if (strcmp(subkey, "spike") == 0 || strcmp(subkey, "spike_multiplier") == 0) {
-                        if (!(np = parse_number(p, &fval))) goto parse_err;
-                        cfg->spike_multiplier = fval; p = np;
-                    }
-                    else if (strcmp(subkey, "stab") == 0 || strcmp(subkey, "stability_threshold") == 0) {
-                        if (!(np = parse_number(p, &fval))) goto parse_err;
-                        cfg->stability_threshold = fval; p = np;
-                    }
-                }
-                /* Log config */
-                else if (strcmp(key, "log") == 0)
-                {
-                    if (strcmp(subkey, "level") == 0) {
-                        if (!(np = parse_number(p, &fval))) goto parse_err;
-                        cfg->log_level = (uint8_t)fval; p = np;
-                    }
-                }
-
-                p = skip_ws(p, &line);
-                continue;
-
-parse_err:
-                strncpy(result->error_key, subkey, sizeof(result->error_key) - 1);
-                result->status = JSON_PARSE_VALUE_ERR;
-                result->error_line = line;
-                return 1;
-            }
-
-            if (*p == '}') p++;
-        }
-
-        p = skip_ws(p, &line);
+        if (*p++ != '}' || *skip_ws(p, &line)) goto syntax_err;
     }
-
     return 0;
+
+syntax_err:
+    result->status = JSON_PARSE_SYNTAX_ERR;
+    goto failed;
+value_err:
+    result->status = JSON_PARSE_VALUE_ERR;
+failed:
+    result->error_line = line;
+    strncpy(result->error_key, key, sizeof(result->error_key) - 1);
+    return 1;
 }
 
 uint8_t JsonConfig_Validate(const Config_TypeDef *cfg)
 {
-    const char *model = cfg->product_model;
-    if (!model[0] || !memchr(model, '\0', sizeof(cfg->product_model))) return 1;
-    for (; *model; model++)
-    {
-        if (!((*model >= 'A' && *model <= 'Z') || (*model >= 'a' && *model <= 'z') ||
-              (*model >= '0' && *model <= '9') || *model == '_' || *model == '-' || *model == '.')) return 1;
-    }
-    if (cfg->sensor_type != SENSOR_TYPE_MLX90393 && cfg->sensor_type != SENSOR_TYPE_TMAG3001) return 1;
-    if (cfg->sensor_type != CONFIG_DEFAULT_SENSOR_TYPE) return 1;
-    if (cfg->sensor_type == SENSOR_TYPE_TMAG3001)
-    {
-        if (cfg->gain_sel > 15 || cfg->osr > 5) return 1;
-        if (cfg->range > 1 || cfg->op_mode > 3 || cfg->mag_ch > 7 || cfg->sensor_version > 1) return 1;
-    }
-    else if (cfg->gain_sel > 7 || cfg->osr > 3) return 1;
-    if (cfg->dig_filt > 7) return 1;
-    if (cfg->res_x > 3 || cfg->res_y > 3 || cfg->res_z > 3) return 1;
-    if (cfg->tcmp_en > 1) return 1;
-    if (cfg->log_level > 4) return 1;
-    return 0;
+    return Config_Validate(cfg);
 }

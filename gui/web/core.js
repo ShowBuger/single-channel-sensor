@@ -206,8 +206,18 @@ class SerialClient{
   }
 }
 function readbackEqual(actual,expected){return Math.abs(actual-Math.fround(expected))<=Math.max(.00051,Math.abs(expected)*1e-6);}
-const IMPORT_DEFAULTS={product:'MA01',sensor:{type:1,gain:5,osr:2,filt:0,resx:0,resy:0,resz:0,tcmp:0,range:0,opmode:0,magch:7,version:0},algo:{flag:123,xmap:1,ymap:1,zmap:1,dead:8.5,spike:20,stab:.1},log:{level:3}};
-const IMPORT_FIELDS={sensor:{type:['sensor type',0,1],gain:['gain GAIN_SEL',0,15],osr:['oversampling OSR',0,5],filt:['digital filter DIG_FILT',0,7],resx:['X resolution',0,3],resy:['Y resolution',0,3],resz:['Z resolution',0,3],tcmp:['temperature compensation TCMP_EN',0,1],range:['TMAG range',0,1],opmode:['TMAG operating mode',0,3],magch:['TMAG magnetic channels',0,7],version:['TMAG sensor version',0,1]},algo:{flag:['algorithm flags',0,255],xmap:['X mapping coefficient'],ymap:['Y mapping coefficient'],zmap:['Z mapping coefficient'],dead:['dead-band multiplier'],spike:['spike filter multiplier'],stab:['stability threshold']},log:{level:['log level',0,4]}};
+const IMPORT_DEFAULTS={product:'MA02',sensor:{type:1,gain:5,osr:4,filt:0,resx:0,resy:0,resz:0,tcmp:0,range:0,opmode:2,magch:7,version:0},algo:{flag:0,xmap:1,ymap:1,zmap:1,dead:8.5,spike:20,stab:.1},log:{level:4}};
+function productDefaults(product='MA02'){
+  if(product!=='MA01'&&product!=='MA02')throw new Error('product 产品型号必须是 MA01（MLX90393）或 MA02（TMAG3001）。');
+  const config=JSON.parse(JSON.stringify(IMPORT_DEFAULTS));config.product=product;
+  if(product==='MA01'){Object.assign(config.sensor,{type:0,gain:7,osr:2,opmode:0});Object.assign(config.algo,{flag:123,xmap:.1,ymap:.1,zmap:-.1});}
+  return config;
+}
+function sensorFieldActive(product,key){
+  if(['type','gain','osr'].includes(key))return true;
+  return(product==='MA01'?['filt','resx','resy','resz','tcmp']:['range','opmode','magch','version']).includes(key);
+}
+const IMPORT_FIELDS={sensor:{type:['传感器类型',0,1],gain:['增益档位',0,15],osr:['过采样档位',0,5],filt:['数字滤波等级',0,7],resx:['X 轴分辨率',0,3],resy:['Y 轴分辨率',0,3],resz:['Z 轴分辨率',0,3],tcmp:['温度补偿',0,1],range:['磁场量程',0,1],opmode:['工作模式',0,3],magch:['磁场测量通道',0,7],version:['传感器版本',0,1]},algo:{flag:['算法功能标志',0,255],xmap:['X 轴映射系数'],ymap:['Y 轴映射系数'],zmap:['Z 轴映射系数'],dead:['死区倍数'],spike:['尖峰过滤倍数'],stab:['稳定性阈值']},log:{level:['日志等级',0,4]}};
 const ALIASES={sensor:{sensor_type:'type',gain_sel:'gain',dig_filt:'filt',res_x:'resx',res_y:'resy',res_z:'resz',tcmp_en:'tcmp',op_mode:'opmode',mode:'opmode',mag_ch:'magch',channel:'magch',sensor_version:'version'},algo:{FLAG_RES:'flag',flag_res:'flag',X_MAPPING_VALUE:'xmap',Y_MAPPING_VALUE:'ymap',Z_MAPPING_VALUE:'zmap',x_map:'xmap',y_map:'ymap',z_map:'zmap',dead_value:'dead',spike_multiplier:'spike',stability_threshold:'stab',stability:'stab'},log:{}};
 function normalizeSensorType(value){
   if(typeof value==='string'){
@@ -222,7 +232,7 @@ function prepareImport(input){
   if(typeof input==='string'){if(input.length>65536)throw new Error('配置文件不能超过 64 KB。');try{obj=JSON.parse(input.replace(/^\uFEFF/,''));}catch(e){throw new Error('JSON 格式错误：'+e.message);}}
   const plain=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
   if(!plain(obj))throw new Error('配置顶层必须是 JSON 对象。');
-  const config=JSON.parse(JSON.stringify(IMPORT_DEFAULTS)),seen=new Set(),groups=new Set();
+  const config=productDefaults(Object.hasOwn(obj,'product')?obj.product:IMPORT_DEFAULTS.product),seen=new Set(),groups=new Set();
   for(const[group,value]of Object.entries(obj)){
     if(group==='$schema'){if(value!=='sensor_config_v1')throw new Error('不支持的 $schema。');continue;}
     if(group==='product'){
@@ -246,7 +256,9 @@ function prepareImport(input){
     }
   }
   if(!seen.size)throw new Error('配置文件未包含任何可用参数。');
-  if(config.sensor.type!==IMPORT_DEFAULTS.sensor.type)throw new Error('sensor.type 必须是 TMAG3001（1）。');
+  const expectedType=config.product==='MA01'?0:1;
+  if(config.sensor.type!==expectedType)throw new Error(`sensor.type 与产品型号不一致：${config.product} 必须为 ${expectedType===0?'MLX90393（0）':'TMAG3001（1）'}。`);
+  if(config.product==='MA01'&&(config.sensor.gain>7||config.sensor.osr>3))throw new Error('MA01 的 sensor.gain 必须为 0–7，sensor.osr 必须为 0–3。');
   const missing=seen.has('product')?[]:['product'];for(const[group,fields]of Object.entries(IMPORT_FIELDS))for(const key of Object.keys(fields))if(!seen.has(group+'.'+key))missing.push(group+'.'+key);
   const wire=JSON.stringify({...config,algo:{...config.algo,flag:'0x'+config.algo.flag.toString(16).toUpperCase().padStart(2,'0')}}),bytes=new TextEncoder().encode(wire).length;
   if(bytes>1023)throw new Error('规范化配置超过 1023 字节，无法导入。');
@@ -254,5 +266,5 @@ function prepareImport(input){
   const chunks=wire.match(/.{1,47}/g)||[];
   return{config,wire,bytes,chunks,missing};
 }
-return{parseLine,LineFramer,SampleBuffer,validateConfig,configCommands,csv,SerialLog,percentile95,vectorStyle,surfaceHeight,surfaceArrow,arrowMesh,SerialClient,prepareImport,IMPORT_DEFAULTS,IMPORT_FIELDS,readbackEqual};
+return{parseLine,LineFramer,SampleBuffer,validateConfig,configCommands,csv,SerialLog,percentile95,vectorStyle,surfaceHeight,surfaceArrow,arrowMesh,SerialClient,prepareImport,IMPORT_DEFAULTS,IMPORT_FIELDS,productDefaults,sensorFieldActive,readbackEqual};
 });

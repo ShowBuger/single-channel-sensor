@@ -1,13 +1,18 @@
 {
   "product": "MA02",
   "sensor": {
+    "type": 1,
     "gain": 7,
     "osr": 3,
     "filt": 0,
     "resx": 0,
     "resy": 0,
     "resz": 0,
-    "tcmp": 0
+    "tcmp": 0,
+    "range": 0,
+    "opmode": 2,
+    "magch": 7,
+    "version": 0
   },
   "algo": {
     "flag": "0x7B",

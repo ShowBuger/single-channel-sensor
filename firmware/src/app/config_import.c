@@ -37,7 +37,7 @@ void ConfigImport_ProcessCommand(const char *cmd)
     if (strncmp(cmd, "ML IMPORT_START ", 16) == 0)
     {
         int size = atoi(cmd + 16);
-        if (size <= 0 || size > IMPORT_BUFFER_SIZE)
+        if (size <= 0 || size >= IMPORT_BUFFER_SIZE)
         {
             Serial_Printf("IMPORT_ERROR: size=%d exceeds buffer=%d\r\n", size, IMPORT_BUFFER_SIZE);
             import_state = IMPORT_STATE_ERROR;
@@ -62,7 +62,7 @@ void ConfigImport_ProcessCommand(const char *cmd)
         const char *data = cmd + 15;
         uint16_t len = (uint16_t)strlen(data);
 
-        if (import_index + len > IMPORT_BUFFER_SIZE)
+        if (import_index + len >= IMPORT_BUFFER_SIZE || import_index + len > import_expected_size)
         {
             Serial_Printf("IMPORT_ERROR: buffer overflow\r\n");
             import_state = IMPORT_STATE_ERROR;
@@ -82,6 +82,11 @@ void ConfigImport_ProcessCommand(const char *cmd)
             return;
         }
 
+        if (import_index != import_expected_size) {
+            Serial_Printf("IMPORT_ERROR: incomplete payload\r\n");
+            import_state = IMPORT_STATE_ERROR;
+            return;
+        }
         import_buffer[import_index] = '\0';
 
         /* Parse JSON */
@@ -97,9 +102,10 @@ void ConfigImport_ProcessCommand(const char *cmd)
         }
 
         /* Validate */
-        if (JsonConfig_Validate(&new_config) != 0)
+        uint8_t validation_error = JsonConfig_Validate(&new_config);
+        if (validation_error != 0)
         {
-            Serial_Printf("IMPORT_ERROR: validation failed (out of range)\r\n");
+            Serial_Printf("IMPORT_ERROR: validation failed code=%u (product/type/range)\r\n", validation_error);
             import_state = IMPORT_STATE_ERROR;
             return;
         }
@@ -123,12 +129,15 @@ void ConfigImport_ProcessCommand(const char *cmd)
             return;
         }
 
-        /* Always restart sensor after config import */
-        if (SENSOR_Run[0])
-        {
-            sensor_stop();
+        /* 按型号应用到正确的句柄；停止状态下也写入寄存器。 */
+        uint8_t was_running = SENSOR_Run[0];
+        sensor_stop();
+        uint8_t failed = was_running ? sensor_start() : (Scan_Ports() == 0);
+        if (failed) {
+            Serial_Printf("IMPORT_ERROR: config saved but sensor apply failed\r\n");
+            import_state = IMPORT_STATE_ERROR;
+            return;
         }
-        sensor_start();
 
         import_state = IMPORT_STATE_COMPLETE;
         Serial_Printf("IMPORT_OK: config applied and saved\r\n");

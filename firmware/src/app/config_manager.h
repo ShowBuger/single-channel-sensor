@@ -2,6 +2,7 @@
 #define __CONFIG_MANAGER_H
 
 #include <stdint.h>
+#include <stddef.h>
 
 /**
  * @file config_manager.h
@@ -13,11 +14,11 @@
 
 #define CONFIG_SCHEMA_VERSION  5U   /* bump when layout changes */
 
-/* 传感器类型定义 */
-typedef enum {
-    SENSOR_TYPE_MLX90393 = 0,
-    SENSOR_TYPE_TMAG3001 = 1
-} SensorType_t;
+/* 类型也用于预处理判断，必须是数值宏。 */
+#define SENSOR_TYPE_MLX90393 0U
+#define SENSOR_TYPE_TMAG3001 1U
+#define SENSOR_TYPE_INVALID 0xFFU
+typedef uint8_t SensorType_t;
 
 /* 选择当前使用的传感器类型 */
 #define CURRENT_SENSOR_TYPE  SENSOR_TYPE_TMAG3001
@@ -75,7 +76,11 @@ typedef struct {
 
     /* -- Integrity ------------------------------------- */
     uint32_t checksum;
-} Config_TypeDef;                   /* ~72 bytes; fits in 1 KB page    */
+} Config_TypeDef;                   /* 56 bytes, same layout for both products */
+_Static_assert(sizeof(Config_TypeDef) == 56, "Config layout changed");
+_Static_assert(offsetof(Config_TypeDef, range) == 10, "Config range offset changed");
+_Static_assert(offsetof(Config_TypeDef, product_model) == 40, "Config product offset changed");
+_Static_assert(offsetof(Config_TypeDef, checksum) == 52, "Config checksum offset changed");
 
 /* Default values - 通用 */
 #define CONFIG_DEFAULT_SENSOR_TYPE      CURRENT_SENSOR_TYPE
@@ -109,6 +114,8 @@ void    Config_Init(void);
 uint8_t Config_Save(const Config_TypeDef *cfg);
 uint8_t Config_Load(Config_TypeDef *cfg);
 void    Config_SetDefaults(Config_TypeDef *cfg);
+uint8_t Config_SetDefaultsForProduct(Config_TypeDef *cfg, const char *product);
+SensorType_t Config_SensorTypeForProduct(const char *product);
 void    Config_RestoreDefault(void);
 
 /* 传感器配置应用 - 根据传感器类型自动应用配置 */

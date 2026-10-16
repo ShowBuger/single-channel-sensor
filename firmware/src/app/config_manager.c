@@ -4,6 +4,7 @@
 #include "../drivers/sensors/sensor_hal.h"
 #include "../drivers/bsp/log_manager.h"
 #include <string.h>
+#include "config_parser.h"
 
 #if CURRENT_SENSOR_TYPE == SENSOR_TYPE_TMAG3001
 #include "../drivers/sensors/tmag3001/tmag3001.h"
@@ -31,11 +32,20 @@ static uint32_t calculate_checksum(const Config_TypeDef *cfg)
     return sum;
 }
 
-void Config_SetDefaults(Config_TypeDef *cfg)
+SensorType_t Config_SensorTypeForProduct(const char *product)
 {
+    if (product && strcmp(product, "MA01") == 0) return SENSOR_TYPE_MLX90393;
+    if (product && strcmp(product, "MA02") == 0) return SENSOR_TYPE_TMAG3001;
+    return SENSOR_TYPE_INVALID;
+}
+
+uint8_t Config_SetDefaultsForProduct(Config_TypeDef *cfg, const char *product)
+{
+    SensorType_t type = Config_SensorTypeForProduct(product);
+    if (!cfg || type == SENSOR_TYPE_INVALID) return 1;
     memset(cfg, 0, sizeof(*cfg));
     cfg->schema_ver          = CONFIG_SCHEMA_VERSION;
-    cfg->sensor_type         = CONFIG_DEFAULT_SENSOR_TYPE;
+    cfg->sensor_type         = type;
     cfg->FLAG_RES            = CONFIG_DEFAULT_FLAG_RES;
     cfg->log_level           = CONFIG_DEFAULT_LOG_LEVEL;
     cfg->X_MAPPING_VALUE     = CONFIG_DEFAULT_X_MAP;
@@ -44,39 +54,28 @@ void Config_SetDefaults(Config_TypeDef *cfg)
     cfg->dead_value          = CONFIG_DEFAULT_DEAD_VALUE;
     cfg->spike_multiplier    = CONFIG_DEFAULT_SPIKE_MULT;
     cfg->stability_threshold = CONFIG_DEFAULT_STABILITY_THR;
-    strncpy(cfg->product_model, CONFIG_DEFAULT_PRODUCT_MODEL, sizeof(cfg->product_model) - 1);
+    strncpy(cfg->product_model, product, sizeof(cfg->product_model) - 1);
     cfg->product_model[sizeof(cfg->product_model) - 1] = '\0';
 
-    /* 根据传感器类型设置默认值 */
-#if CURRENT_SENSOR_TYPE == SENSOR_TYPE_TMAG3001
-    cfg->gain_sel        = CONFIG_DEFAULT_TMAG_GAIN_SEL;
-    cfg->osr             = CONFIG_DEFAULT_TMAG_OSR;
+    /* 两种产品使用同一布局；不生效的字段也保留合法默认值。 */
     cfg->range           = CONFIG_DEFAULT_TMAG_RANGE;
     cfg->op_mode         = CONFIG_DEFAULT_TMAG_OP_MODE;
     cfg->mag_ch          = CONFIG_DEFAULT_TMAG_MAG_CH;
     cfg->sensor_version  = CONFIG_DEFAULT_TMAG_VERSION;
-    /* TMAG3001不使用的字段设为0 */
-    cfg->dig_filt = 0;
-    cfg->res_x = 0;
-    cfg->res_y = 0;
-    cfg->res_z = 0;
-    cfg->tcmp_en = 0;
-#elif CURRENT_SENSOR_TYPE == SENSOR_TYPE_MLX90393
-    cfg->gain_sel        = CONFIG_DEFAULT_MLX_GAIN_SEL;
-    cfg->osr             = CONFIG_DEFAULT_MLX_OSR;
+    cfg->gain_sel        = type == SENSOR_TYPE_MLX90393 ? CONFIG_DEFAULT_MLX_GAIN_SEL : CONFIG_DEFAULT_TMAG_GAIN_SEL;
+    cfg->osr             = type == SENSOR_TYPE_MLX90393 ? CONFIG_DEFAULT_MLX_OSR : CONFIG_DEFAULT_TMAG_OSR;
     cfg->dig_filt        = CONFIG_DEFAULT_MLX_DIG_FILT;
     cfg->res_x           = CONFIG_DEFAULT_MLX_RES;
     cfg->res_y           = CONFIG_DEFAULT_MLX_RES;
     cfg->res_z           = CONFIG_DEFAULT_MLX_RES;
     cfg->tcmp_en         = CONFIG_DEFAULT_MLX_TCMP_EN;
-    /* MLX90393不使用的字段设为0 */
-    cfg->range = 0;
-    cfg->op_mode = 0;
-    cfg->mag_ch = 0;
-    cfg->sensor_version = 0;
-#endif
-
     cfg->checksum = calculate_checksum(cfg);
+    return 0;
+}
+
+void Config_SetDefaults(Config_TypeDef *cfg)
+{
+    Config_SetDefaultsForProduct(cfg, CONFIG_DEFAULT_PRODUCT_MODEL);
 }
 
 void Config_Init(void)
@@ -86,6 +85,7 @@ void Config_Init(void)
 
 uint8_t Config_Save(const Config_TypeDef *cfg_in)
 {
+    if (Config_Validate(cfg_in)) return 1;
     StoredConfig_TypeDef sc;
     uint32_t addr, page_err, i, words;
     FLASH_EraseInitTypeDef erase;
@@ -135,6 +135,21 @@ uint8_t Config_Load(Config_TypeDef *cfg)
     }
 
     memcpy(cfg, &sc->config, sizeof(Config_TypeDef));
+    /* 旧版TMAG模板曾写成MA01/type=1。仅迁移已通过Flash校验的旧记录，
+     * 保留用户的传感器和算法参数；新导入的冲突配置仍由校验拒绝。
+     */
+    if (cfg->sensor_type == SENSOR_TYPE_TMAG3001 &&
+        memchr(cfg->product_model, '\0', sizeof(cfg->product_model)) &&
+        strcmp(cfg->product_model, "MA01") == 0) {
+        memcpy(cfg->product_model, "MA02", 5);
+        cfg->checksum = calculate_checksum(cfg);
+        LOG_W("CFG", "Migrated legacy TMAG product MA01 to MA02");
+    }
+    if (Config_Validate(cfg)) {
+        Config_SetDefaults(cfg);
+        LOG_W("CFG", "Config fields invalid, using defaults");
+        return 1;
+    }
     LOG_I("CFG", "Config loaded from Flash");
     return 0;
 }
@@ -156,6 +171,7 @@ void Config_RestoreDefault(void)
  */
 uint8_t Config_ApplyToSensor(const Config_TypeDef *cfg, void *sensor_handle, uint8_t i2c_id)
 {
+    if (!sensor_handle || Config_Validate(cfg)) return 1;
     uint8_t result = 0;
 
 #if CURRENT_SENSOR_TYPE == SENSOR_TYPE_TMAG3001
@@ -188,14 +204,6 @@ uint8_t Config_ApplyToSensor(const Config_TypeDef *cfg, void *sensor_handle, uin
         result |= TMAG3001_SetRange(dev, TMAG3001_RANGE_40mT);
     }
 
-    /* 应用工作模式配置 */
-    if (cfg->op_mode <= 3) {
-        result |= TMAG3001_SetOperatingMode(dev, (TMAG3001_OperatingMode_t)cfg->op_mode);
-    } else {
-        LOG_W("CFG", "Invalid op_mode %u, using default", cfg->op_mode);
-        result |= TMAG3001_SetOperatingMode(dev, TMAG3001_MODE_STANDBY);
-    }
-
     /* 应用通道选择配置 */
     if (cfg->mag_ch <= 7) {
         result |= TMAG3001_SetMagChannels(dev, (TMAG3001_MagChannel_t)cfg->mag_ch);
@@ -205,7 +213,9 @@ uint8_t Config_ApplyToSensor(const Config_TypeDef *cfg, void *sensor_handle, uin
     }
 
     /* 清除 POR 和诊断状态标志 */
-    TMAG3001_ClearStatusFlags(dev);
+    result |= TMAG3001_ClearStatusFlags(dev);
+    /* 工作模式最后写入，避免提前进入睡眠后后续寄存器写入失败。 */
+    result |= TMAG3001_SetOperatingMode(dev, (TMAG3001_OperatingMode_t)cfg->op_mode);
 
 #elif CURRENT_SENSOR_TYPE == SENSOR_TYPE_MLX90393
     MLX90393_Handle *dev = (MLX90393_Handle *)sensor_handle;
@@ -229,6 +239,7 @@ uint8_t Config_ApplyToSensor(const Config_TypeDef *cfg, void *sensor_handle, uin
         LOG_E("CFG", "MLX90393 config apply failed");
         return 1;
     }
+    result = 0;  /* MLX返回状态字节，接口返回值归一化为成功/失败。 */
 #else
     #error "Unsupported sensor type"
 #endif

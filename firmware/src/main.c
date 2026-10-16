@@ -7,6 +7,7 @@
 #include "app/sensor_manager.h"
 #include "app/algo_params.h"
 #include "app/config_import.h"
+#include "app/config_parser.h"
 #include "app/config_manager.h"
 #include "drivers/sensors/sensor_hal.h"
 #include "drivers/bsp/log_manager.h"
@@ -33,7 +34,7 @@ static void IWDG_Init(void)
 
 void IWDG_Feed(void)
 {
-    HAL_IWDG_Refresh(&hiwdg);
+    if (hiwdg.Instance != NULL) HAL_IWDG_Refresh(&hiwdg);
 }
 
 /* -----------------------------------------------------------------------
@@ -127,28 +128,22 @@ static void serial_command_process(void)
     else if (strncmp(cmd, "ML SET ", 7) == 0)
     {
         char key[24];
-        float fval;
-        int   ival;
-        if (sscanf(cmd + 7, "%23s %f", key, &fval) == 2)
+        char value[32];
+        if (sscanf(cmd + 7, "%23s %31s", key, value) == 2)
         {
-            ival = (int)fval;
-            uint8_t ok = 1;
-            if      (!strcmp(key,"sensor.gain"))  { g_config.gain_sel=(uint8_t)ival; }
-            else if (!strcmp(key,"sensor.osr"))   { g_config.osr=(uint8_t)ival; }
-            else if (!strcmp(key,"sensor.filt"))  { g_config.dig_filt=(uint8_t)ival; }
-            else if (!strcmp(key,"sensor.resx"))  { g_config.res_x=(uint8_t)ival; }
-            else if (!strcmp(key,"sensor.resy"))  { g_config.res_y=(uint8_t)ival; }
-            else if (!strcmp(key,"sensor.resz"))  { g_config.res_z=(uint8_t)ival; }
-            else if (!strcmp(key,"sensor.tcmp"))  { g_config.tcmp_en=(uint8_t)ival; }
-            else if (!strcmp(key,"algo.flag"))    { g_config.FLAG_RES=(uint8_t)ival; FLAG_RES=g_config.FLAG_RES; }
-            else if (!strcmp(key,"algo.xmap"))    { g_config.X_MAPPING_VALUE=fval; X_MAPPING_VALUE=fval; }
-            else if (!strcmp(key,"algo.ymap"))    { g_config.Y_MAPPING_VALUE=fval; Y_MAPPING_VALUE=fval; }
-            else if (!strcmp(key,"algo.zmap"))    { g_config.Z_MAPPING_VALUE=fval; Z_MAPPING_VALUE=fval; }
-            else if (!strcmp(key,"algo.dead"))    { g_config.dead_value=fval; g_algo.dead_value=fval; }
-            else if (!strcmp(key,"algo.spike"))   { g_config.spike_multiplier=fval; g_algo.spike_multiplier=fval; }
-            else if (!strcmp(key,"algo.stab"))    { g_config.stability_threshold=fval; g_algo.stability_threshold=fval; }
-            else { Serial_Printf("Unknown key: %s\r\n", key); ok=0; }
-            if (ok) Serial_Printf("SET %s=%.3f\r\n", key, fval);
+            Config_TypeDef candidate = g_config;
+            if (Config_ParseSingleKV(&candidate, key, value) || Config_Validate(&candidate)) {
+                Serial_Printf("Error: invalid config %s\r\n", key);
+                return;
+            }
+            g_config = candidate;
+            FLAG_RES = g_config.FLAG_RES;
+            X_MAPPING_VALUE = g_config.X_MAPPING_VALUE;
+            Y_MAPPING_VALUE = g_config.Y_MAPPING_VALUE;
+            Z_MAPPING_VALUE = g_config.Z_MAPPING_VALUE;
+            AlgoParams_Load(&g_config);
+            Log_SetLevel((LogLevel_t)g_config.log_level);
+            Serial_Printf("SET %s=%s\r\n", key, value);
         }
         else Serial_Printf("Usage: ML SET <key> <value>\r\n");
     }
@@ -163,8 +158,10 @@ static void serial_command_process(void)
         Y_MAPPING_VALUE = g_config.Y_MAPPING_VALUE;
         Z_MAPPING_VALUE = g_config.Z_MAPPING_VALUE;
         AlgoParams_Load(&g_config);
-        if (SENSOR_Run[0]) { sensor_stop(); sensor_start(); }
-        Serial_Printf("Config applied.\r\n");
+        uint8_t was_running = SENSOR_Run[0];
+        sensor_stop();
+        uint8_t failed = was_running ? sensor_start() : (Scan_Ports() == 0);
+        Serial_Printf(failed ? "Config apply failed.\r\n" : "Config applied.\r\n");
     }
     else if (strcmp(cmd, "ML GETCFG") == 0)
     {
@@ -227,6 +224,8 @@ static void serial_command_process(void)
  * ----------------------------------------------------------------------- */
 int main(void)
 {
+    uint32_t reset_flags = RCC->CSR;
+    __HAL_RCC_CLEAR_RESET_FLAGS();
     HAL_Init();
     SystemClock_Config();
     Delay_Init();
@@ -238,10 +237,10 @@ int main(void)
     ConfigImport_Init(); /* 初始化配置导入模块 */
 
     LOG_I("SYS", "System Reset");
+    LOG_I("SYS", "Reset flags=0x%08lX IWDG=%u", (unsigned long)reset_flags,
+          (reset_flags & RCC_CSR_IWDGRSTF) ? 1U : 0U);
     IWDG_Feed();        /* 初始化耗时较长，喂一次防止在此处复位 */
-    Scan_Ports();
-    IWDG_Feed();        /* Scan_Ports 含 I2C 通信，完成后再喂一次 */
-    sensor_start();     /* 内含校准，校准完成后进入主循环再周期喂狗 */
+    sensor_start();     /* 内含扫描、配置应用和校准 */
 
     while (1)
     {

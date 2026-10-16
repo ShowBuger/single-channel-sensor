@@ -9,9 +9,9 @@
  * @brief Lightweight JSON config parser for UART import
  *
  * Design:
- * - Single-pass parser, no heap allocation
+ * - Two-pass parser (product defaults first), no heap allocation
  * - Handles nested objects: sensor{}, algo{}, log{}
- * - Validates ranges inline
+ * - Shares field parsing and validation with config_parser
  * - Returns parse status + line number on error
  */
 

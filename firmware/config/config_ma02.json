@@ -1,0 +1,29 @@
+{
+  "product": "MA02",
+  "sensor": {
+    "type": 1,
+    "gain": 5,
+    "osr": 4,
+    "filt": 0,
+    "resx": 0,
+    "resy": 0,
+    "resz": 0,
+    "tcmp": 0,
+    "range": 0,
+    "opmode": 2,
+    "magch": 7,
+    "version": 0
+  },
+  "algo": {
+    "flag": 0,
+    "xmap": 1,
+    "ymap": 1,
+    "zmap": 1,
+    "dead": 8.5,
+    "spike": 20,
+    "stab": 0.1
+  },
+  "log": {
+    "level": 4
+  }
+}

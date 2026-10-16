@@ -8,6 +8,10 @@
 #include "../drivers/bsp/log_manager.h"
 #include "config_manager.h"
 #include "algo_params.h"
+#include "config_parser.h"
+#include "stm32f1xx_hal.h"
+
+extern void IWDG_Feed(void);
 
 // 使用TMAG3001传感器
 #define SENSOR_HAL g_hal_tmag3001
@@ -65,21 +69,26 @@ uint8_t Scan_Ports(void)
     uint8_t sensor_count = 0;
     uint8_t r_actual, r_ref;
 
+    SENSOR_List[0] = 0;
+    SENSOR_Run[0] = 0;
+    if (Config_Validate(&g_config)) return 0;
+
     LOG_D("SCAN", "[scan] Init actual sensor (TMAG3001, addr=0x35)...");
     tmag_actual_sensors[0].i2c_addr = TMAG3001_I2C_ADDR_35;
     r_actual = SENSOR_HAL.init(&tmag_actual_sensors[0], 0, 0, -1, 0);
     if(r_actual == 0) {
         // 应用配置到实际传感器
-        Config_ApplyToSensor(&g_config, &tmag_actual_sensors[0], 0);
+        r_actual = Config_ApplyToSensor(&g_config, &tmag_actual_sensors[0], 0);
     }
     LOG_D("SCAN", "[scan] actual begin -> %s", r_actual == 0 ? "OK" : "FAIL");
+    IWDG_Feed();
 
     LOG_D("SCAN", "[scan] Init reference sensor (TMAG3001, addr=0x34)...");
     tmag_reference_sensors[0].i2c_addr = TMAG3001_I2C_ADDR_34;
     r_ref = SENSOR_HAL.init(&tmag_reference_sensors[0], 0, 1, -1, 0);
     if(r_ref == 0) {
         // 应用配置到参考传感器
-        Config_ApplyToSensor(&g_config, &tmag_reference_sensors[0], 0);
+        r_ref = Config_ApplyToSensor(&g_config, &tmag_reference_sensors[0], 0);
     }
     LOG_D("SCAN", "[scan] reference begin -> %s", r_ref == 0 ? "OK" : "FAIL");
 
@@ -193,6 +202,11 @@ void init_data_structures(void)
 uint8_t sensor_start()
 {
    int i = 0;
+   if (!Scan_Ports()) return 1;
+   if (g_config.op_mode != TMAG3001_MODE_STANDBY && g_config.op_mode != TMAG3001_MODE_CONTINUOUS) {
+       LOG_W("SENSOR", "Host sampling requires standby or continuous mode");
+       return 1;
+   }
    // 初始化所有数据结构
    init_data_structures();
 
@@ -210,6 +224,7 @@ uint8_t sensor_start()
    }
    else
    {
+       SENSOR_Run[i] = 0;
        LOG_W("SENSOR", "Sensor start failed!");
        return 1;
    }
@@ -219,6 +234,28 @@ uint8_t sensor_stop()
 {
    SENSOR_Run[0] = 0;
    return 0;	
+}
+
+static uint8_t wait_for_sensor_pair(void)
+{
+    uint32_t start = HAL_GetTick();
+    for (;;) {
+        uint8_t actual, reference;
+        IWDG_Feed();
+        if (TMAG3001_ReadConvStatus(&tmag_actual_sensors[0], &actual) ||
+            TMAG3001_ReadConvStatus(&tmag_reference_sensors[0], &reference)) return 1;
+        if ((actual | reference) & (TMAG3001_STATUS_DIAG | TMAG3001_STATUS_POR)) return 1;
+        uint8_t actual_new = !tmag_actual_sensors[0].sample_seen ||
+            (actual & TMAG3001_STATUS_SET_COUNT) != tmag_actual_sensors[0].last_set_count;
+        uint8_t reference_new = !tmag_reference_sensors[0].sample_seen ||
+            (reference & TMAG3001_STATUS_SET_COUNT) != tmag_reference_sensors[0].last_set_count;
+        if ((actual & reference & TMAG3001_STATUS_READY) && actual_new && reference_new) return 0;
+        if ((uint32_t)(HAL_GetTick() - start) >= 100U) {
+            LOG_W("SCAN", "Conversion timeout: actual=0x%02X ref=0x%02X", actual, reference);
+            return 1;
+        }
+        Delay_ms(1);
+    }
 }
 
 /**
@@ -234,6 +271,7 @@ uint8_t get_sensor_data()
    uint8_t status;
 
     sensor_data[i].valid = 1;
+    processed_sensor_data[i].valid = 0;
     if(SENSOR_Run[i] == 0)
     {
         sensor_data[i].valid = 0;  // 标记数据无效
@@ -262,6 +300,10 @@ uint8_t get_sensor_data()
 
     /*等待测量完成*/
     Delay_ms(MEASURE_INTERVAL);
+    if (wait_for_sensor_pair()) {
+        sensor_data[i].valid = 0;
+        return 1;
+    }
 
     /*读取实际传感器数据*/
     status = SENSOR_HAL.read_meas(&tmag_actual_sensors[i], 0, &sensor_data[i].actual);
@@ -1122,6 +1164,7 @@ uint8_t perform_sensor_calibration(void)
     uint8_t retry_count = 0;
     for(j = 0; j < calibration_samples; j++)
     {
+        IWDG_Feed();
         // 读取所有传感器数据
         if(get_sensor_data() != 0)
         {

@@ -21,25 +21,27 @@
 
 支持仓库 `firmware/config/config_example.json`，以及旧版 `tools/sensor_config.json`。长键名、旧版 `algorithm` 分组会转换成固件支持的短键名。拒绝未知字段、重复别名、非整数寄存器值、范围错误和非有限 float32 数值。JSON 文件须符合标准语法，不支持注释。
 
-顶层 `product` 为产品型号字符串，对应固件 `product_model[8]`，允许 1–7 个 ASCII 字母、数字、下划线、点或短横线。缺失时补为 `MA01`，预览标注“默认补全”；模板、导出和下发均保留该字段。设备完整读回必须包含实际 `product` 值，应用后进行字符串逐字比较。下位机 JSON 接收解析已补齐该字段，需要更新固件后才能导入保存。
+`product` 与 `sensor.type` 必须一致：MA01=MLX90393/0，MA02=TMAG3001/1。本分支默认MA02，并只允许向TMAG固件应用MA02配置；MA01模板可用于预览和导出。缺省字段使用对应产品默认值，所有字段都保存并完整读回，非当前传感器字段标注“仅存储，不生效”。
+
+MA02默认gain=5、osr=4、opmode=2、magch=7、算法flag=0、映射系数均为1、日志等级4。主机采样支持待机触发（opmode=0）和连续模式（2）。睡眠/唤醒模式（1/3）可以保存和应用，但请求启动主机采样会明确报错。
 
 ```json
 {
-  "product": "MA01",
-  "sensor": {"gain":7,"osr":3,"filt":0,"resx":0,"resy":0,"resz":0,"tcmp":0},
-  "algo": {"flag":"0x3B","xmap":0.1,"ymap":0.1,"zmap":-0.1,"dead":8.5,"spike":20,"stab":0.1},
-  "log": {"level":3}
+  "product": "MA02",
+  "sensor": {"type":1,"gain":5,"osr":4,"filt":0,"resx":0,"resy":0,"resz":0,"tcmp":0,"range":0,"opmode":2,"magch":7,"version":0},
+  "algo": {"flag":"0x00","xmap":1,"ymap":1,"zmap":1,"dead":8.5,"spike":20,"stab":0.1},
+  "log": {"level":4}
 }
 ```
 
 | 分组 | 参数与范围 |
 | --- | --- |
-| product | 顶层产品型号字符串，1–7 个字母、数字、下划线、点或短横线，默认 MA01 |
-| sensor | gain 0–7、osr 0–3、filt 0–7、resx/resy/resz 0–3、tcmp 0–1；均为整数 |
+| product | MA01 / MA02；本分支默认MA02，硬件应用只接受MA02 |
+| sensor | type 0–1；TMAG gain 0–15、osr 0–5、range 0–1、opmode 0–3、magch 0–7、version 0–1；MLX字段filt 0–7、resx/resy/resz 0–3、tcmp 0–1仍会保存 |
 | algo | flag 0–255 或十六进制字符串；映射系数、死区/尖峰倍数、稳定性阈值为有限 float32 数值 |
 | log | level 0 NONE、1 ERROR、2 WARN、3 INFO、4 DEBUG |
 
-**当前固件以 INFO 等级输出采样值。日志等级设为 0–2 时，不会输出实时曲线数据。** 上位机支持 `[I][DATA] sensor0:...` 及旧版无日志前缀数据。
+当前固件采样流独立于日志等级。上位机也兼容旧版带日志前缀的采样数据。
 
 ## 当前固件协议兼容
 
@@ -52,7 +54,7 @@
 - 超时或断线不会自动重发写入，防止重复应用。部分应用失败会提示核对设备状态；重新导入会先重置导入会话。
 - `ML GETCFG` 返回 `CFG_BEGIN\r\n`、一行完整 JSON、`\r\nCFG_END\r\n`。JSON 包含全部 sensor / algo / log 字段；算法和日志使用实时运行值。底层分多次短输出，避免 100 字节缓冲截断；浮点使用 9 位有效数字，保留 float32 精度。
 - `IMPORT_OK` 表示固件确认应用并保存；随后读取 `ML GETCFG`，逐项比较全部参数。上位机要求完整起止标记和全部字段，缺失、截断、未知字段、超时或值不一致均报错。
-- **当前寄存器参数仅保存，尚未写入芯片**：`config_import.c` 更新 `g_config` 并保存 Flash，但调用的 `sensor_manager.c::sensor_start()` 只初始化数据和标定，没有使用导入值调用寄存器配置。启动扫描调用的 `MLX90393_begin()` 仍使用 `MLX90393_DEFAULT_CONFIG`，因此重启也不能保证导入寄存器值生效。需要下位机将配置应用到实际与参考传感器，并处理失败回执。上位机已传递完整参数，但不能替代缺失的下位机应用步骤。
+- 配置会应用到实际/参考TMAG（0x35/0x34），失败不返回成功。停止状态保持停止，运行状态重新配置并校准。采样轮询数据就绪及转换计数，100ms超时，等待/校准期间喂狗；读数失败不输出上一帧数据。
 
 ## 可视化与数据
 

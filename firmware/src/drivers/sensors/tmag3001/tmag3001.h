@@ -45,6 +45,11 @@
 #define TMAG3001_REG_MAGNITUDE_RESULT   0x1B
 #define TMAG3001_REG_DEVICE_STATUS      0x1C
 
+#define TMAG3001_STATUS_READY          0x01U
+#define TMAG3001_STATUS_DIAG           0x02U
+#define TMAG3001_STATUS_POR            0x10U
+#define TMAG3001_STATUS_SET_COUNT      0xE0U
+
 // 设备ID和制造商ID
 // Device_ID 寄存器格式：Bit[3:2] = Version[1:0]
 // Version = 0h: TMAG3001 ±40mT  (Device_ID = 0x00)
@@ -136,6 +141,9 @@ typedef struct {
     TMAG3001_Version_t version;  // 设备版本
     TMAG3001_Range_t range;      // 测量范围
     TMAG3001_MagGain_t gain;     // 增益设置
+    uint8_t op_mode;
+    uint8_t last_set_count;
+    uint8_t sample_seen;
 } TMAG3001_Handle_t;
 
 // 测量结果结构

@@ -220,11 +220,18 @@ uint8_t TMAG3001_Init(TMAG3001_Handle_t *dev, uint8_t i2c_id, uint8_t i2c_addr, 
     // 保存配置
     dev->i2c_id = i2c_id;
     dev->i2c_addr = i2c_addr;
+    dev->op_mode = TMAG3001_MODE_STANDBY;
+    dev->sample_seen = 0;
+    dev->last_set_count = 0;
     dev->version = version;
     // 使用最大量程避免饱和
     dev->range = (version == TMAG3001_VERSION_A1) ? TMAG3001_RANGE_80mT : TMAG3001_RANGE_240mT;
     // 默认增益
     dev->gain = TMAG3001_GAIN_1_0;
+
+    /* 恢复标准I2C读格式/关闭CRC，兼容旧触发代码误改过I2C_RD的设备。 */
+    result = TMAG3001_WriteReg(dev, TMAG3001_REG_DEVICE_CONFIG_1, 0x00U);
+    if (result) return result;
 
     // 读取并验证设备ID
     result = TMAG3001_ReadID(dev, &device_id, &manufacturer_id);
@@ -270,16 +277,7 @@ uint8_t TMAG3001_Init(TMAG3001_Handle_t *dev, uint8_t i2c_id, uint8_t i2c_addr, 
     result = TMAG3001_SetMagGain(dev, TMAG3001_GAIN_2_0);
     if (result != 0) return result;
 
-    // 6. 清除 POR 和诊断状态标志
-    // 读取 CONV_STATUS 后，写回以清除 POR 位 (bit 4) 和 Diag_Status 位 (bit 7)
-    uint8_t conv_status;
-    result = TMAG3001_ReadReg(dev, TMAG3001_REG_CONV_STATUS, &conv_status);
-    if (result == 0 && (conv_status & 0x90)) {  // 检查 bit 7 和 bit 4
-        // 写回 0x90 到 CONV_STATUS 以清除 POR 和 Diag_Status 标志
-        TMAG3001_WriteReg(dev, TMAG3001_REG_CONV_STATUS, 0x90);
-    }
-
-    return 0;
+    return TMAG3001_ClearStatusFlags(dev);
 }
 
 /**
@@ -321,7 +319,21 @@ uint8_t TMAG3001_SetOperatingMode(TMAG3001_Handle_t *dev, TMAG3001_OperatingMode
     reg_val &= ~0x03;  // 清除OPERATING_MODE位
     reg_val |= (mode & 0x03);
 
-    return TMAG3001_WriteReg(dev, TMAG3001_REG_DEVICE_CONFIG_2, reg_val);
+    result = TMAG3001_WriteReg(dev, TMAG3001_REG_DEVICE_CONFIG_2, reg_val);
+    if (!result) {
+        dev->op_mode = (uint8_t)mode;
+        dev->sample_seen = 0;
+        /* 配置切换后也必须等到新的一组转换，不能沿用旧配置的结果。 */
+        if (mode == TMAG3001_MODE_STANDBY || mode == TMAG3001_MODE_CONTINUOUS) {
+            uint8_t status;
+            result = TMAG3001_ReadConvStatus(dev, &status);
+            if (!result) {
+                dev->last_set_count = status & TMAG3001_STATUS_SET_COUNT;
+                dev->sample_seen = 1;
+            }
+        }
+    }
+    return result;
 }
 
 /**
@@ -358,8 +370,9 @@ uint8_t TMAG3001_SetRange(TMAG3001_Handle_t *dev, TMAG3001_Range_t range)
     result = TMAG3001_ReadReg(dev, TMAG3001_REG_SENSOR_CONFIG_2, &reg_val);
     if (result != 0) return result;
 
-    reg_val &= ~0xC0;  // 清除RANGE位
-    reg_val |= ((range & 0x01) << 6);
+    /* TI datasheet 7.1.4: X_Y_Range[1], Z_Range[0]。 */
+    reg_val &= ~0x03;
+    reg_val |= range ? 0x03 : 0x00;
 
     result = TMAG3001_WriteReg(dev, TMAG3001_REG_SENSOR_CONFIG_2, reg_val);
     if (result == 0) {
@@ -380,13 +393,13 @@ uint8_t TMAG3001_SetConvAvg(TMAG3001_Handle_t *dev, TMAG3001_ConvAvg_t avg)
     uint8_t result;
     uint8_t reg_val;
 
-    result = TMAG3001_ReadReg(dev, TMAG3001_REG_DEVICE_CONFIG_2, &reg_val);
+    result = TMAG3001_ReadReg(dev, TMAG3001_REG_DEVICE_CONFIG_1, &reg_val);
     if (result != 0) return result;
 
     reg_val &= ~0x1C;  // 清除CONV_AVG位
     reg_val |= ((avg & 0x07) << 2);
 
-    return TMAG3001_WriteReg(dev, TMAG3001_REG_DEVICE_CONFIG_2, reg_val);
+    return TMAG3001_WriteReg(dev, TMAG3001_REG_DEVICE_CONFIG_1, reg_val);
 }
 
 /**
@@ -411,19 +424,14 @@ uint8_t TMAG3001_SetMagGain(TMAG3001_Handle_t *dev, TMAG3001_MagGain_t gain)
  */
 uint8_t TMAG3001_TriggerConversion(TMAG3001_Handle_t *dev)
 {
-    uint8_t result;
-    uint8_t reg_val;
-
-    result = TMAG3001_ReadReg(dev, TMAG3001_REG_DEVICE_CONFIG_1, &reg_val);
-    if (result != 0) return result;
-
-    /* 确保 CONV_START 位先清零，然后再置 1，产生 0→1 跳变触发转换 */
-    reg_val &= ~0x01;  // 先清除 CONV_START 位
-    result = TMAG3001_WriteReg(dev, TMAG3001_REG_DEVICE_CONFIG_1, reg_val);
-    if (result != 0) return result;
-
-    reg_val |= 0x01;   // 再设置 CONV_START 位，产生上升沿触发
-    return TMAG3001_WriteReg(dev, TMAG3001_REG_DEVICE_CONFIG_1, reg_val);
+    /* TI 6.5.1.1: conversion trigger is control-byte bit7, not CONFIG_1 bit0. */
+    IIC_Start(dev->i2c_id);
+    I2C_WriteByte(dev->i2c_id, dev->i2c_addr << 1);
+    if (I2C_WaitAck(dev->i2c_id)) { IIC_Stop(dev->i2c_id); return 1; }
+    I2C_WriteByte(dev->i2c_id, 0x80U | TMAG3001_REG_CONV_STATUS);
+    uint8_t result = I2C_WaitAck(dev->i2c_id);
+    IIC_Stop(dev->i2c_id);
+    return result;
 }
 
 /**
@@ -441,24 +449,16 @@ uint8_t TMAG3001_ReadConvStatus(TMAG3001_Handle_t *dev, uint8_t *status)
  * @brief 清除 CONV_STATUS 寄存器中的状态标志
  * @param dev 设备句柄
  * @return 0=成功, 非0=失败
- * @note 清除 POR (bit 4) 和 Diag_Status (bit 7) 标志
+ * @note 清除POR及诊断错误源，转换计数器为只读
  */
 uint8_t TMAG3001_ClearStatusFlags(TMAG3001_Handle_t *dev)
 {
-    uint8_t conv_status;
-    uint8_t result;
-
-    // 读取当前状态
-    result = TMAG3001_ReadReg(dev, TMAG3001_REG_CONV_STATUS, &conv_status);
-    if (result != 0) return result;
-
-    // 如果 POR (bit 4) 或 Diag_Status (bit 7) 被置位，清除它们
-    if (conv_status & 0x90) {
-        // 写入 0x90 来清除这些标志（W1C: Write 1 to Clear）
-        return TMAG3001_WriteReg(dev, TMAG3001_REG_CONV_STATUS, 0x90);
-    }
-
-    return 0;
+    /* Only POR in CONV_STATUS is W1C. Diag_Status is bit1 and read-only;
+     * clear its error sources in DEVICE_STATUS, never write the set counter.
+     */
+    uint8_t result = TMAG3001_WriteReg(dev, TMAG3001_REG_CONV_STATUS, TMAG3001_STATUS_POR);
+    if (result) return result;
+    return TMAG3001_WriteReg(dev, TMAG3001_REG_DEVICE_STATUS, 0x06U);
 }
 
 /**
@@ -471,13 +471,15 @@ uint8_t TMAG3001_ClearStatusFlags(TMAG3001_Handle_t *dev)
 uint8_t TMAG3001_ReadMagneticData(TMAG3001_Handle_t *dev, TMAG3001_Result_t *result)
 {
     uint8_t status;
-    uint8_t data[6];
+    uint8_t data[7];
     float sensitivity;
 
-    // 读取X, Y, Z轴数据 (6个寄存器)
-    // 注意：读取操作会清除 CONV_STATUS 寄存器的转换完成标志
-    status = TMAG3001_ReadRegs(dev, TMAG3001_REG_X_MSB_RESULT, data, 6);
+    // 连续读取XYZ及转换状态，记录与本次数据对应的转换计数器。
+    status = TMAG3001_ReadRegs(dev, TMAG3001_REG_X_MSB_RESULT, data, 7);
     if (status != 0) return status;
+    if (data[6] & (TMAG3001_STATUS_DIAG | TMAG3001_STATUS_POR)) return 4;
+    dev->last_set_count = data[6] & TMAG3001_STATUS_SET_COUNT;
+    dev->sample_seen = 1;
 
     // 组合MSB和LSB (12位数据，符号扩展到16位)
     result->x_raw = (int16_t)((data[0] << 8) | data[1]);
