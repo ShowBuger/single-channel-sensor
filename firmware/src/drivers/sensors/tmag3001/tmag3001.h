@@ -46,8 +46,17 @@
 #define TMAG3001_REG_DEVICE_STATUS      0x1C
 
 // 设备ID和制造商ID
-#define TMAG3001_DEVICE_ID              0x01
+// Device_ID 寄存器格式：Bit[3:2] = Version[1:0]
+// Version = 0h: TMAG3001 ±40mT  (Device_ID = 0x00)
+// Version = 2h: TMAG3001 ±120mT (Device_ID = 0x08)
+#define TMAG3001_DEVICE_ID_40mT         0x00    // ±40mT 版本 (A1)
+#define TMAG3001_DEVICE_ID_120mT        0x08    // ±120mT 版本 (A2)
 #define TMAG3001_MANUFACTURER_ID        0x5449  // "TI"
+
+// 版本掩码和提取
+#define TMAG3001_VERSION_MASK           0x0C    // Bit[3:2]
+#define TMAG3001_VERSION_40mT           0x00    // Version = 0h
+#define TMAG3001_VERSION_120mT          0x08    // Version = 2h
 
 // 操作模式
 typedef enum {
@@ -149,6 +158,7 @@ uint8_t TMAG3001_SetConvAvg(TMAG3001_Handle_t *dev, TMAG3001_ConvAvg_t avg);
 uint8_t TMAG3001_SetMagGain(TMAG3001_Handle_t *dev, TMAG3001_MagGain_t gain);
 uint8_t TMAG3001_TriggerConversion(TMAG3001_Handle_t *dev);
 uint8_t TMAG3001_ReadConvStatus(TMAG3001_Handle_t *dev, uint8_t *status);
+uint8_t TMAG3001_ClearStatusFlags(TMAG3001_Handle_t *dev);
 uint8_t TMAG3001_ReadMagneticData(TMAG3001_Handle_t *dev, TMAG3001_Result_t *result);
 
 // 扩展测量范围的辅助函数

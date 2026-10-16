@@ -204,6 +204,9 @@ uint8_t Config_ApplyToSensor(const Config_TypeDef *cfg, void *sensor_handle, uin
         result |= TMAG3001_SetMagChannels(dev, TMAG3001_CH_XYZ);
     }
 
+    /* 清除 POR 和诊断状态标志 */
+    TMAG3001_ClearStatusFlags(dev);
+
 #elif CURRENT_SENSOR_TYPE == SENSOR_TYPE_MLX90393
     MLX90393_Handle *dev = (MLX90393_Handle *)sensor_handle;
 

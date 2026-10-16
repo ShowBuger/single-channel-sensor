@@ -123,12 +123,12 @@ void ConfigImport_ProcessCommand(const char *cmd)
             return;
         }
 
-        /* Restart sensor if running */
+        /* Always restart sensor after config import */
         if (SENSOR_Run[0])
         {
             sensor_stop();
-            sensor_start();
         }
+        sensor_start();
 
         import_state = IMPORT_STATE_COMPLETE;
         Serial_Printf("IMPORT_OK: config applied and saved\r\n");

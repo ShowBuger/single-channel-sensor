@@ -230,8 +230,23 @@ uint8_t TMAG3001_Init(TMAG3001_Handle_t *dev, uint8_t i2c_id, uint8_t i2c_addr, 
     result = TMAG3001_ReadID(dev, &device_id, &manufacturer_id);
     if (result != 0) return result;
 
-    if (device_id != TMAG3001_DEVICE_ID || manufacturer_id != TMAG3001_MANUFACTURER_ID) {
-//        return 100;  // ID验证失败
+    // 验证制造商ID
+    if (manufacturer_id != TMAG3001_MANUFACTURER_ID) {
+        return 100;  // 制造商ID错误
+    }
+
+    // 验证设备ID并自动识别版本（±40mT 或 ±120mT）
+    uint8_t device_version = device_id & TMAG3001_VERSION_MASK;
+    if (device_version == TMAG3001_VERSION_40mT) {
+        // ±40mT 版本 (A1)
+        dev->version = TMAG3001_VERSION_A1;
+        dev->range = TMAG3001_RANGE_40mT;
+    } else if (device_version == TMAG3001_VERSION_120mT) {
+        // ±120mT 版本 (A2)
+        dev->version = TMAG3001_VERSION_A2;
+        dev->range = TMAG3001_RANGE_120mT;
+    } else {
+        return 101;  // 未知的设备版本
     }
 
     // 配置默认设置
@@ -254,6 +269,15 @@ uint8_t TMAG3001_Init(TMAG3001_Handle_t *dev, uint8_t i2c_id, uint8_t i2c_addr, 
     // 5. 设置默认增益为1.0x
     result = TMAG3001_SetMagGain(dev, TMAG3001_GAIN_2_0);
     if (result != 0) return result;
+
+    // 6. 清除 POR 和诊断状态标志
+    // 读取 CONV_STATUS 后，写回以清除 POR 位 (bit 4) 和 Diag_Status 位 (bit 7)
+    uint8_t conv_status;
+    result = TMAG3001_ReadReg(dev, TMAG3001_REG_CONV_STATUS, &conv_status);
+    if (result == 0 && (conv_status & 0x90)) {  // 检查 bit 7 和 bit 4
+        // 写回 0x90 到 CONV_STATUS 以清除 POR 和 Diag_Status 标志
+        TMAG3001_WriteReg(dev, TMAG3001_REG_CONV_STATUS, 0x90);
+    }
 
     return 0;
 }
@@ -407,6 +431,30 @@ uint8_t TMAG3001_TriggerConversion(TMAG3001_Handle_t *dev)
 uint8_t TMAG3001_ReadConvStatus(TMAG3001_Handle_t *dev, uint8_t *status)
 {
     return TMAG3001_ReadReg(dev, TMAG3001_REG_CONV_STATUS, status);
+}
+
+/**
+ * @brief 清除 CONV_STATUS 寄存器中的状态标志
+ * @param dev 设备句柄
+ * @return 0=成功, 非0=失败
+ * @note 清除 POR (bit 4) 和 Diag_Status (bit 7) 标志
+ */
+uint8_t TMAG3001_ClearStatusFlags(TMAG3001_Handle_t *dev)
+{
+    uint8_t conv_status;
+    uint8_t result;
+
+    // 读取当前状态
+    result = TMAG3001_ReadReg(dev, TMAG3001_REG_CONV_STATUS, &conv_status);
+    if (result != 0) return result;
+
+    // 如果 POR (bit 4) 或 Diag_Status (bit 7) 被置位，清除它们
+    if (conv_status & 0x90) {
+        // 写入 0x90 来清除这些标志（W1C: Write 1 to Clear）
+        return TMAG3001_WriteReg(dev, TMAG3001_REG_CONV_STATUS, 0x90);
+    }
+
+    return 0;
 }
 
 /**

@@ -42,6 +42,41 @@ static uint8_t tmag_read(void *h, uint8_t id, SensorData_t *out)
     uint8_t retry = 0;
     (void)id;
 
+    /* 测试代码：读取寄存器进行诊断 */
+    static uint8_t test_counter = 0;
+    if (test_counter < 2) {  /* 前两次读取时输出诊断信息 */
+        uint8_t device_id;
+        uint16_t manufacturer_id;
+
+        LOG_D("TMAG_TEST", "=== Register Diagnostic #%d (addr=0x%02X) ===", test_counter + 1, dev->i2c_addr);
+
+        if (TMAG3001_ReadID(dev, &device_id, &manufacturer_id) == 0) {
+            LOG_D("TMAG_TEST", "DEVICE_ID = 0x%02X (expect: 0x01)", device_id);
+            LOG_D("TMAG_TEST", "MANUFACTURER_ID = 0x%04X (expect: 0x5449 'TI')", manufacturer_id);
+            if (device_id == 0x08) {
+                LOG_I("TMAG_TEST", "Device ID 0x08 detected - TMAG3001 variant confirmed");
+            }
+        } else {
+            LOG_E("TMAG_TEST", "Failed to read IDs - I2C communication error!");
+        }
+
+        /* 读取CONV_STATUS寄存器分析详细状态 */
+        uint8_t conv_status;
+        if (TMAG3001_ReadConvStatus(dev, &conv_status) == 0) {
+            LOG_D("TMAG_TEST", "CONV_STATUS = 0x%02X (binary: %d%d%d%d %d%d%d%d)",
+                  conv_status,
+                  (conv_status >> 7) & 1, (conv_status >> 6) & 1,
+                  (conv_status >> 5) & 1, (conv_status >> 4) & 1,
+                  (conv_status >> 3) & 1, (conv_status >> 2) & 1,
+                  (conv_status >> 1) & 1, (conv_status >> 0) & 1);
+            LOG_D("TMAG_TEST", "  Bit[0] DATA_READY = %d", conv_status & 0x01);
+            LOG_D("TMAG_TEST", "  Bit[7] DIAG_STATUS = %d", (conv_status >> 7) & 0x01);
+        }
+
+        LOG_D("TMAG_TEST", "=== Diagnostic End ===");
+        test_counter++;
+    }
+
     /* 等待转换完成，最多重试 20 次（约 10ms） */
     while (retry < 20) {
         if (TMAG3001_ReadConvStatus(dev, &status) == 0) {
@@ -56,6 +91,7 @@ static uint8_t tmag_read(void *h, uint8_t id, SensorData_t *out)
     }
 
     if (retry >= 20) {
+        LOG_W("TMAG_TEST", "Conversion timeout after %d retries, CONV_STATUS=0x%02X", retry, status);
         return 1;  /* 超时，转换未完成 */
     }
 

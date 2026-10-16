@@ -205,6 +205,12 @@ static void serial_command_process(void)
     {
         Serial_Printf("LogLevel=%d (0=NONE 1=E 2=W 3=I 4=D)\r\n", (int)Log_GetLevel());
     }
+    else if (strcmp(cmd, "ML RESET") == 0)
+    {
+        Serial_Printf("System resetting...\r\n");
+        HAL_Delay(100);  /* 等待串口发送完成 */
+        NVIC_SystemReset();  /* 执行软件复位 */
+    }
     else Serial_Printf("Unknown: %s\r\n", cmd);
 }
 
