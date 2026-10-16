@@ -15,11 +15,11 @@
     "version": 0
   },
   "algo": {
-    "flag": 0,
-    "xmap": 1,
-    "ymap": 1,
-    "zmap": 1,
-    "dead": 8.5,
+    "flag": "0x7B",
+    "xmap": 0.1,
+    "ymap": 0.1,
+    "zmap": -0.1,
+    "dead": 0,
     "spike": 20,
     "stab": 0.1
   },
