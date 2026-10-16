@@ -11,7 +11,7 @@
 #include "../drivers/sensors/mlx90393/mlx90393.h"
 #endif
 
-#define CONFIG_MAGIC_NUMBER    0x52454C56U   /* "RELV" - version 5 */
+#define CONFIG_MAGIC_NUMBER    0x52454C57U   /* "RELW" - version 6: CONTINUOUS mode + 16x OSR */
 
 typedef struct {
     uint32_t       magic;

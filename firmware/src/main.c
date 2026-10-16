@@ -211,6 +211,14 @@ static void serial_command_process(void)
         HAL_Delay(100);  /* 等待串口发送完成 */
         NVIC_SystemReset();  /* 执行软件复位 */
     }
+    else if (strcmp(cmd, "ML RESTORE") == 0)
+    {
+        Serial_Printf("Restoring factory defaults...\r\n");
+        Config_RestoreDefault();
+        Serial_Printf("Factory defaults restored. Resetting...\r\n");
+        HAL_Delay(100);
+        NVIC_SystemReset();
+    }
     else Serial_Printf("Unknown: %s\r\n", cmd);
 }
 
@@ -243,6 +251,7 @@ int main(void)
         {
             get_sensor_data();
             print_processed_sensor_data(0);
+            HAL_Delay(100);  /* 100ms 间隔 = 10 Hz 采集频率 */
         }
     }
 }

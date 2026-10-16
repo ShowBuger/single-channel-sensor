@@ -12,7 +12,7 @@
 // 使用TMAG3001传感器
 #define SENSOR_HAL g_hal_tmag3001
 // TMAG3001测量延时: 典型转换时间约2ms
-#define MEASURE_INTERVAL 5
+#define MEASURE_INTERVAL 2  /* CONTINUOUS 模式下传感器自动转换，只需短暂延迟 */
 
 // FLAG_RES: 使用每一位代表不同的使能标志
 // Bit 0: 标定使能

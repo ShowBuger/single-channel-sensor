@@ -79,8 +79,8 @@ typedef struct {
 
 /* Default values - 通用 */
 #define CONFIG_DEFAULT_SENSOR_TYPE      CURRENT_SENSOR_TYPE
-#define CONFIG_DEFAULT_FLAG_RES         0x7BU  /* 0111 1011 */
-#define CONFIG_DEFAULT_LOG_LEVEL        3U
+#define CONFIG_DEFAULT_FLAG_RES         0x00U  
+#define CONFIG_DEFAULT_LOG_LEVEL        4U     /* Debug 级别 */
 #define CONFIG_DEFAULT_X_MAP            1.0f
 #define CONFIG_DEFAULT_Y_MAP            1.0f
 #define CONFIG_DEFAULT_Z_MAP            1.0f
@@ -98,9 +98,9 @@ typedef struct {
 
 /* Default values - TMAG3001 */
 #define CONFIG_DEFAULT_TMAG_GAIN_SEL    5U     /* 1.0x 增益 */
-#define CONFIG_DEFAULT_TMAG_OSR         2U     /* 4x 平均 */
+#define CONFIG_DEFAULT_TMAG_OSR         4U     /* 16x 平均 - 更高精度 */
 #define CONFIG_DEFAULT_TMAG_RANGE       0U     /* ±40mT (A1) / ±120mT (A2) */
-#define CONFIG_DEFAULT_TMAG_OP_MODE     0U     /* Standby */
+#define CONFIG_DEFAULT_TMAG_OP_MODE     2U     /* Continuous 连续测量模式 */
 #define CONFIG_DEFAULT_TMAG_MAG_CH      7U     /* XYZ */
 #define CONFIG_DEFAULT_TMAG_VERSION     0U     /* A1 version */
 

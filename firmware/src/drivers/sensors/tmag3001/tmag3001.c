@@ -417,8 +417,12 @@ uint8_t TMAG3001_TriggerConversion(TMAG3001_Handle_t *dev)
     result = TMAG3001_ReadReg(dev, TMAG3001_REG_DEVICE_CONFIG_1, &reg_val);
     if (result != 0) return result;
 
-    reg_val |= 0x01;  // 设置CONV_START位
+    /* 确保 CONV_START 位先清零，然后再置 1，产生 0→1 跳变触发转换 */
+    reg_val &= ~0x01;  // 先清除 CONV_START 位
+    result = TMAG3001_WriteReg(dev, TMAG3001_REG_DEVICE_CONFIG_1, reg_val);
+    if (result != 0) return result;
 
+    reg_val |= 0x01;   // 再设置 CONV_START 位，产生上升沿触发
     return TMAG3001_WriteReg(dev, TMAG3001_REG_DEVICE_CONFIG_1, reg_val);
 }
 

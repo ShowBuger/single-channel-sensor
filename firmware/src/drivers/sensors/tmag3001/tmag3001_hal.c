@@ -30,16 +30,16 @@ static uint8_t tmag_configure(void *h, uint8_t id, const SensorHwConfig_t *cfg)
 
 static uint8_t tmag_start(void *h, uint8_t id)
 {
+    /* 在 CONTINUOUS 模式下，传感器会自动连续转换，不需要手动触发 */
+    (void)h;
     (void)id;
-    return TMAG3001_TriggerConversion((TMAG3001_Handle_t *)h);
+    return 0;
 }
 
 static uint8_t tmag_read(void *h, uint8_t id, SensorData_t *out)
 {
     TMAG3001_Handle_t *dev = (TMAG3001_Handle_t *)h;
     TMAG3001_Result_t r;
-    uint8_t status;
-    uint8_t retry = 0;
     (void)id;
 
     /* 测试代码：读取寄存器进行诊断 */
@@ -77,24 +77,7 @@ static uint8_t tmag_read(void *h, uint8_t id, SensorData_t *out)
         test_counter++;
     }
 
-    /* 等待转换完成，最多重试 20 次（约 10ms） */
-    while (retry < 20) {
-        if (TMAG3001_ReadConvStatus(dev, &status) == 0) {
-            /* 检查 DATA_READY 标志（bit 0） */
-            if (status & 0x01) {
-                break;  /* 转换完成 */
-            }
-        }
-        /* 延时 0.5ms */
-        for (volatile int i = 0; i < 5000; i++);
-        retry++;
-    }
-
-    if (retry >= 20) {
-        LOG_W("TMAG_TEST", "Conversion timeout after %d retries, CONV_STATUS=0x%02X", retry, status);
-        return 1;  /* 超时，转换未完成 */
-    }
-
+    /* 在 CONTINUOUS 模式下，传感器会自动连续转换，直接读取最新数据即可 */
     uint8_t st = TMAG3001_ReadMagneticData(dev, &r);
     if (st != 0) return 1;
     out->x = r.x_mT * 1000.0f; /* mT -> uT */
