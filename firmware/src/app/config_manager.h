@@ -58,9 +58,9 @@ typedef struct {
     uint8_t  log_level;              /* LogLevel_t stored as uint8_t     */
 
     /* -- Axis mapping coefficients --------------------- */
-    float    X_MAPPING_VALUE;        /* default  0.100f                  */
-    float    Y_MAPPING_VALUE;        /* default  0.100f                  */
-    float    Z_MAPPING_VALUE;        /* default -0.100f                  */
+    float    X_MAPPING_VALUE;        /* default  1.0f                    */
+    float    Y_MAPPING_VALUE;        /* default  1.0f                    */
+    float    Z_MAPPING_VALUE;        /* default  1.0f                    */
 
     /* -- Algorithm parameters -------------------------- */
     float    dead_value;             /* dead-band x-sigma multiplier, def 8.5 */
@@ -81,9 +81,9 @@ typedef struct {
 #define CONFIG_DEFAULT_SENSOR_TYPE      CURRENT_SENSOR_TYPE
 #define CONFIG_DEFAULT_FLAG_RES         0x7BU  /* 0111 1011 */
 #define CONFIG_DEFAULT_LOG_LEVEL        3U
-#define CONFIG_DEFAULT_X_MAP            0.100f
-#define CONFIG_DEFAULT_Y_MAP            0.100f
-#define CONFIG_DEFAULT_Z_MAP           -0.100f
+#define CONFIG_DEFAULT_X_MAP            1.0f
+#define CONFIG_DEFAULT_Y_MAP            1.0f
+#define CONFIG_DEFAULT_Z_MAP            1.0f
 #define CONFIG_DEFAULT_DEAD_VALUE       8.5f
 #define CONFIG_DEFAULT_SPIKE_MULT       20.0f
 #define CONFIG_DEFAULT_STABILITY_THR    0.1f

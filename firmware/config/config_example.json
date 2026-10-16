@@ -11,9 +11,9 @@
   },
   "algo": {
     "flag": "0x7B",
-    "xmap": 0.100,
-    "ymap": 0.100,
-    "zmap": -0.100,
+    "xmap": 1.0,
+    "ymap": 1.0,
+    "zmap": 1.0,
     "dead": 8.5,
     "spike": 20.0,
     "stab": 0.1

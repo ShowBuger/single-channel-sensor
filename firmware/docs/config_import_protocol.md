@@ -19,9 +19,9 @@
   },
   "algo": {
     "flag": "0x3B",     // 特性标志位 (十六进制或十进制, 默认0x3B)
-    "xmap": 0.100,      // X轴映射系数 (浮点数, 默认0.100)
-    "ymap": 0.100,      // Y轴映射系数 (浮点数, 默认0.100)
-    "zmap": -0.100,     // Z轴映射系数 (浮点数, 默认-0.100)
+    "xmap": 1.0,        // X轴映射系数 (浮点数, 默认1.0)
+    "ymap": 1.0,        // Y轴映射系数 (浮点数, 默认1.0)
+    "zmap": 1.0,        // Z轴映射系数 (浮点数, 默认1.0)
     "dead": 8.5,        // 死区倍数 (浮点数, 默认8.5)
     "spike": 20.0,      // 尖峰滤波倍数 (浮点数, 默认20.0)
     "stab": 0.1         // 稳定性阈值 uT (浮点数, 默认0.1)
@@ -77,7 +77,7 @@ Device: ACK_58
 Host: ML IMPORT_DATA "resy":0,"resz":0,"tcmp":0},"algo":{"flag":"0x3B",
 Device: ACK_116
 
-Host: ML IMPORT_DATA "xmap":0.100,"ymap":0.100,"zmap":-0.100,"dead":8.5,
+Host: ML IMPORT_DATA "xmap":1.0,"ymap":1.0,"zmap":1.0,"dead":8.5,
 Device: ACK_176
 
 Host: ML IMPORT_DATA "spike":20.0,"stab":0.1},"log":{"level":3}}
@@ -125,7 +125,7 @@ Device: IMPORT_OK: config applied and saved
 | sensor.resx/y/z | uint8 | 0-3 | 0 |
 | sensor.tcmp | uint8 | 0-1 | 0 |
 | algo.flag | uint8 | 0-255 | 0x3B |
-| algo.xmap/ymap/zmap | float | any | ±0.100 |
+| algo.xmap/ymap/zmap | float | any | 1.0 |
 | algo.dead | float | any | 8.5 |
 | algo.spike | float | any | 20.0 |
 | algo.stab | float | any | 0.1 |

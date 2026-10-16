@@ -7,6 +7,7 @@
 #include "app/sensor_manager.h"
 #include "app/algo_params.h"
 #include "app/config_import.h"
+#include "app/config_manager.h"
 #include "drivers/sensors/sensor_hal.h"
 #include "drivers/bsp/log_manager.h"
 #include <string.h>
@@ -172,10 +173,12 @@ static void serial_command_process(void)
          * algorithm/log values; it is not an I2C register readback. */
         Serial_Printf("CFG_BEGIN\r\n");
         Serial_Printf("{\"product\":\"%s\",", g_config.product_model);
-        Serial_Printf("\"sensor\":{\"gain\":%u,\"osr\":%u,\"filt\":%u,",
-                      g_config.gain_sel, g_config.osr, g_config.dig_filt);
-        Serial_Printf("\"resx\":%u,\"resy\":%u,\"resz\":%u,\"tcmp\":%u},",
-                      g_config.res_x, g_config.res_y, g_config.res_z, g_config.tcmp_en);
+        Serial_Printf("\"sensor\":{\"type\":%u,\"gain\":%u,\"osr\":%u,\"filt\":%u,",
+                      g_config.sensor_type, g_config.gain_sel, g_config.osr, g_config.dig_filt);
+        Serial_Printf("\"resx\":%u,\"resy\":%u,\"resz\":%u,\"tcmp\":%u,\"range\":%u,",
+                      g_config.res_x, g_config.res_y, g_config.res_z, g_config.tcmp_en, g_config.range);
+        Serial_Printf("\"opmode\":%u,\"magch\":%u,\"version\":%u},",
+                      g_config.op_mode, g_config.mag_ch, g_config.sensor_version);
         /* Nine significant digits round-trip an IEEE float32. */
         Serial_Printf("\"algo\":{\"flag\":\"0x%02X\",\"xmap\":%.9g,",
                       FLAG_RES, (double)X_MAPPING_VALUE);

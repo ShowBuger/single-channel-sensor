@@ -36,9 +36,30 @@ static uint8_t tmag_start(void *h, uint8_t id)
 
 static uint8_t tmag_read(void *h, uint8_t id, SensorData_t *out)
 {
+    TMAG3001_Handle_t *dev = (TMAG3001_Handle_t *)h;
     TMAG3001_Result_t r;
+    uint8_t status;
+    uint8_t retry = 0;
     (void)id;
-    uint8_t st = TMAG3001_ReadMagneticData((TMAG3001_Handle_t *)h, &r);
+
+    /* 等待转换完成，最多重试 20 次（约 10ms） */
+    while (retry < 20) {
+        if (TMAG3001_ReadConvStatus(dev, &status) == 0) {
+            /* 检查 DATA_READY 标志（bit 0） */
+            if (status & 0x01) {
+                break;  /* 转换完成 */
+            }
+        }
+        /* 延时 0.5ms */
+        for (volatile int i = 0; i < 5000; i++);
+        retry++;
+    }
+
+    if (retry >= 20) {
+        return 1;  /* 超时，转换未完成 */
+    }
+
+    uint8_t st = TMAG3001_ReadMagneticData(dev, &r);
     if (st != 0) return 1;
     out->x = r.x_mT * 1000.0f; /* mT -> uT */
     out->y = r.y_mT * 1000.0f;

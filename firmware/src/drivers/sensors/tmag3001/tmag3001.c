@@ -414,6 +414,7 @@ uint8_t TMAG3001_ReadConvStatus(TMAG3001_Handle_t *dev, uint8_t *status)
  * @param dev 设备句柄
  * @param result 结果结构
  * @return 0=成功, 非0=失败
+ * @note 在 STANDBY 模式下，数据寄存器需要在转换完成后才会更新
  */
 uint8_t TMAG3001_ReadMagneticData(TMAG3001_Handle_t *dev, TMAG3001_Result_t *result)
 {
@@ -422,6 +423,7 @@ uint8_t TMAG3001_ReadMagneticData(TMAG3001_Handle_t *dev, TMAG3001_Result_t *res
     float sensitivity;
 
     // 读取X, Y, Z轴数据 (6个寄存器)
+    // 注意：读取操作会清除 CONV_STATUS 寄存器的转换完成标志
     status = TMAG3001_ReadRegs(dev, TMAG3001_REG_X_MSB_RESULT, data, 6);
     if (status != 0) return status;
 

@@ -3,6 +3,9 @@
 
 #include <stdint.h>
 
+#define TMAG3001_I2C_ADDR_34     0x34
+#define TMAG3001_I2C_ADDR_35     0x35
+
 // Version: 3.5 with gain support - Force recompilation
 
 // TMAG3001 I2C地址 (根据ADDR引脚连接) - 7位地址

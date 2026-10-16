@@ -115,7 +115,11 @@ uint8_t JsonConfig_Parse(char *json_str, Config_TypeDef *cfg, JsonParseResult_t 
                 /* Sensor config */
                 if (strcmp(key, "sensor") == 0)
                 {
-                    if (strcmp(subkey, "gain") == 0) {
+                    if (strcmp(subkey, "type") == 0 || strcmp(subkey, "sensor_type") == 0) {
+                        if (!(np = parse_number(p, &fval))) goto parse_err;
+                        cfg->sensor_type = (uint8_t)fval; p = np;
+                    }
+                    else if (strcmp(subkey, "gain") == 0 || strcmp(subkey, "gain_sel") == 0) {
                         if (!(np = parse_number(p, &fval))) goto parse_err;
                         cfg->gain_sel = (uint8_t)fval; p = np;
                     }
@@ -142,6 +146,22 @@ uint8_t JsonConfig_Parse(char *json_str, Config_TypeDef *cfg, JsonParseResult_t 
                     else if (strcmp(subkey, "tcmp") == 0 || strcmp(subkey, "tcmp_en") == 0) {
                         if (!(np = parse_number(p, &fval))) goto parse_err;
                         cfg->tcmp_en = (uint8_t)fval; p = np;
+                    }
+                    else if (strcmp(subkey, "range") == 0) {
+                        if (!(np = parse_number(p, &fval))) goto parse_err;
+                        cfg->range = (uint8_t)fval; p = np;
+                    }
+                    else if (strcmp(subkey, "opmode") == 0 || strcmp(subkey, "op_mode") == 0 || strcmp(subkey, "mode") == 0) {
+                        if (!(np = parse_number(p, &fval))) goto parse_err;
+                        cfg->op_mode = (uint8_t)fval; p = np;
+                    }
+                    else if (strcmp(subkey, "magch") == 0 || strcmp(subkey, "mag_ch") == 0 || strcmp(subkey, "channel") == 0) {
+                        if (!(np = parse_number(p, &fval))) goto parse_err;
+                        cfg->mag_ch = (uint8_t)fval; p = np;
+                    }
+                    else if (strcmp(subkey, "version") == 0 || strcmp(subkey, "sensor_version") == 0) {
+                        if (!(np = parse_number(p, &fval))) goto parse_err;
+                        cfg->sensor_version = (uint8_t)fval; p = np;
                     }
                 }
                 /* Algorithm config */
@@ -219,8 +239,14 @@ uint8_t JsonConfig_Validate(const Config_TypeDef *cfg)
         if (!((*model >= 'A' && *model <= 'Z') || (*model >= 'a' && *model <= 'z') ||
               (*model >= '0' && *model <= '9') || *model == '_' || *model == '-' || *model == '.')) return 1;
     }
-    if (cfg->gain_sel > 7) return 1;
-    if (cfg->osr > 3) return 1;
+    if (cfg->sensor_type != SENSOR_TYPE_MLX90393 && cfg->sensor_type != SENSOR_TYPE_TMAG3001) return 1;
+    if (cfg->sensor_type != CONFIG_DEFAULT_SENSOR_TYPE) return 1;
+    if (cfg->sensor_type == SENSOR_TYPE_TMAG3001)
+    {
+        if (cfg->gain_sel > 15 || cfg->osr > 5) return 1;
+        if (cfg->range > 1 || cfg->op_mode > 3 || cfg->mag_ch > 7 || cfg->sensor_version > 1) return 1;
+    }
+    else if (cfg->gain_sel > 7 || cfg->osr > 3) return 1;
     if (cfg->dig_filt > 7) return 1;
     if (cfg->res_x > 3 || cfg->res_y > 3 || cfg->res_z > 3) return 1;
     if (cfg->tcmp_en > 1) return 1;

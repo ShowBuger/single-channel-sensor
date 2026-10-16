@@ -65,9 +65,8 @@ uint8_t Scan_Ports(void)
     uint8_t sensor_count = 0;
     uint8_t r_actual, r_ref;
 
-    LOG_D("SCAN", "[scan] Init actual sensor (TMAG3001, addr=0x34)...");
-    // TMAG3001: ADDR接GND, I2C地址0x34
-    tmag_actual_sensors[0].i2c_addr = TMAG3001_I2C_ADDR_GND;
+    LOG_D("SCAN", "[scan] Init actual sensor (TMAG3001, addr=0x35)...");
+    tmag_actual_sensors[0].i2c_addr = TMAG3001_I2C_ADDR_35;
     r_actual = SENSOR_HAL.init(&tmag_actual_sensors[0], 0, 0, -1, 0);
     if(r_actual == 0) {
         // 应用配置到实际传感器
@@ -75,9 +74,8 @@ uint8_t Scan_Ports(void)
     }
     LOG_D("SCAN", "[scan] actual begin -> %s", r_actual == 0 ? "OK" : "FAIL");
 
-    LOG_D("SCAN", "[scan] Init reference sensor (TMAG3001, addr=0x36)...");
-    // TMAG3001: ADDR接VCC, I2C地址0x36
-    tmag_reference_sensors[0].i2c_addr = TMAG3001_I2C_ADDR_VCC;
+    LOG_D("SCAN", "[scan] Init reference sensor (TMAG3001, addr=0x34)...");
+    tmag_reference_sensors[0].i2c_addr = TMAG3001_I2C_ADDR_34;
     r_ref = SENSOR_HAL.init(&tmag_reference_sensors[0], 0, 1, -1, 0);
     if(r_ref == 0) {
         // 应用配置到参考传感器
@@ -250,6 +248,7 @@ uint8_t get_sensor_data()
         sensor_data[i].valid = 0;
         return 1;
     }
+    LOG_D("SCAN", "[get] actual trigger OK");
 
     /*启动参考传感器单次测量*/
     status = SENSOR_HAL.start_meas(&tmag_reference_sensors[i], 0);
@@ -259,6 +258,7 @@ uint8_t get_sensor_data()
         sensor_data[i].valid = 0;
         return 1;
     }
+    LOG_D("SCAN", "[get] ref trigger OK");
 
     /*等待测量完成*/
     Delay_ms(MEASURE_INTERVAL);
@@ -271,6 +271,8 @@ uint8_t get_sensor_data()
         sensor_data[i].valid = 0;
         return 1;
     }
+    LOG_D("SCAN", "[get] actual read: X=%.2f Y=%.2f Z=%.2f",
+          sensor_data[i].actual.x, sensor_data[i].actual.y, sensor_data[i].actual.z);
 
     /*读取参考传感器数据*/
     status = SENSOR_HAL.read_meas(&tmag_reference_sensors[i], 0, &sensor_data[i].reference);
@@ -280,6 +282,8 @@ uint8_t get_sensor_data()
         sensor_data[i].valid = 0;
         return 1;
     }
+    LOG_D("SCAN", "[get] ref read: X=%.2f Y=%.2f Z=%.2f",
+          sensor_data[i].reference.x, sensor_data[i].reference.y, sensor_data[i].reference.z);
 
     /*标记数据有效*/
     sensor_data[i].valid = 1;
@@ -666,9 +670,9 @@ void apply_sliding_average_filter(uint8_t sensor_index)
 
     reference_filter->initialized = 1;
 }
-float X_MAPPING_VALUE = 0.1;
-float Y_MAPPING_VALUE = 0.1;
-float Z_MAPPING_VALUE = -0.1;
+float X_MAPPING_VALUE = 1.0f;
+float Y_MAPPING_VALUE = 1.0f;
+float Z_MAPPING_VALUE = 1.0f;
 void apply_mapping(uint8_t sensor_index)
 {
 		if(sensor_index >= 1) return;
@@ -865,6 +869,10 @@ void data_process()
     // 拷贝有效数据到processed_sensor_data
     processed_sensor_data[i] = sensor_data[i];
 
+    LOG_D("ALGO", "=== Algorithm Pipeline Start ===");
+    LOG_D("ALGO", "[0] Raw: X=%.2f Y=%.2f Z=%.2f",
+            sensor_data[i].actual.x, sensor_data[i].actual.y, sensor_data[i].actual.z);
+
     if(sensor_calibration[i].calibrated == 1)
     {
         // 更新参考传感器历史数据(用于预测补偿)
@@ -886,7 +894,15 @@ void data_process()
             processed_sensor_data[i].reference.x -= sensor_calibration[i].reference_offset.x;
             processed_sensor_data[i].reference.y -= sensor_calibration[i].reference_offset.y;
             processed_sensor_data[i].reference.z -= sensor_calibration[i].reference_offset.z;
+
+            LOG_D("ALGO", "[1] Calibration: X=%.2f Y=%.2f Z=%.2f (offset: %.2f,%.2f,%.2f)",
+                    processed_sensor_data[i].actual.x, processed_sensor_data[i].actual.y, processed_sensor_data[i].actual.z,
+                    sensor_calibration[i].actual_offset.x, sensor_calibration[i].actual_offset.y, sensor_calibration[i].actual_offset.z);
         }
+    }
+    else
+    {
+        LOG_D("ALGO", "[1] Calibration: DISABLED");
     }
 
     // 预测补偿 - 使用参考传感器预测并补偿实际传感器
@@ -894,8 +910,18 @@ void data_process()
     {
         if(sensor_calibration[i].calibrated == 1)
         {
+            SensorData before = processed_sensor_data[i].actual;
             apply_predictive_compensation(i);
+            LOG_D("ALGO", "[2] Predictive: X=%.2f Y=%.2f Z=%.2f (delta: %.2f,%.2f,%.2f)",
+                    processed_sensor_data[i].actual.x, processed_sensor_data[i].actual.y, processed_sensor_data[i].actual.z,
+                    processed_sensor_data[i].actual.x - before.x,
+                    processed_sensor_data[i].actual.y - before.y,
+                    processed_sensor_data[i].actual.z - before.z);
         }
+    }
+    else
+    {
+        LOG_D("ALGO", "[2] Predictive: DISABLED");
     }
 
     // 死区滤波
@@ -903,14 +929,28 @@ void data_process()
     {
         if(sensor_calibration[i].calibrated == 1)
         {
+            SensorData before = processed_sensor_data[i].actual;
             apply_dead_band_filter(i);
+            LOG_D("ALGO", "[3] DeadBand: X=%.2f Y=%.2f Z=%.2f (before: %.2f,%.2f,%.2f)",
+                    processed_sensor_data[i].actual.x, processed_sensor_data[i].actual.y, processed_sensor_data[i].actual.z,
+                    before.x, before.y, before.z);
         }
+    }
+    else
+    {
+        LOG_D("ALGO", "[3] DeadBand: DISABLED");
     }
 
     // Z轴正值过滤 - 在死区滤波后执行
     if(FLAG_RES & FLAG_Z_POSITIVE_FILTER)
     {
+        float before_z = processed_sensor_data[i].actual.z;
         apply_z_positive_filter(i);
+        LOG_D("ALGO", "[4] Z-Filter: Z=%.2f (before: %.2f)", processed_sensor_data[i].actual.z, before_z);
+    }
+    else
+    {
+        LOG_D("ALGO", "[4] Z-Filter: DISABLED");
     }
 
     // 滑动平均滤波
@@ -918,16 +958,33 @@ void data_process()
     {
         if(sensor_calibration[i].calibrated == 1)
         {
+            SensorData before = processed_sensor_data[i].actual;
             apply_sliding_average_filter(i);
+            LOG_D("ALGO", "[5] SlidingAvg: X=%.2f Y=%.2f Z=%.2f (before: %.2f,%.2f,%.2f)",
+                    processed_sensor_data[i].actual.x, processed_sensor_data[i].actual.y, processed_sensor_data[i].actual.z,
+                    before.x, before.y, before.z);
         }
     }
+    else
+    {
+        LOG_D("ALGO", "[5] SlidingAvg: DISABLED");
+    }
+
     // 映射
     if(FLAG_RES & FLAG_MAPPING_ENABLE)
     {
         if(sensor_calibration[i].calibrated == 1)
         {
+            SensorData before = processed_sensor_data[i].actual;
             apply_mapping(i);
+            LOG_D("ALGO", "[6] Mapping: X=%.2f Y=%.2f Z=%.2f (coeff: %.3f,%.3f,%.3f)",
+                    processed_sensor_data[i].actual.x, processed_sensor_data[i].actual.y, processed_sensor_data[i].actual.z,
+                    X_MAPPING_VALUE, Y_MAPPING_VALUE, Z_MAPPING_VALUE);
         }
+    }
+    else
+    {
+        LOG_D("ALGO", "[6] Mapping: DISABLED");
     }
 
     // 稳定性检测和平滑过渡
@@ -935,9 +992,20 @@ void data_process()
     {
         if(sensor_calibration[i].calibrated == 1)
         {
+            SensorData before = processed_sensor_data[i].actual;
             apply_stability_and_transition(i);
+            LOG_D("ALGO", "[7] Smooth: X=%.2f Y=%.2f Z=%.2f (before: %.2f,%.2f,%.2f)",
+                    processed_sensor_data[i].actual.x, processed_sensor_data[i].actual.y, processed_sensor_data[i].actual.z,
+                    before.x, before.y, before.z);
         }
     }
+    else
+    {
+        LOG_D("ALGO", "[7] Smooth: DISABLED");
+    }
+
+    LOG_D("ALGO", "=== Final Output: X=%.2f Y=%.2f Z=%.2f ===",
+            processed_sensor_data[i].actual.x, processed_sensor_data[i].actual.y, processed_sensor_data[i].actual.z);
 }
 
 /**
