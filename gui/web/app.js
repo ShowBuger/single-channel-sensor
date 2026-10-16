@@ -65,26 +65,55 @@ function exportSerialLog(){
   setTimeout(()=>URL.revokeObjectURL(url),1000);toast('串口日志已导出（.log）');
 }
 $('exportCsv').onclick=exportCsv;$('exportLog').onclick=exportCsv;$('exportSerialLog').onclick=exportSerialLog;
-$('clearData').onclick=()=>{
+$('clearData').onclick=async()=>{
   if(!samples.length&&!serialLog.count){toast('暂无数据或日志可清空。');return;}
   const dataCount=samples.length;
   const logCount=serialLog.count;
   if(!confirm(`确定要清空当前缓存的 ${dataCount.toLocaleString()} 个数据点和 ${logCount} 条日志吗？此操作不可恢复。`))return;
+
+  // 先暂停传感器采集
+  if(mode==='device'&&device.connected&&acquisition!=='stopped'){
+    await operation(async()=>{
+      await device.stop();
+      acquisition='stopped';
+      rateMarks=[];
+      log('清空数据前已自动停止采集。','系统');
+    });
+  }
+
   samples.clear();magnitudes=[];rateMarks=[];tick=0;
   epoch=performance.now();wallEpoch=Date.now();lastSampleAt=0;
   hover=[null,null,null];
   document.querySelectorAll('.chart-tooltip').forEach(t=>t.style.display='none');
-  serialLog.clear();  // 清除串口日志
+  serialLog.clear();
   dirty=true;renderLogs();syncStatus();draw();
   log(`已清空 ${dataCount.toLocaleString()} 个数据点和 ${logCount} 条日志。`,'系统');
   toast('数据和日志已清空');
 };
-$('resetDevice').onclick=()=>{
+$('resetDevice').onclick=async()=>{
   if(mode!=='device'){toast('请先连接设备。');return;}
+  if(!device.connected){toast('设备未连接。');return;}
   if(!confirm('确定要复位设备吗？设备将重新启动，当前连接会断开。'))return;
-  device.send('ML RESET');
-  log('已发送复位命令，设备将重启。','系统');
-  toast('设备正在复位...');
+
+  await operation(async()=>{
+    // 1. 先暂停传感器采集
+    if(acquisition!=='stopped'){
+      await device.stop();
+      acquisition='stopped';
+      rateMarks=[];
+      log('复位前已停止采集。','系统');
+    }
+
+    // 2. 发送 ML RESET 命令
+    device.send('ML RESET');
+    log('已发送复位命令，设备将重启。','系统');
+    toast('设备正在复位...');
+
+    // 3. 等待串口发送完成后断开连接
+    await new Promise(resolve=>setTimeout(resolve,200));
+    await device.disconnect();
+    log('设备复位完成，连接已断开。请重新连接设备。','系统');
+  });
 };
 device.on('state',({state,detail})=>{if(state==='connected'){serialLog.begin(settings.port,settings.baud);resetSession('device');}if(state==='disconnected')serialLog.end(detail);if(state==='disconnected'&&detail){log(detail,'连接');if(mode==='device')toast(detail);deviceLogLevel=null;}syncStatus();});
 device.on('sample',v=>{if(mode!=='device')return;const now=performance.now();lastSampleAt=now;rateMarks.push(now);if(rateMarks.length>10000)rateMarks=rateMarks.slice(-5000);acquisition='streaming';addSample(v,(now-epoch)/1000,Date.now());});
