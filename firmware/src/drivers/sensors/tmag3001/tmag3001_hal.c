@@ -5,8 +5,8 @@
 static uint8_t tmag_init(void *h, uint8_t a1, uint8_t a0, int drdy, uint8_t id)
 {
     TMAG3001_Handle_t *dev = (TMAG3001_Handle_t *)h;
-    /* encode address from a1/a0 bits the same way MLX does -- adapt as needed */
-    uint8_t addr = TMAG3001_I2C_ADDR_GND; /* default; caller sets handle->i2c_addr before init if needed */
+    /* Scan_Ports sets the 7-bit address before calling init. */
+    uint8_t addr = dev->i2c_addr;
     (void)a1; (void)a0; (void)drdy;
     dev->i2c_id = id;
     dev->i2c_addr = addr;
