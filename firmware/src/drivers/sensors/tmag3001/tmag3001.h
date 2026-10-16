@@ -8,11 +8,12 @@
 
 // Version: 3.5 with gain support - Force recompilation
 
-// TMAG3001 I2C地址 (根据ADDR引脚连接) - 7位地址
+// TMAG3001 I2C地址：TI SLYS053C 第6.3.5节、表6-4（7位地址）
+// https://www.ti.com/lit/ds/symlink/tmag3001.pdf
 #define TMAG3001_I2C_ADDR_GND    0x34  // ADDR接GND
-#define TMAG3001_I2C_ADDR_VCC    0x36  // ADDR接VCC
-#define TMAG3001_I2C_ADDR_SDA    0x37  // ADDR接SDA
-#define TMAG3001_I2C_ADDR_SCL    0x38  // ADDR接SCL
+#define TMAG3001_I2C_ADDR_VCC    0x35  // ADDR接VCC
+#define TMAG3001_I2C_ADDR_SDA    0x36  // ADDR接SDA
+#define TMAG3001_I2C_ADDR_SCL    0x37  // ADDR接SCL
 
 // 寄存器地址
 #define TMAG3001_REG_DEVICE_CONFIG_1    0x00
