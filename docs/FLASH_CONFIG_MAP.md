@@ -52,7 +52,7 @@ magch=7（XYZ），version=0，日志4，算法flag=0，XYZ映射系数均为1�
 `firmware/config/config_ma02.json`及网页MA02默认模板使用这些值。
 `config_example.json`保留已有的自定义算法/增益参数，并补齐字段。
 
-硬件仍使用0x35实际传感器和0x34参考传感器。芯片A1/A2由Device_ID自动识别，
+实际传感器使用0x36（ADDR接SDA），参考传感器使用0x35（ADDR接VCC）。芯片A1/A2由Device_ID自动识别，
 磁场换算使用识别出的版本；sensor.version是保存的版本标记，不能改变物理芯片版本。
 
 ## 应用与错误回执

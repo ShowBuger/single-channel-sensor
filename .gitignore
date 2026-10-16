@@ -82,6 +82,8 @@ gui/test/dist/
 gui/test/build/
 gui/display/dist/
 gui/display/build/
+gui/web/dist/
+gui/web/release/node_modules/
 
 # Temporary files, logs, and OS metadata
 *.log

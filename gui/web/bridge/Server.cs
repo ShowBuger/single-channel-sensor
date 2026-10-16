@@ -23,13 +23,16 @@ internal static class FieldBridge {
     static SerialPort serial;
     static string connection = "", lastError = "";
     static DateTime lastPoll = DateTime.UtcNow;
-    static TcpListener listener;
     static volatile bool alive = true;
+#if !FIELD_RELEASE
+    static TcpListener listener;
     static int httpPort;
     static string Origin { get { return "http://127.0.0.1:" + httpPort; } }
+#endif
     static string RandomKey() { var b = new byte[32]; using (var rng = RandomNumberGenerator.Create()) rng.GetBytes(b); return Convert.ToBase64String(b); }
     static string Encode(object data) { lock (Json) return Json.Serialize(data); }
     static Dictionary<string,object> Decode(string text) { lock (Json) return Json.Deserialize<Dictionary<string,object>>(text); }
+#if !FIELD_RELEASE
     static int Main(string[] args) {
         try {
             int requested = 8766;
@@ -50,6 +53,21 @@ internal static class FieldBridge {
         finally { Disconnect(null); }
     }
     static void Stop() { alive = false; listener.Stop(); Disconnect(null); }
+#else
+    internal static void StartRelease() {
+        new Thread(Watchdog) { IsBackground = true }.Start();
+    }
+    internal static void StopRelease() { alive = false; Disconnect(null); }
+    internal static object ReleaseCall(string operation, Dictionary<string,object> data, string id) {
+        if(operation=="session") return new { token="native",version="release-1.0",transport="windows-serial" };
+        if(operation=="ports") return new { ports=Ports() };
+        if(operation=="connect") return Connect(Value(data,"port"),int.Parse(Value(data,"baudRate")));
+        if(operation=="read") return Read(id);
+        if(operation=="write") { Write(id,Value(data,"command"));return new { ok=true }; }
+        if(operation=="disconnect") { lock(Gate) { CheckConnection(id);Disconnect(""); }return new { ok=true }; }
+        throw new ArgumentException("不支持的操作。");
+    }
+#endif
     static void Watchdog() { while(alive) { Thread.Sleep(1000); lock(Gate) { if(serial != null && (DateTime.UtcNow-lastPoll).TotalSeconds > 20) Disconnect("页面停止响应，串口已自动释放。"); } } }
     static string[] Ports() { return SerialPort.GetPortNames().Distinct().OrderBy(p => { int n; return int.TryParse(p.Substring(3),out n) ? n : int.MaxValue; }).ToArray(); }
     static object Connect(string port, int baud) {
@@ -91,12 +109,18 @@ internal static class FieldBridge {
     }
     static bool ValidCommand(string command) {
         if(command==null||command.Length>62||command.Any(c=>c<32||c>126))return false;
-        if(Regex.IsMatch(command,@"^ML (START|STOP|CALIB|FLAG|MAPPING|MERSURE|LOGLEVEL|GETCFG|IMPORT_END|IMPORT_CANCEL|CHFLAG (0x[0-9A-Fa-f]{1,2}|[0-9]{1,3})|SETMAP [XYZ] [+-]?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?)$"))return true;
+#if FIELD_RELEASE
+        // Enforced by the native bridge, independent of the page's controls.
+        return Regex.IsMatch(command,@"^ML (START|STOP|CALIB|RESET)$");
+#else
+        if(Regex.IsMatch(command,@"^ML (START|STOP|CALIB|RESET|FLAG|MAPPING|MERSURE|LOGLEVEL|GETCFG|IMPORT_END|IMPORT_CANCEL|CHFLAG (0x[0-9A-Fa-f]{1,2}|[0-9]{1,3})|SETMAP [XYZ] [+-]?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?)$"))return true;
         var start=Regex.Match(command,@"^ML IMPORT_START ([0-9]{1,4})$");
         if(start.Success){int n=int.Parse(start.Groups[1].Value);return n>0&&n<=1023;}
         return Regex.IsMatch(command,"^ML IMPORT_DATA [A-Za-z0-9_{}\":,.+ -]{1,47}$");
+#endif
     }
     static string Value(Dictionary<string,object> data,string name) { object value;return data!=null&&data.TryGetValue(name,out value)?Convert.ToString(value):""; }
+#if !FIELD_RELEASE
     static void Handle(TcpClient client) {
         using(client) {
             client.ReceiveTimeout=5000;client.SendTimeout=5000;
@@ -141,4 +165,5 @@ internal static class FieldBridge {
         string headers="HTTP/1.1 "+code+" "+(code==200?"OK":"Error")+"\r\nContent-Type: "+type+"\r\nContent-Length: "+bytes.Length+"\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\nX-Frame-Options: DENY\r\nContent-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'\r\n\r\n";
         var head=Encoding.ASCII.GetBytes(headers);stream.Write(head,0,head.Length);stream.Write(bytes,0,bytes.Length);
     }
+#endif
 }

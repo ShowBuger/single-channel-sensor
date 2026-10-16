@@ -1,11 +1,12 @@
 /* FIELD workspace: presentation, local preferences and device workflows. */
 (() => {
 'use strict';
+const INTERNAL_BUILD=true; // The release builder folds this to false.
 const $=id=>document.getElementById(id), axes=['X','Y','Z'], colors=['#507fe0','#20a28d','#dba253'];
-const C=FieldCore, storageKey='field-workspace-v2';
+const C=FieldCore, storageKey=INTERNAL_BUILD?'field-workspace-v2':'field-release-v1';
 let config={flags:59,maps:[.1,.1,-.1]}, settings={port:'',baud:'921600'}, autoLoad=true, showArrows=true, storageAvailable=true;
 try{const saved=JSON.parse(localStorage.getItem(storageKey)||'null');if(saved){showArrows=saved.showArrows!==false;autoLoad=saved.autoLoad!==false;if(saved.settings&&['9600','57600','115200','230400','460800','921600'].includes(saved.settings.baud))settings={port:String(saved.settings.port||''),baud:saved.baudDefaultVersion!==1&&saved.settings.baud==='115200'?'921600':saved.settings.baud};}}catch{storageAvailable=false;}
-const api=new LocalSerialApi(), device=new C.SerialClient(api), samples=new C.SampleBuffer(12000),serialLog=new C.SerialLog();
+const api=new LocalSerialApi(), device=new C.SerialClient(api), samples=new C.SampleBuffer(12000),serialLog=INTERNAL_BUILD?new C.SerialLog():{count:0,active:false,append(){},begin(){},end(){},clear(){}};
 let mode='device',running=false,acquisition='waiting',busy=false,configVerified=false,logs=[],tick=0,epoch=performance.now(),wallEpoch=Date.now(),dirty=true;
 let yaw=-.64,pitch=.65,zoom=1,topView=false,drag=null,toastTimer,portTimer,scanning=false,magnitudes=[],lastSampleAt=0,lastWarningAt=0,calibTimer=null;
 let importPanel=null,deviceLogLevel=null;
@@ -22,7 +23,7 @@ function addSample(v,t,time){samples.push({v:[...v],t,time,source:mode,unit:unit
 function resetSession(next,seed=false){mode=next;samples.clear();magnitudes=[];rateMarks=[];tick=seed?600:0;epoch=performance.now()-(seed?30000:0);wallEpoch=Date.now()-(seed?30000:0);lastSampleAt=0;configVerified=false;acquisition='waiting';running=next==='demo';if(seed)for(let i=1;i<=600;i++)addSample(demoValues(i/20),i/20,wallEpoch+i*50);hover=[null,null,null];document.querySelectorAll('.chart-tooltip').forEach(t=>t.style.display='none');dirty=true;syncStatus();}
 function syncStatus(){
   const connected=device.connected,stale=connected&&acquisition!=='stopped'&&lastSampleAt&&performance.now()-lastSampleAt>2500;
-  importPanel?.sync(busy);$('exportSerialLog').disabled=!serialLog.count;$('serialLogCount').textContent=serialLog.count.toLocaleString();
+  if(INTERNAL_BUILD){importPanel?.sync(busy);$('exportSerialLog').disabled=!serialLog.count;$('serialLogCount').textContent=serialLog.count.toLocaleString();}
   $('sourceSelect').value=mode;
   $('systemTag').textContent=mode==='demo'?'演示模式':connected?(stale?'等待数据':'设备连接'):'已断开';
   $('connectButton').innerHTML=icon('plug')+(connected?'断开串口':'连接串口');$('connectButton').disabled=device.state==='connecting'||device.state==='disconnecting';
@@ -34,7 +35,7 @@ function syncStatus(){
   const now=performance.now();rateMarks=rateMarks.filter(t=>now-t<2000);$('rate').textContent=mode==='demo'?(running?'20 Hz':'0 Hz'):(rateMarks.length>1?((rateMarks.length-1)/Math.max(.1,(now-rateMarks[0])/1000)).toFixed(1):'0.0')+' Hz';
   $('sampleCount').textContent=samples.length.toLocaleString();const seconds=Math.floor(samples.at(-1)?.t||0);$('duration').textContent=String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0');
   const unit=currentUnit();document.querySelectorAll('.unit').forEach(e=>e.textContent=unit);
-  $('startCalib').disabled=busy||(mode==='device'&&!connected);$('autoLoad').disabled=busy;
+  $('startCalib').disabled=busy||(mode==='device'&&!connected);if(INTERNAL_BUILD)$('autoLoad').disabled=busy;
 }
 async function operation(fn){if(busy)return;busy=true;syncStatus();try{return await fn();}catch(error){log(error.message,'错误');toast(error.message);return null;}finally{busy=false;dirty=true;syncStatus();}}
 async function scanPorts(){if(scanning)return;scanning=true;$('refreshPorts').disabled=true;try{const ports=await api.getPorts(),select=$('port'),previous=select.value||settings.port;const signature=ports.join(',');if(select.dataset.ports!==signature){select.replaceChildren();if(!ports.length)select.add(new Option('未检测到串口',''));for(const port of ports)select.add(new Option(port,port));select.value=ports.includes(previous)?previous:ports[0]||'';select.dataset.ports=signature;}$('portStatus').textContent=ports.length?'':'未检测到串口，请插入设备后刷新。';$('serialSubmit').disabled=!ports.length||device.state!=='disconnected';}catch(error){$('port').replaceChildren(new Option('串口服务不可用',''));delete $('port').dataset.ports;$('portStatus').textContent=error.message;$('serialSubmit').disabled=true;}finally{scanning=false;$('refreshPorts').disabled=false;}}
@@ -45,10 +46,10 @@ document.querySelectorAll('dialog').forEach(d=>d.addEventListener('click',e=>{if
 $('serialDialog').addEventListener('close',()=>clearInterval(portTimer));$('refreshPorts').onclick=scanPorts;
 $('monitorTab').onclick=()=>window.scrollTo({top:0,behavior:'smooth'});
 $('connectButton').onclick=()=>device.connected?operation(()=>device.disconnect()):openDialog('serialDialog');
-$('serialForm').onsubmit=async e=>{e.preventDefault();if(busy)return;settings={port:$('port').value,baud:$('baud').value};api.selected=settings.port;$('serialSubmit').disabled=true;await operation(async()=>{await device.connect(Number(settings.baud));const supportsImport=await device.resetImport({allowUnsupported:true});if(!supportsImport)log('检测到旧版固件：可接收采样数据，完整配置导入与读取需要更新固件。','兼容');persist();$('serialDialog').close();log(`已连接 ${settings.port}，数据来源已切换到真实设备。`,'连接');if(autoLoad)await readDeviceConfig();});if($('serialDialog').open)scanPorts();};
+$('serialForm').onsubmit=async e=>{e.preventDefault();if(busy)return;settings={port:$('port').value,baud:$('baud').value};api.selected=settings.port;$('serialSubmit').disabled=true;await operation(async()=>{await device.connect(Number(settings.baud));if(INTERNAL_BUILD){const supportsImport=await device.resetImport({allowUnsupported:true});if(!supportsImport)log('检测到旧版固件：可接收采样数据，完整配置导入与读取需要更新固件。','兼容');}persist();$('serialDialog').close();log(`已连接 ${settings.port}，数据来源已切换到真实设备。`,'连接');if(INTERNAL_BUILD&&autoLoad)await readDeviceConfig();});if($('serialDialog').open)scanPorts();};
 $('sourceSelect').onchange=async e=>{const next=e.target.value;if(next===mode)return;if(next==='device'){if(!device.connected){resetSession('device');openDialog('serialDialog');}}else{if(device.connected)await operation(()=>device.disconnect());resetSession('demo',true);log('已切换到演示模式，开始新的数据记录。');}};
 $('pause').onclick=async()=>{if(mode==='demo'){running=!running;syncStatus();log(running?'已继续演示采样。':'已暂停演示采样。','采集');}else await operation(async()=>{if(acquisition==='stopped'){await device.start();acquisition='waiting';log('设备已确认启动采集（启动过程包含标定）。','采集');}else{await device.stop();acquisition='stopped';rateMarks=[];log('设备已确认停止采集。','采集');}});};
-$('autoLoad').checked=autoLoad;$('autoLoad').onchange=()=>{autoLoad=$('autoLoad').checked;persist();log(autoLoad?'自动加载已开启：连接时读取设备完整配置。':'自动加载已关闭，可在导入配置中手动读取设备。','配置');if(autoLoad&&device.connected)operation(readDeviceConfig);};
+if(INTERNAL_BUILD){$('autoLoad').checked=autoLoad;$('autoLoad').onchange=()=>{autoLoad=$('autoLoad').checked;persist();log(autoLoad?'自动加载已开启：连接时读取设备完整配置。':'自动加载已关闭，可在导入配置中手动读取设备。','配置');if(autoLoad&&device.connected)operation(readDeviceConfig);};}
 async function readDeviceConfig(){
   importPanel.status('正在读取设备完整配置…');
   try{const actual=await device.readFullConfig();config={flags:actual.algo.flag,maps:[actual.algo.xmap,actual.algo.ymap,actual.algo.zmap]};configVerified=true;deviceLogLevel=actual.log.level;importPanel.loadDeviceConfig(actual);log('已读取设备完整配置：传感器参数、算法参数与日志等级。','配置');toast('设备配置已加载');}
@@ -64,7 +65,7 @@ function exportSerialLog(){
   a.href=url;a.download='FIELD_serial_'+new Date().toISOString().replace(/[:.]/g,'-')+'.log';document.body.append(a);a.click();a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),1000);toast('串口日志已导出（.log）');
 }
-$('exportCsv').onclick=exportCsv;$('exportLog').onclick=exportCsv;$('exportSerialLog').onclick=exportSerialLog;
+$('exportCsv').onclick=exportCsv;$('exportLog').onclick=exportCsv;if(INTERNAL_BUILD)$('exportSerialLog').onclick=exportSerialLog;
 $('clearData').onclick=async()=>{
   if(!samples.length&&!serialLog.count){toast('暂无数据或日志可清空。');return;}
   const dataCount=samples.length;
@@ -105,7 +106,7 @@ $('resetDevice').onclick=async()=>{
     }
 
     // 2. 发送 ML RESET 命令
-    device.send('ML RESET');
+    await device.reset();
     log('已发送复位命令，设备将重启。','系统');
     toast('设备正在复位...');
 
@@ -120,7 +121,7 @@ device.on('sample',v=>{if(mode!=='device')return;const now=performance.now();las
 device.on('tx',command=>{serialLog.append('TX',command);log(command,'发送',false);});
 device.on('line',event=>{serialLog.append('RX',event.raw??event.line);if(event.kind==='message'&&event.line)log(event.line,'设备',false);if(event.line==='System_Reset'){configVerified=false;syncStatus();log('检测到设备重启，请重新读取配置。','系统');}});
 device.on('warning',message=>{serialLog.append('警告',message);if(performance.now()-lastWarningAt>1000){lastWarningAt=performance.now();log(message,'警告',false);}});
-window.addEventListener('pagehide',()=>{if(api.port?.id)fetch('/api/disconnect',{method:'POST',headers:{'Content-Type':'application/json','X-Field-Key':api.token,'X-Field-Connection':api.port.id},body:'{}',keepalive:true}).catch(()=>{});});
+window.addEventListener('pagehide',()=>{if(api.port?.id){if(INTERNAL_BUILD)fetch('/api/disconnect',{method:'POST',headers:{'Content-Type':'application/json','X-Field-Key':api.token,'X-Field-Connection':api.port.id},body:'{}',keepalive:true}).catch(()=>{});else void api.call('disconnect',{},api.port.id).catch(()=>{});}});
 // Local 3D projection: illustrative deformation and optional vector arrows.
 function context(canvas){const r=canvas.getBoundingClientRect(),dpr=Math.min(window.devicePixelRatio||1,2),w=r.width,h=r.height;if(canvas.width!==Math.round(w*dpr)||canvas.height!==Math.round(h*dpr)){canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);}const ctx=canvas.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);return{ctx,w,h};}
 function setView(v){topView=v;for(const[id,state]of[['perspective',!v],['topView',v]]){$(id).classList.toggle('selected',state);$(id).setAttribute('aria-pressed',String(state));}dirty=true;draw();}
@@ -168,6 +169,6 @@ function draw(){drawSurface();axes.forEach((_,i)=>drawChart(i));updateReadouts()
 let last=performance.now(),accumulator=0,lastDraw=0;
 function frame(now){const dt=Math.min(now-last,250);last=now;if(mode==='demo'&&running){accumulator+=dt;while(accumulator>=50){accumulator-=50;tick++;addSample(demoValues(tick/20),tick/20,wallEpoch+tick*50);}}else accumulator=0;if(dirty&&now-lastDraw>=50){draw();lastDraw=now;}if(now-lastStatus>500){syncStatus();lastStatus=now;}requestAnimationFrame(frame);}
 new ResizeObserver(()=>{dirty=true;draw();}).observe(document.querySelector('.workspace'));
-importPanel=new FieldImportPanel({device,operation,toast,log,onRead:readDeviceConfig,onUncertain:()=>{configVerified=false;deviceLogLevel=null;syncStatus();},onApplied:result=>{config=result.runtime;configVerified=true;deviceLogLevel=result.logLevel;if(result.started)acquisition='waiting';persist();samples.clear();magnitudes=[];rateMarks=[];lastSampleAt=0;epoch=performance.now();dirty=true;syncStatus();}});
+if(INTERNAL_BUILD)importPanel=new FieldImportPanel({device,operation,toast,log,onRead:readDeviceConfig,onUncertain:()=>{configVerified=false;deviceLogLevel=null;syncStatus();},onApplied:result=>{config=result.runtime;configVerified=true;deviceLogLevel=result.logLevel;if(result.started)acquisition='waiting';persist();samples.clear();magnitudes=[];rateMarks=[];lastSampleAt=0;epoch=performance.now();dirty=true;syncStatus();}});
 resetSession('device');draw();log('设备模式已就绪，请连接串口开始采集。');if(!storageAvailable)toast('本地设置不可读取，本次使用默认配置。');requestAnimationFrame(frame);
 })();

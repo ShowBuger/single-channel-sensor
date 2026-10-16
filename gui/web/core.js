@@ -126,6 +126,7 @@ class SerialClient{
   start(){return this.transaction(()=>this.ack('ML START',/^Sensor started(?: successfully)?$/, /Failed to start|Sensor start failed|^Start failed/i,15000));}
   stop(){return this.transaction(()=>this.ack('ML STOP',/^(Sensor stopped|Stopped)$/, /Failed to stop|Stop failed/i));}
   calibrate(){return this.transaction(()=>this.ack('ML CALIB',/^Calibration (completed|OK)$/, /Calibration fail|calibrate failed|not running|please start/i,15000));}
+  reset(){return this.transaction(()=>this.ack('ML RESET',/^System resetting\.\.\.$/, /Reset failed/i));}
   async readConfigDirect(){const flags=await this.request('ML FLAG',e=>{if(e.kind==='flag')return e.value;if(/^Error:|^Unknown/.test(e.line))throw new Error(e.line);});const maps={};let begun=false;await this.request('ML MAPPING',e=>{if(/^Error:|^Unknown/.test(e.line))throw new Error(e.line);if(e.kind==='maps'){['X','Y','Z'].forEach((a,i)=>maps[a]=e.values[i]);return true;}if(e.line==='Mapping values:')begun=true;if(begun&&e.kind==='axis'){maps[e.axis]=e.value;if(['X','Y','Z'].every(a=>Number.isFinite(maps[a])))return true;}});return validateConfig({flags,maps:['X','Y','Z'].map(a=>maps[a])});}
   readConfig(){return this.transaction(()=>this.readConfigDirect());}
   async readFullConfigDirect(){

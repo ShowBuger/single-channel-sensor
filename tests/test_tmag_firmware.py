@@ -118,7 +118,7 @@ class TmagBus:
     def __init__(self, f):
         self.f, self.now = f, 0
         self.regs, self.writes, self.feeds, self.transactions = {}, [], [], []
-        self.state = {addr: dict(count=0, ready=0, due=None) for addr in (0x35, 0x34)}
+        self.state = {addr: dict(count=0, ready=0, due=None) for addr in (0x36, 0x35)}
         self.fail_reg = None
         self.never_ready = False
         self.tx = []
@@ -206,7 +206,9 @@ class TmagTests(unittest.TestCase):
     def test_real_scan_applies_correct_registers_and_auto_detects_version(self):
         f, bus = self.f, self.bus
         self.assertEqual(f.call('Scan_Ports'), 1)
-        for addr in (0x35, 0x34):
+        self.assertEqual(f.u.mem_read(f.symbols['tmag_actual_sensors'] + 1, 1)[0], 0x36)
+        self.assertEqual(f.u.mem_read(f.symbols['tmag_reference_sensors'] + 1, 1)[0], 0x35)
+        for addr in (0x36, 0x35):
             self.assertEqual(bus.regs[addr, 0] & 0x1c, 0x10)  # average 16x in CONFIG_1
             self.assertEqual(bus.regs[addr, 1] & 3, 2)
             self.assertEqual(bus.regs[addr, 3] & 3, 0)
@@ -219,18 +221,18 @@ class TmagTests(unittest.TestCase):
     def test_range_change_preserves_other_register_bits(self):
         f, bus = self.f, self.bus
         f.call('Scan_Ports')
-        bus.regs[0x35, 3] = 0xc0
+        bus.regs[0x36, 3] = 0xc0
         handle = f.symbols['tmag_actual_sensors']
         self.assertEqual(f.call('TMAG3001_SetRange', handle, 1), 0)
-        self.assertEqual(bus.regs[0x35, 3], 0xc3)
+        self.assertEqual(bus.regs[0x36, 3], 0xc3)
         self.assertEqual(f.call('TMAG3001_SetRange', handle, 0), 0)
-        self.assertEqual(bus.regs[0x35, 3], 0xc0)
+        self.assertEqual(bus.regs[0x36, 3], 0xc0)
 
     def test_init_recovers_read_format_modified_by_old_trigger(self):
+        self.bus.regs[0x36,0] = 1
         self.bus.regs[0x35,0] = 1
-        self.bus.regs[0x34,0] = 1
         self.assertEqual(self.f.call('Scan_Ports'),1)
-        for addr in (0x35,0x34):
+        for addr in (0x36,0x35):
             self.assertIn((addr,0,0),self.bus.writes)
             self.assertEqual(self.bus.regs[addr,0] & 3,0)
 
@@ -244,7 +246,7 @@ class TmagTests(unittest.TestCase):
         f, bus = self.f, self.bus
         self.assertEqual(f.call('sensor_start'), 0)
         self.assertGreaterEqual(bus.now, 50)
-        self.assertEqual(bus.state[0x35]['count'], 10 % 8)
+        self.assertEqual(bus.state[0x36]['count'], 10 % 8)
         self.assertEqual(f.u.mem_read(f.symbols['sensor_calibration'] + 64, 1)[0], 1)
         self.assertTrue(all(b-a <= 3 for a,b in zip(bus.feeds, bus.feeds[1:])))
 
@@ -252,8 +254,8 @@ class TmagTests(unittest.TestCase):
         self.assertEqual(self.f.parse({'product': 'MA02', 'sensor': {'opmode': 0}}), 0)
         self.assertEqual(self.f.call('sensor_start'), 0)
         self.assertEqual(len(self.bus.transactions), 20)
-        self.assertEqual(set(self.bus.transactions), {(0x6a, 0x98), (0x68, 0x98)})
-        self.assertEqual(self.bus.regs[0x35, 0] & 3, 0)  # I2C read mode was not modified
+        self.assertEqual(set(self.bus.transactions), {(0x6c, 0x98), (0x6a, 0x98)})
+        self.assertEqual(self.bus.regs[0x36, 0] & 3, 0)  # I2C read mode was not modified
 
     def test_timeout_is_bounded_and_feeds_watchdog(self):
         self.bus.never_ready = True
@@ -276,8 +278,8 @@ class TmagTests(unittest.TestCase):
         f.command('ML IMPORT_START '+str(len(wire)))
         for i in range(0,len(wire),47): f.command('ML IMPORT_DATA '+wire[i:i+47])
         self.assertIn('IMPORT_OK', f.command('ML IMPORT_END'))
-        self.assertEqual(self.bus.regs[0x35,9], 9)
-        self.assertEqual(self.bus.regs[0x34,0] & 0x1c, 0x14)
+        self.assertEqual(self.bus.regs[0x36,9], 9)
+        self.assertEqual(self.bus.regs[0x35,0] & 0x1c, 0x14)
         f.command('ML IMPORT_CANCEL')
         actual = json.loads(f.command('ML GETCFG').splitlines()[1])
         self.assertEqual(actual['product'], 'MA02')

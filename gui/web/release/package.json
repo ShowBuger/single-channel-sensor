@@ -1,0 +1,10 @@
+{
+  "name": "field-release-builder",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Build the FIELD customer WebView2 application",
+  "devDependencies": {
+    "acorn": "8.19.0",
+    "terser": "5.51.2"
+  }
+}

@@ -73,8 +73,8 @@ uint8_t Scan_Ports(void)
     SENSOR_Run[0] = 0;
     if (Config_Validate(&g_config)) return 0;
 
-    LOG_D("SCAN", "[scan] Init actual sensor (TMAG3001, addr=0x35)...");
-    tmag_actual_sensors[0].i2c_addr = TMAG3001_I2C_ADDR_35;
+    LOG_D("SCAN", "[scan] Init actual sensor (TMAG3001, ADDR=SDA, addr=0x%02X)...", TMAG3001_I2C_ADDR_SDA);
+    tmag_actual_sensors[0].i2c_addr = TMAG3001_I2C_ADDR_SDA;
     r_actual = SENSOR_HAL.init(&tmag_actual_sensors[0], 0, 0, -1, 0);
     if(r_actual == 0) {
         // 应用配置到实际传感器
@@ -83,8 +83,8 @@ uint8_t Scan_Ports(void)
     LOG_D("SCAN", "[scan] actual begin -> %s", r_actual == 0 ? "OK" : "FAIL");
     IWDG_Feed();
 
-    LOG_D("SCAN", "[scan] Init reference sensor (TMAG3001, addr=0x34)...");
-    tmag_reference_sensors[0].i2c_addr = TMAG3001_I2C_ADDR_34;
+    LOG_D("SCAN", "[scan] Init reference sensor (TMAG3001, ADDR=VCC, addr=0x%02X)...", TMAG3001_I2C_ADDR_VCC);
+    tmag_reference_sensors[0].i2c_addr = TMAG3001_I2C_ADDR_VCC;
     r_ref = SENSOR_HAL.init(&tmag_reference_sensors[0], 0, 1, -1, 0);
     if(r_ref == 0) {
         // 应用配置到参考传感器
@@ -721,7 +721,7 @@ void apply_mapping(uint8_t sensor_index)
     if(sensor_calibration[sensor_index].calibrated == 0) return;
     processed_sensor_data[sensor_index].actual.x = processed_sensor_data[sensor_index].actual.x * X_MAPPING_VALUE;
     processed_sensor_data[sensor_index].actual.y = processed_sensor_data[sensor_index].actual.y * Y_MAPPING_VALUE;
-    processed_sensor_data[sensor_index].actual.z = processed_sensor_data[sensor_index].actual.z * Z_MAPPING_VALUE;
+    processed_sensor_data[sensor_index].actual.z = fabsf(processed_sensor_data[sensor_index].actual.z) * Z_MAPPING_VALUE;
 }
 
 /**
