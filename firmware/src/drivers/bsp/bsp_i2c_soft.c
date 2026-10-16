@@ -138,20 +138,31 @@ void I2C_SendAck(uint8_t idx, uint8_t ack)
     IIC_SDA_HIGH(idx);
 }
 
+uint8_t I2C_DevicePresent(uint8_t idx, uint8_t addr)
+{
+    uint8_t result;
+
+    if (addr >= 0x80)
+        return 1;
+
+    IIC_Start(idx);
+    I2C_WriteByte(idx, (uint8_t)(addr << 1));
+    result = I2C_WaitAck(idx);
+    IIC_Stop(idx);
+    return result;
+}
+
 void I2C_ScanDevices(uint8_t idx)
 {
     uint8_t addr, found = 0;
     LOG_I("I2C", "Scanning I2C bus...");
     for (addr = 0x00; addr < 0x80; addr++)
     {
-        IIC_Start(idx);
-        I2C_WriteByte(idx, addr << 1);
-        if (I2C_WaitAck(idx) == 0)
+        if (I2C_DevicePresent(idx, addr) == 0)
         {
             LOG_I("I2C", "Found device at 0x%02X", addr);
             found++;
         }
-        IIC_Stop(idx);
         Delay_us(10);
     }
     if (found == 0)

@@ -1,16 +1,22 @@
 #include "../sensor_hal.h"
 #include "tmag3001.h"
 #include "../../bsp/bsp_delay.h"
+#include "../../bsp/bsp_i2c_soft.h"
+#include "../../bsp/log_manager.h"
 
 static uint8_t tmag_init(void *h, uint8_t a1, uint8_t a0, int drdy, uint8_t id)
 {
     TMAG3001_Handle_t *dev = (TMAG3001_Handle_t *)h;
-    /* Scan_Ports sets the 7-bit address before calling init. */
-    uint8_t addr = dev->i2c_addr;
+    uint8_t expected_addr = dev->i2c_addr;
+
+    /* The caller supplies the hardware address; verify it on the bus before init. */
+    if (I2C_DevicePresent(id, expected_addr) != 0) {
+        LOG_E("TMAG3001", "I2C address mismatch: expected 0x%02X", expected_addr);
+        return 1;
+    }
+
     (void)a1; (void)a0; (void)drdy;
-    dev->i2c_id = id;
-    dev->i2c_addr = addr;
-    return TMAG3001_Init(dev, id, addr, TMAG3001_VERSION_A1);
+    return TMAG3001_Init(dev, id, expected_addr, TMAG3001_VERSION_A1);
 }
 
 static uint8_t tmag_configure(void *h, uint8_t id, const SensorHwConfig_t *cfg)
