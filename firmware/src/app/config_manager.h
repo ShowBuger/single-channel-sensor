@@ -87,7 +87,7 @@ typedef struct {
 #define CONFIG_DEFAULT_DEAD_VALUE       8.5f
 #define CONFIG_DEFAULT_SPIKE_MULT       20.0f
 #define CONFIG_DEFAULT_STABILITY_THR    0.1f
-#define CONFIG_DEFAULT_PRODUCT_MODEL    "MA01"
+#define CONFIG_DEFAULT_PRODUCT_MODEL    "MA02"
 
 /* Default values - MLX90393 */
 #define CONFIG_DEFAULT_MLX_GAIN_SEL     7U     /* x1 最低增益 */
