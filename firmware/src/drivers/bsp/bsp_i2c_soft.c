@@ -1,7 +1,7 @@
 #include "bsp_i2c_soft.h"
 #include "bsp_delay.h"
 #include "log_manager.h"
-#include "stm32f1xx_hal.h"
+#include "stm32l4xx_hal.h"
 #include "board_config.h"
 
 typedef struct {

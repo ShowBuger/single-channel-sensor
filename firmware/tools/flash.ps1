@@ -1,7 +1,7 @@
 # STM32 flash script (PowerShell)
 # Supports: cubeprog (STM32CubeProgrammer) / openocd / daplink / stlink / jlink
 #
-# WARNING: Never run "openocd ... stm32f1x unlock" or "stm32f1x lock" manually.
+# WARNING: Never run "openocd ... stm32l4x unlock" or "stm32l4x lock" manually.
 # These commands set Flash read protection (RDP Level 1) and will prevent future
 # flashing. Use STM32CubeProgrammer OB panel to clear RDP if this happens.
 
@@ -111,10 +111,10 @@ function Get-AutoMethod {
     # Fall back to OpenOCD
     if (-not (Get-Command "openocd" -ErrorAction SilentlyContinue)) { return $null }
 
-    $out = (openocd -f interface/cmsis-dap.cfg -f target/stm32f1x.cfg -c "init" -c "exit" 2>&1 | Out-String)
+    $out = (openocd -f interface/cmsis-dap.cfg -f target/stm32l4x.cfg -c "init" -c "exit" 2>&1 | Out-String)
     if ($out -match "Examination succeed") { return "daplink" }
 
-    $out = (openocd -f interface/stlink.cfg -f target/stm32f1x.cfg -c "init" -c "exit" 2>&1 | Out-String)
+    $out = (openocd -f interface/stlink.cfg -f target/stm32l4x.cfg -c "init" -c "exit" 2>&1 | Out-String)
     if ($out -match "Examination succeed") { return "openocd" }
 
     return $null
@@ -171,10 +171,10 @@ switch ($Method) {
         $cmd     = "program `"$hexUnix`" $verify $reset exit"
 
         Write-Warn ">> Running OpenOCD (DAPLink/CMSIS-DAP)..."
-        Write-Host "   openocd -f interface/cmsis-dap.cfg -f target/stm32f1x.cfg -c `"$cmd`""
+        Write-Host "   openocd -f interface/cmsis-dap.cfg -f target/stm32l4x.cfg -c `"$cmd`""
         Write-Host ""
 
-        openocd -f interface/cmsis-dap.cfg -f target/stm32f1x.cfg -c $cmd
+        openocd -f interface/cmsis-dap.cfg -f target/stm32l4x.cfg -c $cmd
 
         if ($LASTEXITCODE -ne 0) {
             Write-Err "OpenOCD failed (exit $LASTEXITCODE)"
@@ -191,10 +191,10 @@ switch ($Method) {
         $cmd     = "program `"$hexUnix`" $verify $reset exit"
 
         Write-Warn ">> Running OpenOCD (ST-Link)..."
-        Write-Host "   openocd -f interface/stlink.cfg -f target/stm32f1x.cfg -c `"$cmd`""
+        Write-Host "   openocd -f interface/stlink.cfg -f target/stm32l4x.cfg -c `"$cmd`""
         Write-Host ""
 
-        openocd -f interface/stlink.cfg -f target/stm32f1x.cfg -c $cmd
+        openocd -f interface/stlink.cfg -f target/stm32l4x.cfg -c $cmd
 
         if ($LASTEXITCODE -ne 0) {
             Write-Err "OpenOCD failed (exit $LASTEXITCODE)"
@@ -243,7 +243,7 @@ switch ($Method) {
         @"
 si SWD
 speed 4000
-device STM32F103C8
+device STM32L432KC
 loadfile "$hexUnix"
 $resetCmd
 qc

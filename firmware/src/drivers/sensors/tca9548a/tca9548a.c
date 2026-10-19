@@ -1,4 +1,4 @@
-#include "stm32f1xx_hal.h"
+#include "stm32l4xx_hal.h"
 #include "tca9548a.h"
 #include "../../bsp/bsp_i2c_soft.h"
 #include "../../bsp/bsp_delay.h"

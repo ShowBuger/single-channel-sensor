@@ -1,5 +1,5 @@
 #include "config_manager.h"
-#include "stm32f1xx_hal.h"
+#include "stm32l4xx_hal.h"
 #include "board_config.h"
 #include "../drivers/sensors/sensor_hal.h"
 #include "../drivers/bsp/log_manager.h"

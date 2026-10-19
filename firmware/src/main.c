@@ -1,4 +1,4 @@
-#include "stm32f1xx_hal.h"
+#include "stm32l4xx_hal.h"
 #include "drivers/bsp/bsp_delay.h"
 #include "drivers/bsp/bsp_i2c_soft.h"
 #include "drivers/bsp/bsp_uart.h"
@@ -256,39 +256,51 @@ int main(void)
 }
 
 /* -----------------------------------------------------------------------
- * System clock: HSE 8 MHz -> PLL x9 = 72 MHz
+ * System clock: HSI16 MHz -> PLL x10 / 2 = 80 MHz
  * ----------------------------------------------------------------------- */
 static void SystemClock_Config(void)
 {
     RCC_OscInitTypeDef osc = {0};
     RCC_ClkInitTypeDef clk = {0};
 
-    /* Try HSE first (8 MHz external crystal -> PLL x9 = 72 MHz) */
-    osc.OscillatorType = RCC_OSCILLATORTYPE_HSE | RCC_OSCILLATORTYPE_LSI;
-    osc.HSEState       = RCC_HSE_ON;
-    osc.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
-    osc.LSIState       = RCC_LSI_ON;
-    osc.PLL.PLLState   = RCC_PLL_ON;
-    osc.PLL.PLLSource  = RCC_PLLSOURCE_HSE;
-    osc.PLL.PLLMUL     = RCC_PLL_MUL9;
+    /* Configure power regulator (STM32L4 specific) */
+    __HAL_RCC_PWR_CLK_ENABLE();
+    if (HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1) != HAL_OK)
+    {
+        /* Voltage scaling error */
+        while (1);
+    }
+
+    /* HSI16 -> PLL: 16MHz / M:1 * N:10 / R:2 = 80MHz */
+    osc.OscillatorType      = RCC_OSCILLATORTYPE_HSI | RCC_OSCILLATORTYPE_LSI;
+    osc.HSIState            = RCC_HSI_ON;
+    osc.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+    osc.LSIState            = RCC_LSI_ON;  /* For IWDG */
+    osc.PLL.PLLState        = RCC_PLL_ON;
+    osc.PLL.PLLSource       = RCC_PLLSOURCE_HSI;
+    osc.PLL.PLLM            = 1;   /* 16MHz / 1 = 16MHz */
+    osc.PLL.PLLN            = 10;  /* 16MHz * 10 = 160MHz */
+    osc.PLL.PLLP            = RCC_PLLP_DIV7;
+    osc.PLL.PLLQ            = RCC_PLLQ_DIV2;
+    osc.PLL.PLLR            = RCC_PLLR_DIV2;  /* 160MHz / 2 = 80MHz (SYSCLK) */
 
     if (HAL_RCC_OscConfig(&osc) != HAL_OK)
     {
-        /* HSE failed -- fall back to HSI (8 MHz internal -> PLL x9 = 72 MHz) */
-        osc.OscillatorType = RCC_OSCILLATORTYPE_HSI | RCC_OSCILLATORTYPE_LSI;
-        osc.HSEState       = RCC_HSE_OFF;
-        osc.HSIState       = RCC_HSI_ON;
-        osc.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-        osc.PLL.PLLSource  = RCC_PLLSOURCE_HSI_DIV2;  /* HSI/2 = 4 MHz x18 = 72 MHz */
-        osc.PLL.PLLMUL     = RCC_PLL_MUL16;           /* 4 MHz x16 = 64 MHz (HSI safe) */
-        HAL_RCC_OscConfig(&osc);
+        /* Clock configuration error */
+        while (1);
     }
 
+    /* Configure system clocks */
     clk.ClockType      = RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_HCLK |
                          RCC_CLOCKTYPE_PCLK1  | RCC_CLOCKTYPE_PCLK2;
     clk.SYSCLKSource   = RCC_SYSCLKSOURCE_PLLCLK;
-    clk.AHBCLKDivider  = RCC_SYSCLK_DIV1;
-    clk.APB1CLKDivider = RCC_HCLK_DIV2;
-    clk.APB2CLKDivider = RCC_HCLK_DIV1;
-    HAL_RCC_ClockConfig(&clk, FLASH_LATENCY_2);
+    clk.AHBCLKDivider  = RCC_SYSCLK_DIV1;   /* HCLK  = 80 MHz */
+    clk.APB1CLKDivider = RCC_HCLK_DIV1;     /* PCLK1 = 80 MHz */
+    clk.APB2CLKDivider = RCC_HCLK_DIV1;     /* PCLK2 = 80 MHz */
+
+    if (HAL_RCC_ClockConfig(&clk, FLASH_LATENCY_4) != HAL_OK)
+    {
+        /* Clock configuration error */
+        while (1);
+    }
 }

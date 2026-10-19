@@ -13,18 +13,19 @@ set(CMAKE_C_EXTENSIONS ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # ── MCU ──────────────────────────────────────────────────────────────────────
-set(MCU_LINKER_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/STM32F103C8Tx_FLASH.ld)
+set(MCU_LINKER_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/STM32L432KCUx_FLASH.ld)
 
 set(CPU_OPTIONS
-    -mcpu=cortex-m3
+    -mcpu=cortex-m4
     -mthumb
-    -mfloat-abi=soft
+    -mfpu=fpv4-sp-d16
+    -mfloat-abi=hard
 )
 
 # ── Compile definitions ───────────────────────────────────────────────────────
 add_compile_definitions(
     USE_HAL_DRIVER
-    STM32F103xB
+    STM32L432xx
 )
 
 # ── Compile options ───────────────────────────────────────────────────────────
@@ -58,46 +59,49 @@ add_link_options(
 )
 
 # ── HAL driver root ───────────────────────────────────────────────────────────
-set(HAL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libs/STM32F1xx_HAL_Driver)
+set(HAL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libs/STM32L4xx_HAL_Driver)
 set(CMSIS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libs/CMSIS)
 
 # ── Include directories ───────────────────────────────────────────────────────
 include_directories(
     src                      # board_config.h lives here
     src/app
-    src/mcu/stm32f10x        # MCU-specific config and interrupt handlers
+    src/mcu/stm32l4xx        # MCU-specific config and interrupt handlers
     src/drivers/bsp
     src/drivers/sensors
     src/drivers/sensors/mlx90393
     src/drivers/sensors/tmag3001
     src/drivers/sensors/tca9548a
     ${CMSIS_DIR}/Core/Include
-    ${CMSIS_DIR}/Device/ST/STM32F1xx/Include
+    ${CMSIS_DIR}/Device/ST/STM32L4xx/Include
     ${HAL_DIR}/Inc
-    ${CMAKE_CURRENT_SOURCE_DIR}/src   # ensure stm32f1xx_hal_conf.h is found by HAL sources
+    ${CMAKE_CURRENT_SOURCE_DIR}/src   # ensure stm32l4xx_hal_conf.h is found by HAL sources
 )
 
 # ── Sources ───────────────────────────────────────────────────────────────────
 
 # CMSIS device init
 set(CMSIS_SOURCES
-    ${CMSIS_DIR}/Device/ST/STM32F1xx/Source/Templates/system_stm32f1xx.c
+    ${CMSIS_DIR}/Device/ST/STM32L4xx/Source/Templates/system_stm32l4xx.c
 )
 
 # HAL driver sources (only modules we use)
 file(GLOB HAL_SOURCES
-    ${HAL_DIR}/Src/stm32f1xx_hal.c
-    ${HAL_DIR}/Src/stm32f1xx_hal_cortex.c
-    ${HAL_DIR}/Src/stm32f1xx_hal_rcc.c
-    ${HAL_DIR}/Src/stm32f1xx_hal_rcc_ex.c
-    ${HAL_DIR}/Src/stm32f1xx_hal_gpio.c
-    ${HAL_DIR}/Src/stm32f1xx_hal_gpio_ex.c
-    ${HAL_DIR}/Src/stm32f1xx_hal_dma.c
-    ${HAL_DIR}/Src/stm32f1xx_hal_flash.c
-    ${HAL_DIR}/Src/stm32f1xx_hal_flash_ex.c
-    ${HAL_DIR}/Src/stm32f1xx_hal_pwr.c
-    ${HAL_DIR}/Src/stm32f1xx_hal_uart.c
-    ${HAL_DIR}/Src/stm32f1xx_hal_iwdg.c
+    ${HAL_DIR}/Src/stm32l4xx_hal.c
+    ${HAL_DIR}/Src/stm32l4xx_hal_cortex.c
+    ${HAL_DIR}/Src/stm32l4xx_hal_rcc.c
+    ${HAL_DIR}/Src/stm32l4xx_hal_rcc_ex.c
+    ${HAL_DIR}/Src/stm32l4xx_hal_gpio.c
+    ${HAL_DIR}/Src/stm32l4xx_hal_dma.c
+    ${HAL_DIR}/Src/stm32l4xx_hal_dma_ex.c
+    ${HAL_DIR}/Src/stm32l4xx_hal_flash.c
+    ${HAL_DIR}/Src/stm32l4xx_hal_flash_ex.c
+    ${HAL_DIR}/Src/stm32l4xx_hal_flash_ramfunc.c
+    ${HAL_DIR}/Src/stm32l4xx_hal_pwr.c
+    ${HAL_DIR}/Src/stm32l4xx_hal_pwr_ex.c
+    ${HAL_DIR}/Src/stm32l4xx_hal_uart.c
+    ${HAL_DIR}/Src/stm32l4xx_hal_uart_ex.c
+    ${HAL_DIR}/Src/stm32l4xx_hal_iwdg.c
 )
 
 # Application sources
@@ -113,11 +117,11 @@ file(GLOB_RECURSE SENSOR_SOURCES  src/drivers/sensors/**/*.c)
 
 set(MAIN_SOURCES
     src/main.c
-    src/mcu/stm32f10x/stm32f10x_it.c
+    src/mcu/stm32l4xx/stm32l4xx_it.c
 )
 
 set(STARTUP_ASM
-    ${CMSIS_DIR}/Device/ST/STM32F1xx/Source/Templates/gcc/startup_stm32f103xb.s
+    ${CMSIS_DIR}/Device/ST/STM32L4xx/Source/Templates/gcc/startup_stm32l432xx.s
 )
 
 # ── Executable ────────────────────────────────────────────────────────────────
@@ -150,5 +154,5 @@ add_custom_command(TARGET ${PROJECT_NAME}.elf POST_BUILD
 )
 
 message(STATUS "Project  : ${PROJECT_NAME}")
-message(STATUS "MCU      : STM32F103xB")
+message(STATUS "MCU      : STM32L432xx")
 message(STATUS "HAL root : ${HAL_DIR}")

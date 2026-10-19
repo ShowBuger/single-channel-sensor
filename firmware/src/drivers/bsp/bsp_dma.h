@@ -1,6 +1,6 @@
 #ifndef __DMA_H
 #define __DMA_H
-#include "stm32f1xx_hal.h"
+#include "stm32l4xx_hal.h"
 
 void dma_Init(uint32_t AddrA,uint32_t AddrB,uint16_t size);
 void dma_Transfer(void);

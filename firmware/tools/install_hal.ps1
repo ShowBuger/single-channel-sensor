@@ -1,4 +1,4 @@
-# STM32F1xx HAL Driver download script
+# STM32L4xx HAL Driver download script
 # Downloads HAL driver and CMSIS from ST's GitHub mirror into firmware/libs/
 # Usage: .\tools\install_hal.ps1
 
@@ -30,16 +30,16 @@ if ($FirmwareDir -eq "") { $FirmwareDir = Split-Path -Parent $ScriptDir }
 $LibsDir     = Join-Path $FirmwareDir "libs"
 
 # ── Download targets ──────────────────────────────────────────────────────────
-# ST's GitHub releases for STM32CubeF1 v1.8.6
-$HAL_ZIP_URL  = "https://github.com/STMicroelectronics/STM32CubeF1/archive/refs/tags/v1.8.6.zip"
-$HAL_ZIP_FILE = Join-Path $env:TEMP "STM32CubeF1-1.8.6.zip"
-$HAL_EXTRACT  = Join-Path $env:TEMP "STM32CubeF1-extract"
+# ST's GitHub releases for STM32CubeL4 v1.18.1 (latest stable)
+$HAL_ZIP_URL  = "https://github.com/STMicroelectronics/STM32CubeL4/archive/refs/tags/v1.18.1.zip"
+$HAL_ZIP_FILE = Join-Path $env:TEMP "STM32CubeL4-1.18.1.zip"
+$HAL_EXTRACT  = Join-Path $env:TEMP "STM32CubeL4-extract"
 
-$HAL_DEST   = Join-Path $LibsDir "STM32F1xx_HAL_Driver"
+$HAL_DEST   = Join-Path $LibsDir "STM32L4xx_HAL_Driver"
 $CMSIS_DEST = Join-Path $LibsDir "CMSIS"
 
 Write-Sep
-Write-Info "STM32F1xx HAL Driver Installer"
+Write-Info "STM32L4xx HAL Driver Installer"
 Write-Sep
 Write-Host "  Firmware dir : $FirmwareDir"
 Write-Host "  Libs dir     : $LibsDir"
@@ -47,7 +47,7 @@ Write-Sep
 Write-Host ""
 
 # ── Check if already installed ────────────────────────────────────────────────
-$halReady   = Test-Path (Join-Path $HAL_DEST  "Inc\stm32f1xx_hal.h")
+$halReady   = Test-Path (Join-Path $HAL_DEST  "Inc\stm32l4xx_hal.h")
 $cmsiReady  = Test-Path (Join-Path $CMSIS_DEST "Include\cmsis_compiler.h")
 
 if ($halReady -and $cmsiReady -and -not $Force) {
@@ -58,7 +58,7 @@ if ($halReady -and $cmsiReady -and -not $Force) {
 
 # ── Download ──────────────────────────────────────────────────────────────────
 if (-not (Test-Path $HAL_ZIP_FILE) -or $Force) {
-    Write-Info "Downloading STM32CubeF1 v1.8.6 (~80 MB)..."
+    Write-Info "Downloading STM32CubeL4 v1.18.1 (~150 MB)..."
     Write-Info "URL: $HAL_ZIP_URL"
     Write-Host ""
     try {
@@ -85,14 +85,14 @@ Write-Ok "Extracted to temp dir"
 
 $cubeRoot = Get-ChildItem $HAL_EXTRACT -Directory | Select-Object -First 1
 if (-not $cubeRoot) {
-    Write-Err "Could not find extracted CubeF1 root"
+    Write-Err "Could not find extracted CubeL4 root"
     exit 1
 }
 $cubeRoot = $cubeRoot.FullName
-Write-Info "CubeF1 root: $cubeRoot"
+Write-Info "CubeL4 root: $cubeRoot"
 
 # ── Copy HAL driver ───────────────────────────────────────────────────────────
-$halSrc = Join-Path $cubeRoot "Drivers\STM32F1xx_HAL_Driver"
+$halSrc = Join-Path $cubeRoot "Drivers\STM32L4xx_HAL_Driver"
 if (-not (Test-Path $halSrc)) {
     Write-Err "HAL driver not found at: $halSrc"
     exit 1
@@ -117,13 +117,13 @@ Remove-Item $HAL_ZIP_FILE -ErrorAction SilentlyContinue
 Write-Ok "Cleaned up temp files"
 
 # ── Verify ────────────────────────────────────────────────────────────────────
-$halOk   = Test-Path (Join-Path $HAL_DEST  "Inc\stm32f1xx_hal.h")
+$halOk   = Test-Path (Join-Path $HAL_DEST  "Inc\stm32l4xx_hal.h")
 $cmsiOk  = Test-Path (Join-Path $CMSIS_DEST "Include\cmsis_compiler.h")
-$startOk = Test-Path (Join-Path $CMSIS_DEST "Device\ST\STM32F1xx\Source\Templates\gcc\startup_stm32f103xb.s")
+$startOk = Test-Path (Join-Path $CMSIS_DEST "Device\ST\STM32L4xx\Source\Templates\gcc\startup_stm32l432xx.s")
 
-if (-not $halOk)   { Write-Err "stm32f1xx_hal.h not found after install"; exit 1 }
+if (-not $halOk)   { Write-Err "stm32l4xx_hal.h not found after install"; exit 1 }
 if (-not $cmsiOk)  { Write-Err "cmsis_compiler.h not found after install"; exit 1 }
-if (-not $startOk) { Write-Err "startup_stm32f103xb.s not found after install"; exit 1 }
+if (-not $startOk) { Write-Err "startup_stm32l432xx.s not found after install"; exit 1 }
 
 Write-Host ""
 Write-Sep

@@ -1,5 +1,5 @@
 #include "bsp_delay.h"
-#include "stm32f1xx_hal.h"
+#include "stm32l4xx_hal.h"
 
 /**
  * @brief  Microsecond delay using DWT cycle counter

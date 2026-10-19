@@ -1,6 +1,6 @@
 # 单通道磁传感器系统
 
-基于 STM32F103C8T6 的单通道差分磁场测量系统。使用一对 MLX90393 传感器（实际传感器 + 参考传感器）进行差分测量，通过消除环境磁场干扰提高测量精度，结果通过串口输出。
+基于 STM32L432KCU6 的单通道差分磁场测量系统。使用一对 MLX90393 传感器（实际传感器 + 参考传感器）进行差分测量，通过消除环境磁场干扰提高测量精度，结果通过串口输出。
 
 ---
 
@@ -22,13 +22,14 @@
 
 | 项目 | 规格 |
 |------|------|
-| MCU | STM32F103C8T6（Cortex-M3，72 MHz） |
-| Flash | 64 KB |
-| RAM | 20 KB |
+| MCU | STM32L432KCU6（Cortex-M4F，80 MHz） |
+| Flash | 256 KB |
+| RAM | 64 KB |
 | 传感器 | MLX90393 × 2（实际 + 参考，差分测量） |
-| I2C | 软件模拟 I2C，PB6（SCL）/ PB7（SDA） |
-| 串口 | USART1，PA9（TX）/ PA10（RX），115200 bps |
-| 调试器 | ST-Link / J-Link（SWD 接口） |
+| I2C | 软件模拟 I2C，PA9（SCL）/ PA10（SDA） |
+| 串口 | USART1，PB6（TX）/ PB7（RX），921600 bps |
+| 调试器 | ST-Link / J-Link（SWD 接口，PA13/PA14） |
+| 时钟源 | HSI16 内部振荡器（16 MHz → PLL ×10 /2 = 80 MHz） |
 
 ---
 
@@ -39,8 +40,12 @@ single_channel_system/
 ├── firmware/                   # 固件代码
 │   ├── src/                    # 应用源代码
 │   │   ├── main.c              # 主程序、时钟初始化、命令调度
-│   │   ├── stm32f10x_it.c      # 中断服务例程（SysTick / HAL_IncTick）
-│   │   ├── stm32f1xx_hal_conf.h # HAL 库模块配置
+│   │   ├── board_config.h      # 硬件配置（引脚定义、时钟频率）
+│   │   ├── mcu/
+│   │   │   └── stm32l4xx/      # STM32L4 MCU配置
+│   │   │       ├── stm32l4xx_it.c      # 中断服务例程
+│   │   │       ├── stm32l4xx_it.h      # 中断声明
+│   │   │       └── stm32l4xx_hal_conf.h # HAL 库模块配置
 │   │   ├── app/
 │   │   │   ├── sensor_manager.c/h  # 传感器调度、数据处理流水线
 │   │   │   └── config_manager.c/h  # Flash 配置读写
@@ -54,8 +59,8 @@ single_channel_system/
 │   │           ├── tca9548a.c/h    # TCA9548A I2C 多路复用器驱动
 │   │           └── tmag3001.c/h    # TMAG3001 驱动（预留）
 │   ├── libs/
-│   │   ├── STM32F1xx_HAL_Driver/  # ST HAL Driver v1.1.8
-│   │   └── CMSIS/                 # CMSIS Core + STM32F1xx Device
+│   │   ├── STM32L4xx_HAL_Driver/  # ST HAL Driver for L4
+│   │   └── CMSIS/                 # CMSIS Core + STM32L4xx Device
 │   ├── tools/                  # PowerShell 构建与烧录脚本
 │   │   ├── install_toolchain.ps1  # 一键下载安装 ARM 工具链
 │   │   ├── install_hal.ps1        # 一键下载安装 HAL 库
@@ -64,7 +69,7 @@ single_channel_system/
 │   │   ├── env_setup.ps1          # 加载工具链到当前 PATH
 │   │   └── _ensure_toolchain.ps1  # 构建前自动检查工具链（内部使用）
 │   ├── CMakeLists.txt          # CMake 构建配置
-│   └── STM32F103C8Tx_FLASH.ld  # 链接脚本
+│   └── STM32L432KCUx_FLASH.ld  # 链接脚本（256KB Flash / 64KB RAM）
 ├── docs/
 │   └── COMMIT_CONVENTION.md   # Git 提交规范
 ├── .vscode/
@@ -326,4 +331,4 @@ build: 迁移到 STM32 HAL 库，移除 StdPeriph 依赖
 
 ---
 
-**MCU**: STM32F103C8T6 | **工具链**: ARM GCC 15.3 | **构建**: CMake + Ninja | **库**: STM32F1xx HAL v1.1.8
+**MCU**: STM32L432KCU6 (Cortex-M4F) | **工具链**: ARM GCC 15.3 | **构建**: CMake + Ninja | **库**: STM32L4xx HAL | **时钟**: HSI16 → 80 MHz

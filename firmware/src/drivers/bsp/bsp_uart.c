@@ -1,5 +1,5 @@
 #include "bsp_uart.h"
-#include "stm32f1xx_hal.h"
+#include "stm32l4xx_hal.h"
 #include "board_config.h"
 #include <stdio.h>
 #include <stdarg.h>
@@ -23,16 +23,19 @@ void Serial_Init(void)
 
     GPIO_InitTypeDef gpio = {0};
 
-    /* TX */
+    /* TX: PB6, AF7 (USART1) - STM32L4 requires explicit Alternate function */
     gpio.Pin       = BSP_UART_TX_PIN;
     gpio.Mode      = GPIO_MODE_AF_PP;
-    gpio.Speed     = GPIO_SPEED_FREQ_HIGH;
+    gpio.Pull      = GPIO_NOPULL;
+    gpio.Speed     = GPIO_SPEED_FREQ_VERY_HIGH;
+    gpio.Alternate = GPIO_AF7_USART1;  /* STM32L4 specific */
     HAL_GPIO_Init(BSP_UART_TX_PORT, &gpio);
 
-    /* RX */
-    gpio.Pin  = BSP_UART_RX_PIN;
-    gpio.Mode = GPIO_MODE_INPUT;
-    gpio.Pull = GPIO_PULLUP;
+    /* RX: PB7, AF7 (USART1) */
+    gpio.Pin       = BSP_UART_RX_PIN;
+    gpio.Mode      = GPIO_MODE_AF_PP;
+    gpio.Pull      = GPIO_NOPULL;
+    gpio.Alternate = GPIO_AF7_USART1;  /* STM32L4 specific */
     HAL_GPIO_Init(BSP_UART_RX_PORT, &gpio);
 
     huart1.Instance          = BSP_UART_INSTANCE;
