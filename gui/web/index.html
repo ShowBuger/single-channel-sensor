@@ -22,6 +22,14 @@ dialog{border:1px solid var(--line);padding:0;border-radius:14px;width:min(480px
 .import-dialog{width:min(860px,calc(100vw - 32px))}.import-dialog[open]{display:flex;flex-direction:column;overflow:hidden}.import-dialog>.dialog-content{overflow-y:auto;min-height:0}.import-dialog>.dialog-head,.import-dialog>.dialog-actions{flex-shrink:0}
 .import-tools{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px}.import-tools>button{min-height:40px}.template-picker{position:relative;display:inline-flex;align-items:center;min-height:40px;max-width:100%;border:1px solid var(--line);border-radius:7px;background:#f5f8f7;transition:border-color .18s,background .18s}.template-picker>label{padding:0 11px;font-size:12px;color:#71847e;white-space:nowrap}.template-picker>select{appearance:none;min-width:0;margin:0;border:0;border-left:1px solid var(--line);border-radius:0 6px 6px 0;background:#fff;color:var(--ink);padding:9px 32px 9px 12px;line-height:20px}.template-picker:after{content:"";position:absolute;right:13px;top:15px;width:7px;height:7px;border-right:1.5px solid #71847e;border-bottom:1.5px solid #71847e;transform:rotate(45deg);pointer-events:none}.template-picker:has(select:not(:disabled)):hover{border-color:#bdcdc9}.template-picker:focus-within{outline:3px solid #16857855;outline-offset:3px;border-color:var(--teal)}.template-picker>select:focus-visible{outline:none}.template-picker:has(select:disabled){opacity:.55}.template-picker>select:disabled{cursor:not-allowed}
 .import-columns{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:22px}.import-columns textarea{resize:vertical;min-height:300px;width:100%;border:1px solid var(--line);border-radius:7px;padding:12px;font:12px/1.65 Consolas,monospace;color:var(--ink);background:#f9fbfb}.import-columns h3{font-size:12px;margin:0 0 8px}.import-columns section{margin-bottom:18px}.import-columns table{border-collapse:collapse;width:100%;font-size:11px}.import-columns th{text-align:left;font-weight:400;width:32%;color:#60747c}.import-columns th,.import-columns td{padding:8px 4px;border-bottom:1px solid var(--line);vertical-align:top}.import-columns .config-value{font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.import-columns td:last-child{text-align:right;font-size:10px;width:30%}.import-status{padding:12px;background:#f1f6f5;color:#607a73;border-radius:6px;font-size:12px;margin:15px 0}.import-status[data-kind=error]{background:#fff0ed;color:#a95442}.import-status[data-kind=success]{color:#168578}.import-notes{margin-top:15px!important;line-height:1.8}#importProgressBar{width:100%;accent-color:var(--teal);margin-bottom:16px}.arrow-toggle{margin-left:auto;font-size:11px}.panel-head{flex-wrap:wrap}.import-dialog [hidden]{display:none!important}@media(max-width:650px){.import-columns{grid-template-columns:minmax(0,1fr)}.import-columns textarea{min-height:180px}.import-dialog .dialog-content{padding:16px}.import-tools button{font-size:11px}.template-picker{flex:1 0 100%}.template-picker>select{flex:1}}
+/* Keep English controls readable at narrow widths. */
+.language-control{display:flex;align-items:center;gap:8px;white-space:nowrap;font-size:12px;color:var(--teal)}
+.language-control input{appearance:none;width:34px;height:19px;border-radius:12px;background:#c5cfd2;position:relative;cursor:pointer;margin:0}
+.language-control input:before{content:"";position:absolute;left:3px;top:3px;width:13px;height:13px;border-radius:50%;background:white;transition:transform .18s}
+.language-control input:checked{background:var(--teal)}.language-control input:checked:before{transform:translateX(15px)}
+.dialog-actions{flex-wrap:wrap}.log-type{overflow-wrap:anywhere}.log-row{grid-template-columns:75px 92px minmax(0,1fr)}
+.import-tools{gap:8px}.template-picker{max-width:100%}.plane-footer{flex-wrap:wrap;gap:8px}
+@media(max-width:780px){.topbar{height:auto;min-height:62px;flex-wrap:wrap;gap:8px;padding-top:10px;padding-bottom:10px}.nav{order:3;flex:1 0 100%;height:36px;justify-content:center;margin-left:0}.language-control{margin-left:auto}.workspace-heading{align-items:flex-start;gap:12px;flex-wrap:wrap}.workspace-meta{flex-wrap:wrap;gap:10px}.dialog-actions button{white-space:normal}.panel-title{flex-wrap:wrap}}
 </style>
 </head>
 <body>
@@ -44,6 +52,7 @@ dialog{border:1px solid var(--line);padding:0;border-radius:14px;width:min(480px
 <header class="topbar">
   <div class="brand"><div class="brand-mark"><svg class="icon"><use href="#i-field"/></svg></div><span class="brand-name">FIELD</span></div>
   <nav class="nav" aria-label="主导航"><button class="active" id="monitorTab" aria-current="page">实时监测</button><button data-open="importDialog">导入配置</button><button data-open="logDialog">数据记录</button></nav>
+  <label class="language-control" data-i18n-ignore><span>中文 / English</span><input id="languageSwitch" type="checkbox" role="switch" aria-label="English / 中文"><span id="languageName">中文</span></label>
 </header>
 <main>
   <section class="toolbar" aria-label="采集工具栏">
@@ -81,6 +90,7 @@ dialog{border:1px solid var(--line);padding:0;border-radius:14px;width:min(480px
 <label class="toggle-label"><input id="startAfterImport" type="checkbox" checked>应用后启动采集（执行标定）</label></div>
 <div class="dialog-actions"><button id="cancelImport" hidden>取消传输</button><button id="applyJson" class="primary" disabled>应用到设备</button></div></dialog>
 <div class="toast" id="toast" role="status"></div>
+<script src="i18n.js"></script>
 <script src="core.js"></script>
 <script src="bridge-client.js"></script>
 <script src="import-ui.js"></script>

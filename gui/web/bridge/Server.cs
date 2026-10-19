@@ -155,7 +155,7 @@ internal static class FieldBridge {
                 }
                 if(method!="GET") { Reply(stream,405,new{error="Method not allowed"});return; }
                 string file=path=="/"?"index.html":path.TrimStart('/');
-                if(!new[]{"index.html","app.js","core.js","bridge-client.js","import-ui.js"}.Contains(file)) { Reply(stream,404,new{error="File not found"});return; }
+                if(!new[]{"index.html","app.js","core.js","bridge-client.js","import-ui.js","i18n.js"}.Contains(file)) { Reply(stream,404,new{error="File not found"});return; }
                 var bytes=File.ReadAllBytes(Path.Combine(Root,file));Respond(stream,200,file.EndsWith(".js")?"text/javascript; charset=utf-8":"text/html; charset=utf-8",bytes);
             } } catch { /* A closed browser socket must not stop the listener. */ }
         }
