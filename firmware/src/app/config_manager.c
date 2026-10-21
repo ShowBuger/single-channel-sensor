@@ -57,18 +57,36 @@ uint8_t Config_SetDefaultsForProduct(Config_TypeDef *cfg, const char *product)
     strncpy(cfg->product_model, product, sizeof(cfg->product_model) - 1);
     cfg->product_model[sizeof(cfg->product_model) - 1] = '\0';
 
-    /* 两种产品使用同一布局；不生效的字段也保留合法默认值。 */
-    cfg->range           = CONFIG_DEFAULT_TMAG_RANGE;
-    cfg->op_mode         = CONFIG_DEFAULT_TMAG_OP_MODE;
-    cfg->mag_ch          = CONFIG_DEFAULT_TMAG_MAG_CH;
-    cfg->sensor_version  = CONFIG_DEFAULT_TMAG_VERSION;
-    cfg->gain_sel        = type == SENSOR_TYPE_MLX90393 ? CONFIG_DEFAULT_MLX_GAIN_SEL : CONFIG_DEFAULT_TMAG_GAIN_SEL;
-    cfg->osr             = type == SENSOR_TYPE_MLX90393 ? CONFIG_DEFAULT_MLX_OSR : CONFIG_DEFAULT_TMAG_OSR;
-    cfg->dig_filt        = CONFIG_DEFAULT_MLX_DIG_FILT;
-    cfg->res_x           = CONFIG_DEFAULT_MLX_RES;
-    cfg->res_y           = CONFIG_DEFAULT_MLX_RES;
-    cfg->res_z           = CONFIG_DEFAULT_MLX_RES;
-    cfg->tcmp_en         = CONFIG_DEFAULT_MLX_TCMP_EN;
+    /* 根据传感器类型设置对应的默认值 */
+    if (type == SENSOR_TYPE_TMAG3001) {
+        /* TMAG3001 特有配置 */
+        cfg->gain_sel       = CONFIG_DEFAULT_TMAG_GAIN_SEL;
+        cfg->osr            = CONFIG_DEFAULT_TMAG_OSR;
+        cfg->range          = CONFIG_DEFAULT_TMAG_RANGE;
+        cfg->op_mode        = CONFIG_DEFAULT_TMAG_OP_MODE;
+        cfg->mag_ch         = CONFIG_DEFAULT_TMAG_MAG_CH;
+        cfg->sensor_version = CONFIG_DEFAULT_TMAG_VERSION;
+        /* MLX90393 字段保留合法默认值（不使用） */
+        cfg->dig_filt       = CONFIG_DEFAULT_MLX_DIG_FILT;
+        cfg->res_x          = CONFIG_DEFAULT_MLX_RES;
+        cfg->res_y          = CONFIG_DEFAULT_MLX_RES;
+        cfg->res_z          = CONFIG_DEFAULT_MLX_RES;
+        cfg->tcmp_en        = CONFIG_DEFAULT_MLX_TCMP_EN;
+    } else if (type == SENSOR_TYPE_MLX90393) {
+        /* MLX90393 特有配置 */
+        cfg->gain_sel       = CONFIG_DEFAULT_MLX_GAIN_SEL;
+        cfg->osr            = CONFIG_DEFAULT_MLX_OSR;
+        cfg->dig_filt       = CONFIG_DEFAULT_MLX_DIG_FILT;
+        cfg->res_x          = CONFIG_DEFAULT_MLX_RES;
+        cfg->res_y          = CONFIG_DEFAULT_MLX_RES;
+        cfg->res_z          = CONFIG_DEFAULT_MLX_RES;
+        cfg->tcmp_en        = CONFIG_DEFAULT_MLX_TCMP_EN;
+        /* TMAG3001 字段保留合法默认值（不使用） */
+        cfg->range          = CONFIG_DEFAULT_TMAG_RANGE;
+        cfg->op_mode        = CONFIG_DEFAULT_TMAG_OP_MODE;
+        cfg->mag_ch         = CONFIG_DEFAULT_TMAG_MAG_CH;
+        cfg->sensor_version = CONFIG_DEFAULT_TMAG_VERSION;
+    }
     cfg->checksum = calculate_checksum(cfg);
     return 0;
 }
