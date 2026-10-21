@@ -84,7 +84,7 @@ _Static_assert(offsetof(Config_TypeDef, checksum) == 52, "Config checksum offset
 
 /* Default values - 通用 */
 #define CONFIG_DEFAULT_SENSOR_TYPE      CURRENT_SENSOR_TYPE
-#define CONFIG_DEFAULT_FLAG_RES         0x00U  
+#define CONFIG_DEFAULT_FLAG_RES         0x00U
 #define CONFIG_DEFAULT_LOG_LEVEL        4U     /* Debug 级别 */
 #define CONFIG_DEFAULT_X_MAP            1.0f
 #define CONFIG_DEFAULT_Y_MAP            1.0f
@@ -92,7 +92,15 @@ _Static_assert(offsetof(Config_TypeDef, checksum) == 52, "Config checksum offset
 #define CONFIG_DEFAULT_DEAD_VALUE       8.5f
 #define CONFIG_DEFAULT_SPIKE_MULT       20.0f
 #define CONFIG_DEFAULT_STABILITY_THR    0.1f
+
+/* 根据当前传感器类型自动选择默认产品型号 */
+#if CURRENT_SENSOR_TYPE == SENSOR_TYPE_MLX90393
+#define CONFIG_DEFAULT_PRODUCT_MODEL    "MA01"
+#elif CURRENT_SENSOR_TYPE == SENSOR_TYPE_TMAG3001
 #define CONFIG_DEFAULT_PRODUCT_MODEL    "MA02"
+#else
+#error "Unknown sensor type for CONFIG_DEFAULT_PRODUCT_MODEL"
+#endif
 
 /* Default values - MLX90393 */
 #define CONFIG_DEFAULT_MLX_GAIN_SEL     7U     /* x1 最低增益 */
