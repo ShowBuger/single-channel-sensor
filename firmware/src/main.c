@@ -9,6 +9,7 @@
 #include "app/config_import.h"
 #include "app/config_parser.h"
 #include "app/config_manager.h"
+#include "app/command_handler.h"
 #include "drivers/sensors/sensor_hal.h"
 #include "drivers/bsp/log_manager.h"
 #include <string.h>
@@ -37,187 +38,7 @@ void IWDG_Feed(void)
     if (hiwdg.Instance != NULL) HAL_IWDG_Refresh(&hiwdg);
 }
 
-/* -----------------------------------------------------------------------
- * Serial command processing
- * ----------------------------------------------------------------------- */
-static void serial_command_process(void)
-{
-    if (!Serial_GetCommandFlag()) return;
-
-    char *cmd = Serial_GetCommandBuffer();
-
-    /* Check if in import state — delegate to import handler */
-    if (ConfigImport_GetState() != IMPORT_STATE_IDLE)
-    {
-        ConfigImport_ProcessCommand(cmd);
-        return;
-    }
-
-    /* Handle import commands */
-    if (strncmp(cmd, "ML IMPORT_", 10) == 0)
-    {
-        ConfigImport_ProcessCommand(cmd);
-        return;
-    }
-
-    if (strcmp(cmd, "ML START") == 0)
-    {
-        if (sensor_start() == 0)
-        {
-            Serial_Printf("Sensor started\r\n");
-            Serial_Printf("Running: %s\r\n", SENSOR_Run[0] ? "sensor0" : "none");
-        }
-        else Serial_Printf("Failed to start\r\n");
-    }
-    else if (strcmp(cmd, "ML STOP") == 0)
-    {
-        Serial_Printf(sensor_stop() == 0 ? "Stopped\r\n" : "Stop failed\r\n");
-    }
-    else if (strcmp(cmd, "ML MERSURE") == 0)
-    {
-        if (sensor_start() == 0)
-        {
-            get_sensor_data();
-            if (SENSOR_Run[0]) print_processed_sensor_data(0);
-            sensor_stop();
-        }
-        else Serial_Printf("Start failed\r\n");
-    }
-    else if (strcmp(cmd, "ML CALIB") == 0)
-    {
-        Serial_Printf(perform_sensor_calibration() == 0
-               ? "Calibration OK\r\n" : "Calibration FAIL\r\n");
-    }
-    else if (strncmp(cmd, "ML CHFLAG ", 10) == 0)
-    {
-        uint32_t val;
-        if (sscanf(cmd + 10, "0x%lX", &val) == 1 ||
-            sscanf(cmd + 10, "0X%lX", &val) == 1 ||
-            sscanf(cmd + 10, "%lu",   &val) == 1)
-        {
-            if (val <= 0xFF)
-            {
-                FLAG_RES = (uint8_t)val;
-                Config_Save_All();
-                Serial_Printf("FLAG_RES=0x%02X\r\n", FLAG_RES);
-            }
-            else Serial_Printf("Out of range\r\n");
-        }
-        else Serial_Printf("Usage: ML CHFLAG <hex|dec>\r\n");
-    }
-    else if (strcmp(cmd, "ML FLAG") == 0)
-        Serial_Printf("FLAG_RES: 0x%02X\r\n", FLAG_RES);
-    else if (strcmp(cmd, "ML MAPPING") == 0)
-    {
-        Serial_Printf("X=%.3f Y=%.3f Z=%.3f\r\n",
-                      X_MAPPING_VALUE, Y_MAPPING_VALUE, Z_MAPPING_VALUE);
-    }
-    else if (strncmp(cmd, "ML SETMAP ", 10) == 0)
-    {
-        char axis; float val;
-        if (sscanf(cmd + 10, "%c %f", &axis, &val) == 2)
-        {
-            if      (axis=='X'||axis=='x') { X_MAPPING_VALUE=val; Mapping_Value_Save(); Serial_Printf("X=%.3f\r\n",val); }
-            else if (axis=='Y'||axis=='y') { Y_MAPPING_VALUE=val; Mapping_Value_Save(); Serial_Printf("Y=%.3f\r\n",val); }
-            else if (axis=='Z'||axis=='z') { Z_MAPPING_VALUE=val; Mapping_Value_Save(); Serial_Printf("Z=%.3f\r\n",val); }
-            else Serial_Printf("Axis X/Y/Z\r\n");
-        }
-        else Serial_Printf("Usage: ML SETMAP <X|Y|Z> <val>\r\n");
-    }
-    /* ── New commands ─────────────────────────────────────────────────── */
-    else if (strncmp(cmd, "ML SET ", 7) == 0)
-    {
-        char key[24];
-        char value[32];
-        if (sscanf(cmd + 7, "%23s %31s", key, value) == 2)
-        {
-            Config_TypeDef candidate = g_config;
-            if (Config_ParseSingleKV(&candidate, key, value) || Config_Validate(&candidate)) {
-                Serial_Printf("Error: invalid config %s\r\n", key);
-                return;
-            }
-            g_config = candidate;
-            FLAG_RES = g_config.FLAG_RES;
-            X_MAPPING_VALUE = g_config.X_MAPPING_VALUE;
-            Y_MAPPING_VALUE = g_config.Y_MAPPING_VALUE;
-            Z_MAPPING_VALUE = g_config.Z_MAPPING_VALUE;
-            AlgoParams_Load(&g_config);
-            Log_SetLevel((LogLevel_t)g_config.log_level);
-            Serial_Printf("SET %s=%s\r\n", key, value);
-        }
-        else Serial_Printf("Usage: ML SET <key> <value>\r\n");
-    }
-    else if (strcmp(cmd, "ML SAVECFG") == 0)
-    {
-        Serial_Printf(Config_Save_All() == 0 ? "Saved\r\n" : "Save FAIL\r\n");
-    }
-    else if (strcmp(cmd, "ML APPLYCFG") == 0)
-    {
-        FLAG_RES        = g_config.FLAG_RES;
-        X_MAPPING_VALUE = g_config.X_MAPPING_VALUE;
-        Y_MAPPING_VALUE = g_config.Y_MAPPING_VALUE;
-        Z_MAPPING_VALUE = g_config.Z_MAPPING_VALUE;
-        AlgoParams_Load(&g_config);
-        uint8_t was_running = SENSOR_Run[0];
-        sensor_stop();
-        uint8_t failed = was_running ? sensor_start() : (Scan_Ports() == 0);
-        Serial_Printf(failed ? "Config apply failed.\r\n" : "Config applied.\r\n");
-    }
-    else if (strcmp(cmd, "ML GETCFG") == 0)
-    {
-        /* Each printf stays below the UART's 100-byte formatting buffer.
-         * This read-only snapshot reports configured sensor values and live
-         * algorithm/log values; it is not an I2C register readback. */
-        Serial_Printf("CFG_BEGIN\r\n");
-        Serial_Printf("{\"product\":\"%s\",", g_config.product_model);
-        Serial_Printf("\"sensor\":{\"type\":%u,\"gain\":%u,\"osr\":%u,\"filt\":%u,",
-                      g_config.sensor_type, g_config.gain_sel, g_config.osr, g_config.dig_filt);
-        Serial_Printf("\"resx\":%u,\"resy\":%u,\"resz\":%u,\"tcmp\":%u,\"range\":%u,",
-                      g_config.res_x, g_config.res_y, g_config.res_z, g_config.tcmp_en, g_config.range);
-        Serial_Printf("\"opmode\":%u,\"magch\":%u,\"version\":%u},",
-                      g_config.op_mode, g_config.mag_ch, g_config.sensor_version);
-        /* Nine significant digits round-trip an IEEE float32. */
-        Serial_Printf("\"algo\":{\"flag\":\"0x%02X\",\"xmap\":%.9g,",
-                      FLAG_RES, (double)X_MAPPING_VALUE);
-        Serial_Printf("\"ymap\":%.9g,\"zmap\":%.9g,",
-                      (double)Y_MAPPING_VALUE, (double)Z_MAPPING_VALUE);
-        Serial_Printf("\"dead\":%.9g,\"spike\":%.9g,\"stab\":%.9g},",
-                      (double)g_algo.dead_value, (double)g_algo.spike_multiplier,
-                      (double)g_algo.stability_threshold);
-        Serial_Printf("\"log\":{\"level\":%u}}\r\nCFG_END\r\n", (unsigned)Log_GetLevel());
-    }
-    else if (strncmp(cmd, "ML LOGLEVEL ", 12) == 0)
-    {
-        int lvl;
-        if (sscanf(cmd + 12, "%d", &lvl) == 1 && lvl >= 0 && lvl <= 4)
-        {
-            Log_SetLevel((LogLevel_t)lvl);
-            g_config.log_level = (uint8_t)lvl;
-            Config_Save_All();
-            Serial_Printf("LogLevel=%d\r\n", lvl);
-        }
-        else Serial_Printf("Usage: ML LOGLEVEL <0-4>\r\n");
-    }
-    else if (strcmp(cmd, "ML LOGLEVEL") == 0)
-    {
-        Serial_Printf("LogLevel=%d (0=NONE 1=E 2=W 3=I 4=D)\r\n", (int)Log_GetLevel());
-    }
-    else if (strcmp(cmd, "ML RESET") == 0)
-    {
-        Serial_Printf("System resetting...\r\n");
-        HAL_Delay(100);  /* 等待串口发送完成 */
-        NVIC_SystemReset();  /* 执行软件复位 */
-    }
-    else if (strcmp(cmd, "ML RESTORE") == 0)
-    {
-        Serial_Printf("Restoring factory defaults...\r\n");
-        Config_RestoreDefault();
-        Serial_Printf("Factory defaults restored. Resetting...\r\n");
-        HAL_Delay(100);
-        NVIC_SystemReset();
-    }
-    else Serial_Printf("Unknown: %s\r\n", cmd);
-}
+/* Serial command processing is now handled by command_handler module */
 
 /* -----------------------------------------------------------------------
  * main
@@ -235,6 +56,7 @@ int main(void)
     IWDG_Init();        /* 启动看门狗，统一在代码里管理，避免依赖 option bytes */
     Config_Init_All();
     ConfigImport_Init(); /* 初始化配置导入模块 */
+    CommandHandler_Init(); /* 初始化命令处理模块 */
 
     LOG_I("SYS", "System Reset");
     LOG_I("SYS", "Reset flags=0x%08lX IWDG=%u", (unsigned long)reset_flags,
@@ -245,7 +67,7 @@ int main(void)
     while (1)
     {
         IWDG_Feed();        /* 主循环每次迭代喂狗 */
-        serial_command_process();
+        CommandHandler_Process();
         if (SENSOR_Run[0] == 1)
         {
             get_sensor_data();
