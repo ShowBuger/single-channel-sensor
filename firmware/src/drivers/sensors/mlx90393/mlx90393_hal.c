@@ -24,7 +24,10 @@ static uint8_t mlx_configure(void *h, uint8_t id, const SensorHwConfig_t *cfg)
 
 static uint8_t mlx_start(void *h, uint8_t id)
 {
-    return MLX90393_startMeasurement((MLX90393_Handle *)h, id, XYZT);
+    uint8_t status = MLX90393_startMeasurement((MLX90393_Handle *)h, id, XYZT);
+    /* startMeasurement 返回原始状态字节：bit5(SM_MODE)=单次测量模式属正常，
+     * 只有 bit4(ERROR) 才代表失败。与 mlx_read 一致，用 error_process 归一化。 */
+    return error_process(status);
 }
 
 static uint8_t mlx_read(void *h, uint8_t id, SensorData_t *out)

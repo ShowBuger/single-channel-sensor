@@ -21,7 +21,7 @@
 typedef uint8_t SensorType_t;
 
 /* 选择当前使用的传感器类型 */
-#define CURRENT_SENSOR_TYPE  SENSOR_TYPE_TMAG3001
+#define CURRENT_SENSOR_TYPE  SENSOR_TYPE_MLX90393
 
 typedef struct {
     /* -- Schema version -------------------------------- */
@@ -92,7 +92,7 @@ _Static_assert(offsetof(Config_TypeDef, checksum) == 52, "Config checksum offset
 #define CONFIG_DEFAULT_DEAD_VALUE       8.5f
 #define CONFIG_DEFAULT_SPIKE_MULT       20.0f
 #define CONFIG_DEFAULT_STABILITY_THR    0.1f
-#define CONFIG_DEFAULT_PRODUCT_MODEL    "MA02"
+#define CONFIG_DEFAULT_PRODUCT_MODEL    "MA01"
 
 /* Default values - MLX90393 */
 #define CONFIG_DEFAULT_MLX_GAIN_SEL     7U     /* x1 最低增益 */
