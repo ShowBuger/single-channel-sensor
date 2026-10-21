@@ -94,8 +94,8 @@ uint8_t Scan_Ports(void)
     if (Config_Validate(&g_config)) return 0;
 
 #if CURRENT_SENSOR_TYPE == SENSOR_TYPE_TMAG3001
-    LOG_D("SCAN", "[scan] Init actual sensor (TMAG3001, ADDR=SDA, addr=0x%02X)...", TMAG3001_I2C_ADDR_SDA);
-    actual_sensors[0].i2c_addr = TMAG3001_I2C_ADDR_SDA;
+    LOG_D("SCAN", "[scan] Init actual sensor (TMAG3001, ADDR=VCC, addr=0x%02X)...", TMAG3001_I2C_ADDR_VCC);
+    actual_sensors[0].i2c_addr = TMAG3001_I2C_ADDR_VCC;
     r_actual = SENSOR_HAL.init(&actual_sensors[0], 0, 0, -1, 0);
 #elif CURRENT_SENSOR_TYPE == SENSOR_TYPE_MLX90393
     LOG_D("SCAN", "[scan] Init actual sensor (MLX90393, A1=0 A0=0, addr=0x10)...");
@@ -109,8 +109,8 @@ uint8_t Scan_Ports(void)
     IWDG_Feed();
 
 #if CURRENT_SENSOR_TYPE == SENSOR_TYPE_TMAG3001
-    LOG_D("SCAN", "[scan] Init reference sensor (TMAG3001, ADDR=VCC, addr=0x%02X)...", TMAG3001_I2C_ADDR_VCC);
-    reference_sensors[0].i2c_addr = TMAG3001_I2C_ADDR_VCC;
+    LOG_D("SCAN", "[scan] Init reference sensor (TMAG3001, ADDR=GND, addr=0x%02X)...", TMAG3001_I2C_ADDR_GND);
+    reference_sensors[0].i2c_addr = TMAG3001_I2C_ADDR_GND;
     r_ref = SENSOR_HAL.init(&reference_sensors[0], 0, 1, -1, 0);
 #elif CURRENT_SENSOR_TYPE == SENSOR_TYPE_MLX90393
     LOG_D("SCAN", "[scan] Init reference sensor (MLX90393, A1=0 A0=1, addr=0x11)...");
