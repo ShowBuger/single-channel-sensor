@@ -4,7 +4,10 @@
 #include "../drivers/sensors/tmag3001/tmag3001.h"
 #elif CURRENT_SENSOR_TYPE == SENSOR_TYPE_MLX90393
 #include "../drivers/sensors/mlx90393/mlx90393.h"
+#elif CURRENT_SENSOR_TYPE == SENSOR_TYPE_AK09974C
+#include "../drivers/sensors/ak09974c/ak09974c.h"
 #endif
+#include "board_config.h"
 #include "../drivers/sensors/tca9548a/tca9548a.h"
 #include "../drivers/bsp/bsp_delay.h"
 #include <math.h>
@@ -26,6 +29,10 @@ extern void IWDG_Feed(void);
 #define SENSOR_HAL g_hal_mlx90393
 // MLX90393 测量延时: OSR=2 (x4) 3轴约15ms，留20ms余量
 #define MEASURE_INTERVAL 20
+#elif CURRENT_SENSOR_TYPE == SENSOR_TYPE_AK09974C
+#define SENSOR_HAL g_hal_ak09974c
+// AK09974C 低噪声驱动单次测量约2.9ms；其余时间由DRDY轮询覆盖
+#define MEASURE_INTERVAL 3
 #else
 #error "Unsupported sensor type"
 #endif
@@ -57,6 +64,12 @@ MLX90393_Handle actual_sensors[1];
 
 /*参考传感器数组 - 1个*/
 MLX90393_Handle reference_sensors[1];
+#elif CURRENT_SENSOR_TYPE == SENSOR_TYPE_AK09974C
+/*实际传感器数组 - 1个*/
+AK09974C_Handle_t actual_sensors[1];
+
+/*参考传感器数组 - 1个*/
+AK09974C_Handle_t reference_sensors[1];
 #endif
 
 // 传感器数据存储 - 1对传感器的数据
@@ -100,6 +113,10 @@ uint8_t Scan_Ports(void)
 #elif CURRENT_SENSOR_TYPE == SENSOR_TYPE_MLX90393
     LOG_D("SCAN", "[scan] Init actual sensor (MLX90393, A1=0 A0=0, addr=0x10)...");
     r_actual = SENSOR_HAL.init(&actual_sensors[0], 0, 0, -1, 0);
+#elif CURRENT_SENSOR_TYPE == SENSOR_TYPE_AK09974C
+    LOG_D("SCAN", "[scan] Init actual sensor (AK09974C, addr=0x%02X)...", BOARD_AK09974C_ACTUAL_ADDR);
+    actual_sensors[0].i2c_addr = BOARD_AK09974C_ACTUAL_ADDR;
+    r_actual = SENSOR_HAL.init(&actual_sensors[0], 0, 0, -1, 0);
 #endif
     if(r_actual == 0) {
         // 应用配置到实际传感器
@@ -114,6 +131,10 @@ uint8_t Scan_Ports(void)
     r_ref = SENSOR_HAL.init(&reference_sensors[0], 0, 1, -1, 0);
 #elif CURRENT_SENSOR_TYPE == SENSOR_TYPE_MLX90393
     LOG_D("SCAN", "[scan] Init reference sensor (MLX90393, A1=0 A0=1, addr=0x11)...");
+    r_ref = SENSOR_HAL.init(&reference_sensors[0], 0, 1, -1, 0);
+#elif CURRENT_SENSOR_TYPE == SENSOR_TYPE_AK09974C
+    LOG_D("SCAN", "[scan] Init reference sensor (AK09974C, addr=0x%02X)...", BOARD_AK09974C_REF_ADDR);
+    reference_sensors[0].i2c_addr = BOARD_AK09974C_REF_ADDR;
     r_ref = SENSOR_HAL.init(&reference_sensors[0], 0, 1, -1, 0);
 #endif
     if(r_ref == 0) {
@@ -283,6 +304,25 @@ static uint8_t wait_for_sensor_pair(void)
         uint8_t reference_new = !reference_sensors[0].sample_seen ||
             (reference & TMAG3001_STATUS_SET_COUNT) != reference_sensors[0].last_set_count;
         if ((actual & reference & TMAG3001_STATUS_READY) && actual_new && reference_new) return 0;
+        if ((uint32_t)(HAL_GetTick() - start) >= 100U) {
+            LOG_W("SCAN", "Conversion timeout: actual=0x%02X ref=0x%02X", actual, reference);
+            return 1;
+        }
+        Delay_ms(1);
+    }
+#elif CURRENT_SENSOR_TYPE == SENSOR_TYPE_AK09974C
+    uint32_t start = HAL_GetTick();
+    for (;;) {
+        uint8_t actual, reference;
+        IWDG_Feed();
+        /* 单独读ST(10h)不清DRDY；DRDY=1表示有尚未读出的新一组数据。 */
+        if (AK09974C_ReadStatus(&actual_sensors[0], &actual) ||
+            AK09974C_ReadStatus(&reference_sensors[0], &reference)) return 1;
+        if (actual & reference & AK09974C_ST_DRDY) {
+            if ((actual | reference) & AK09974C_ST_ERR)
+                LOG_D("SCAN", "Magnetic overflow: actual=0x%02X ref=0x%02X", actual, reference);
+            return 0;
+        }
         if ((uint32_t)(HAL_GetTick() - start) >= 100U) {
             LOG_W("SCAN", "Conversion timeout: actual=0x%02X ref=0x%02X", actual, reference);
             return 1;

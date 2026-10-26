@@ -196,7 +196,7 @@ class TmagTests(unittest.TestCase):
 
     def test_numeric_and_product_validation(self):
         for bad in [{'sensor': {'gain': 256}}, {'sensor': {'gain': 1.5}},
-                    {'algo': {'xmap': 1e100}}, {'product': 'MA03'}]:
+                    {'algo': {'xmap': 1e100}}, {'product': 'MA09'}]:
             self.assertNotEqual(self.f.parse(bad), 0)
         for bad in [{'product': 'MA01', 'sensor': {'type': 1}},
                     {'product': 'MA01', 'sensor': {'type': 0}}]:

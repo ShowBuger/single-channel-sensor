@@ -71,6 +71,7 @@ include_directories(
     src/drivers/sensors
     src/drivers/sensors/mlx90393
     src/drivers/sensors/tmag3001
+    src/drivers/sensors/ak09974c
     src/drivers/sensors/tca9548a
     ${CMSIS_DIR}/Core/Include
     ${CMSIS_DIR}/Device/ST/STM32L4xx/Include

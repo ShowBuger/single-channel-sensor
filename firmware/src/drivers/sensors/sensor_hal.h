@@ -37,5 +37,6 @@ typedef struct {
 /* Implemented drivers */
 extern const SensorHAL_t g_hal_mlx90393;
 extern const SensorHAL_t g_hal_tmag3001;
+extern const SensorHAL_t g_hal_ak09974c;
 
 #endif /* __SENSOR_HAL_H */

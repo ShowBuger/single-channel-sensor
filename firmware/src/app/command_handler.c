@@ -301,8 +301,12 @@ static void Handle_GetCfg(const char *cmd)
                   g_config.sensor_type, g_config.gain_sel, g_config.osr, g_config.dig_filt);
     Serial_Printf("\"resx\":%u,\"resy\":%u,\"resz\":%u,\"tcmp\":%u,\"range\":%u,",
                   g_config.res_x, g_config.res_y, g_config.res_z, g_config.tcmp_en, g_config.range);
-    Serial_Printf("\"opmode\":%u,\"magch\":%u,\"version\":%u},",
+    Serial_Printf("\"opmode\":%u,\"magch\":%u,\"version\":%u",
                   g_config.op_mode, g_config.mag_ch, g_config.sensor_version);
+    /* mcyc只属于AK09974C，其他型号保持原有字段集合。 */
+    if (g_config.sensor_type == SENSOR_TYPE_AK09974C)
+        Serial_Printf(",\"mcyc\":%u", g_config.mcyc);
+    Serial_Printf("},");
     /* Nine significant digits round-trip an IEEE float32. */
     Serial_Printf("\"algo\":{\"flag\":\"0x%02X\",\"xmap\":%.9g,",
                   FLAG_RES, (double)X_MAPPING_VALUE);

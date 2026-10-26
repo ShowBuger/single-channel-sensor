@@ -1,5 +1,6 @@
 #include "config_parser.h"
 #include "config_manager.h"
+#include "../drivers/sensors/ak09974c/ak09974c.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -52,6 +53,8 @@ uint8_t Config_ParseSingleKV(Config_TypeDef *cfg, const char *key, const char *v
             cfg->sensor_type = SENSOR_TYPE_MLX90393;
         } else if (strcmp(value, "TMAG3001") == 0 || strcmp(value, "tmag3001") == 0) {
             cfg->sensor_type = SENSOR_TYPE_TMAG3001;
+        } else if (strcmp(value, "AK09974C") == 0 || strcmp(value, "ak09974c") == 0) {
+            cfg->sensor_type = SENSOR_TYPE_AK09974C;
         } else if (parse_uint8(value, &tmp_u8)) {
             cfg->sensor_type = tmp_u8;
         } else return 2;
@@ -63,7 +66,8 @@ uint8_t Config_ParseSingleKV(Config_TypeDef *cfg, const char *key, const char *v
         if (parse_uint8(value, &tmp_u8)) { cfg->gain_sel = tmp_u8; return 0; }
         return 2;
     }
-    if (strcmp(key, "sensor.osr") == 0) {
+    /* AK09974C 的驱动模式与osr共用存储 */
+    if (strcmp(key, "sensor.osr") == 0 || strcmp(key, "sensor.drive") == 0 || strcmp(key, "sensor.dri") == 0) {
         if (parse_uint8(value, &tmp_u8)) { cfg->osr = tmp_u8; return 0; }
         return 2;
     }
@@ -105,6 +109,12 @@ uint8_t Config_ParseSingleKV(Config_TypeDef *cfg, const char *key, const char *v
     }
     if (strcmp(key, "sensor.version") == 0 || strcmp(key, "sensor.sensor_version") == 0) {
         if (parse_uint8(value, &tmp_u8)) { cfg->sensor_version = tmp_u8; return 0; }
+        return 2;
+    }
+
+    /* -- AK09974C 特有配置 -- */
+    if (strcmp(key, "sensor.mcyc") == 0 || strcmp(key, "sensor.cycle") == 0) {
+        if (parse_uint8(value, &tmp_u8)) { cfg->mcyc = tmp_u8; return 0; }
         return 2;
     }
 
@@ -212,6 +222,13 @@ uint8_t Config_Validate(const Config_TypeDef *cfg)
     } else if (cfg->sensor_type == SENSOR_TYPE_TMAG3001) {
         if (cfg->gain_sel > 15) return 20;
         if (cfg->osr > 5) return 21;
+    } else if (cfg->sensor_type == SENSOR_TYPE_AK09974C) {
+        if (cfg->gain_sel != 0) return 40;
+        if (cfg->osr > 3) return 41;
+        if (cfg->op_mode > CONFIG_AK_OPMODE_CONTINUOUS) return 42;
+        /* 连续模式周期不得小于驱动模式的最小测量周期（手册表10.2） */
+        if (cfg->op_mode == CONFIG_AK_OPMODE_CONTINUOUS &&
+            cfg->mcyc < AK09974C_MinMeasureCycle((AK09974C_Drive_t)cfg->osr)) return 43;
     }
 
     /* 检查日志级别 */
@@ -230,7 +247,8 @@ uint16_t Config_ToString(const Config_TypeDef *cfg, char *buf, uint16_t size)
 
     offset += snprintf(buf + offset, size - offset,
                       "Config v%u [%s]\n", cfg->schema_ver,
-                      cfg->sensor_type == SENSOR_TYPE_MLX90393 ? "MLX90393" : "TMAG3001");
+                      cfg->sensor_type == SENSOR_TYPE_MLX90393 ? "MLX90393" :
+                      cfg->sensor_type == SENSOR_TYPE_AK09974C ? "AK09974C" : "TMAG3001");
 
     offset += snprintf(buf + offset, size - offset,
                       "Product: %s\n", cfg->product_model);
@@ -242,6 +260,10 @@ uint16_t Config_ToString(const Config_TypeDef *cfg, char *buf, uint16_t size)
         offset += snprintf(buf + offset, size - offset,
                           " filt=%u res=%u/%u/%u tcmp=%u\n",
                           cfg->dig_filt, cfg->res_x, cfg->res_y, cfg->res_z, cfg->tcmp_en);
+    } else if (cfg->sensor_type == SENSOR_TYPE_AK09974C) {
+        offset += snprintf(buf + offset, size - offset,
+                          " range=%u mode=%u mcyc=%u\n",
+                          cfg->range, cfg->op_mode, cfg->mcyc);
     } else {
         offset += snprintf(buf + offset, size - offset,
                           " range=%u mode=%u ch=%u ver=%u\n",
@@ -266,16 +288,18 @@ uint8_t Config_GetFieldDescription(const char *key, char *desc_buf, uint16_t siz
 
     if (!key || !desc_buf || size < 10) return 1;
 
-    if (strcmp(key, "sensor.type") == 0) desc = "传感器类型: 0=MLX90393, 1=TMAG3001";
-    else if (strcmp(key, "sensor.gain") == 0) desc = "增益选择: MLX[0-7] TMAG[0-15]";
-    else if (strcmp(key, "sensor.osr") == 0) desc = "过采样: MLX[0-3] TMAG[0-5]";
+    if (strcmp(key, "sensor.type") == 0) desc = "传感器类型: 0=MLX90393, 1=TMAG3001, 2=AK09974C";
+    else if (strcmp(key, "sensor.gain") == 0) desc = "增益选择: MLX[0-7] TMAG[0-15] AK[0]";
+    else if (strcmp(key, "sensor.osr") == 0) desc = "过采样: MLX[0-3] TMAG[0-5]; AK为驱动模式[0-3]";
+    else if (strcmp(key, "sensor.drive") == 0) desc = "驱动模式(AK): 0=超低噪声 1=低噪声 2=常规 3=低功耗";
+    else if (strcmp(key, "sensor.mcyc") == 0) desc = "连续测量周期(AK): 1-255, x0.5ms";
     else if (strcmp(key, "sensor.filt") == 0) desc = "数字滤波(MLX): 0-7";
     else if (strcmp(key, "sensor.resx") == 0) desc = "X轴分辨率(MLX): 0-3";
     else if (strcmp(key, "sensor.resy") == 0) desc = "Y轴分辨率(MLX): 0-3";
     else if (strcmp(key, "sensor.resz") == 0) desc = "Z轴分辨率(MLX): 0-3";
     else if (strcmp(key, "sensor.tcmp") == 0) desc = "温度补偿(MLX): 0/1";
-    else if (strcmp(key, "sensor.range") == 0) desc = "量程(TMAG): 0=小量程 1=大量程";
-    else if (strcmp(key, "sensor.opmode") == 0) desc = "工作模式(TMAG): 0=待机 1=睡眠 2=连续 3=唤醒";
+    else if (strcmp(key, "sensor.range") == 0) desc = "量程(TMAG/AK): 0=小量程 1=大量程";
+    else if (strcmp(key, "sensor.opmode") == 0) desc = "工作模式: TMAG 0=待机 1=睡眠 2=连续 3=唤醒; AK 0=单次 1=连续";
     else if (strcmp(key, "sensor.magch") == 0) desc = "通道选择(TMAG): 0-7 (XYZ组合)";
     else if (strcmp(key, "sensor.version") == 0) desc = "版本(TMAG): 0=A1 1=A2";
     else if (strcmp(key, "algo.flag") == 0) desc = "算法标志位: 位掩码";

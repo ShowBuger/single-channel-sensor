@@ -1,6 +1,6 @@
 # Flash 配置映射（TMAG3001 分支）
 
-配置保持统一的56字节结构，MA01与MA02的同名字段位置相同。
+配置保持统一的56字节结构，MA01、MA02与MA03的同名字段位置相同。
 本分支的采集驱动固定为TMAG3001，只接受MA02/type=1的硬件配置。
 MA01/type=0可在网页预览、导出，但应由MLX固件应用；型号与类型冲突会被拒绝。
 
@@ -40,7 +40,7 @@ MA01/type=0可在网页预览、导出，但应由MLX固件应用；型号与类
 | 32 | 0x0800FC24 | spike_multiplier / algo.spike | 4 |
 | 36 | 0x0800FC28 | stability_threshold / algo.stab | 4 |
 | 40 | 0x0800FC2C | product_model / product | 8 |
-| 48 | 0x0800FC34 | _pad | 1 |
+| 48 | 0x0800FC34 | mcyc / sensor.mcyc（仅MA03使用，原填充字节；MA01/MA02为0） | 1 |
 | 49–51 | 0x0800FC35 | 编译器对齐填充 | 3 |
 | 52 | 0x0800FC38 | checksum | 4 |
 
@@ -54,6 +54,12 @@ magch=7（XYZ），version=0，日志4，算法flag=0，XYZ映射系数均为1�
 
 实际传感器使用0x36（ADDR接SDA），参考传感器使用0x35（ADDR接VCC）。芯片A1/A2由Device_ID自动识别，
 磁场换算使用识别出的版本；sensor.version是保存的版本标记，不能改变物理芯片版本。
+
+## MA03（AK09974C）字段复用
+
+MA03沿用同一布局，不改Schema版本：`osr`存驱动模式DRI（0–3），`range`存WIDE位（0/1），
+`op_mode`为0=单次触发/1=连续测量，`mcyc`使用原`_pad`字节。`gain`必须为0。
+`ML GETCFG`仅在MA03时额外输出`sensor.mcyc`，MA01/MA02回包字段不变。
 
 ## 应用与错误回执
 

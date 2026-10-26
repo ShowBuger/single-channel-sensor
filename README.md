@@ -25,7 +25,7 @@
 | MCU | STM32L432KCU6（Cortex-M4F，80 MHz） |
 | Flash | 256 KB |
 | RAM | 64 KB |
-| 传感器 | MLX90393 × 2（实际 + 参考，差分测量） |
+| 传感器 | MLX90393 / TMAG3001 / AK09974C × 2（实际 + 参考，差分测量；编译期选择） |
 | I2C | 软件模拟 I2C，PA9（SCL）/ PA10（SDA） |
 | 串口 | USART1，PB6（TX）/ PB7（RX），921600 bps |
 | 调试器 | ST-Link / J-Link（SWD 接口，PA13/PA14） |
@@ -55,9 +55,10 @@ single_channel_system/
 │   │       │   ├── bsp_i2c_soft.c/h # 软件模拟 I2C
 │   │       │   └── bsp_uart.c/h    # USART1 收发 + printf 重定向
 │   │       └── sensors/
-│   │           ├── mlx90393.c/h    # MLX90393 驱动（基于软件 I2C）
-│   │           ├── tca9548a.c/h    # TCA9548A I2C 多路复用器驱动
-│   │           └── tmag3001.c/h    # TMAG3001 驱动（预留）
+│   │           ├── mlx90393/       # MLX90393 驱动（MA01）
+│   │           ├── tmag3001/       # TMAG3001 驱动（MA02）
+│   │           ├── ak09974c/       # AK09974C 驱动（MA03）
+│   │           └── tca9548a/       # TCA9548A I2C 多路复用器驱动
 │   ├── libs/
 │   │   ├── STM32L4xx_HAL_Driver/  # ST HAL Driver for L4
 │   │   └── CMSIS/                 # CMSIS Core + STM32L4xx Device
@@ -278,9 +279,29 @@ cd firmware
 .\tools\flash.ps1
 ```
 
+### 切换传感器型号
+
+修改 `src/app/config_manager.h` 中的 `CURRENT_SENSOR_TYPE` 后重新构建烧录：
+
+| `CURRENT_SENSOR_TYPE` | 芯片 | 产品型号 | 默认I2C地址（实际 / 参考） |
+|------|------|------|------|
+| `SENSOR_TYPE_MLX90393` | MLX90393 | MA01 | 0x10 / 0x11 |
+| `SENSOR_TYPE_TMAG3001` | TMAG3001 | MA02 | 0x36 / 0x35 |
+| `SENSOR_TYPE_AK09974C` | AK09974C | MA03 | 0x21 / 0x22 |
+
+AK09974C 的 VIO 电平和地址在 `src/board_config.h`（`BOARD_AK09974C_*`）中设置，
+须与硬件 IF1/IF2 接法及 I/O 电压一致。MA03 可配置参数：
+
+| JSON 键 | 含义 | 取值 |
+|------|------|------|
+| `sensor.osr`（别名 `sensor.drive`） | 驱动模式 DRI | 0=超低噪声 1=低噪声(默认) 2=常规 3=低功耗 |
+| `sensor.range` | 量程 WIDE | 0=±36mT, 1.1µT/LSB(默认)；1=XY±78mT/Z±200mT, 6.1µT/LSB |
+| `sensor.opmode` | 工作模式 | 0=单次触发 1=连续测量(默认) |
+| `sensor.mcyc` | 连续测量周期 | 1–255，×0.5ms，默认10(200Hz)；不得小于驱动模式最小周期（0x11/0x06/0x02/0x01） |
+
 ### 修改传感器参数
 
-1. 编辑 `src/drivers/sensors/mlx90393.c` 或 `mlx90393.h`
+1. 编辑 `src/drivers/sensors/` 下对应型号的驱动
 2. 重新构建烧录
 3. 用串口发 `ML CALIB` 重新标定
 

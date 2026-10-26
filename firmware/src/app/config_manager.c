@@ -10,6 +10,8 @@
 #include "../drivers/sensors/tmag3001/tmag3001.h"
 #elif CURRENT_SENSOR_TYPE == SENSOR_TYPE_MLX90393
 #include "../drivers/sensors/mlx90393/mlx90393.h"
+#elif CURRENT_SENSOR_TYPE == SENSOR_TYPE_AK09974C
+#include "../drivers/sensors/ak09974c/ak09974c.h"
 #endif
 
 #define CONFIG_MAGIC_NUMBER    0x52454C57U   /* "RELW" - version 6: CONTINUOUS mode + 16x OSR */
@@ -36,6 +38,7 @@ SensorType_t Config_SensorTypeForProduct(const char *product)
 {
     if (product && strcmp(product, "MA01") == 0) return SENSOR_TYPE_MLX90393;
     if (product && strcmp(product, "MA02") == 0) return SENSOR_TYPE_TMAG3001;
+    if (product && strcmp(product, "MA03") == 0) return SENSOR_TYPE_AK09974C;
     return SENSOR_TYPE_INVALID;
 }
 
@@ -84,6 +87,21 @@ uint8_t Config_SetDefaultsForProduct(Config_TypeDef *cfg, const char *product)
         /* TMAG3001 字段保留合法默认值（不使用） */
         cfg->range          = CONFIG_DEFAULT_TMAG_RANGE;
         cfg->op_mode        = CONFIG_DEFAULT_TMAG_OP_MODE;
+        cfg->mag_ch         = CONFIG_DEFAULT_TMAG_MAG_CH;
+        cfg->sensor_version = CONFIG_DEFAULT_TMAG_VERSION;
+    } else if (type == SENSOR_TYPE_AK09974C) {
+        /* AK09974C 特有配置：osr复用为驱动模式，range为WIDE位 */
+        cfg->gain_sel       = 0;
+        cfg->osr            = CONFIG_DEFAULT_AK_DRIVE;
+        cfg->range          = CONFIG_DEFAULT_AK_RANGE;
+        cfg->op_mode        = CONFIG_DEFAULT_AK_OP_MODE;
+        cfg->mcyc           = CONFIG_DEFAULT_AK_MCYC;
+        /* MLX90393/TMAG3001 字段保留合法默认值（不使用） */
+        cfg->dig_filt       = CONFIG_DEFAULT_MLX_DIG_FILT;
+        cfg->res_x          = CONFIG_DEFAULT_MLX_RES;
+        cfg->res_y          = CONFIG_DEFAULT_MLX_RES;
+        cfg->res_z          = CONFIG_DEFAULT_MLX_RES;
+        cfg->tcmp_en        = CONFIG_DEFAULT_MLX_TCMP_EN;
         cfg->mag_ch         = CONFIG_DEFAULT_TMAG_MAG_CH;
         cfg->sensor_version = CONFIG_DEFAULT_TMAG_VERSION;
     }
@@ -183,7 +201,7 @@ void Config_RestoreDefault(void)
 /**
  * @brief 应用配置到传感器
  * @param cfg 配置结构
- * @param sensor_handle 传感器句柄（MLX90393_Handle* 或 TMAG3001_Handle_t*）
+ * @param sensor_handle 传感器句柄（MLX90393_Handle*、TMAG3001_Handle_t* 或 AK09974C_Handle_t*）
  * @param i2c_id I2C总线ID
  * @return 0=成功, 非0=失败
  */
@@ -258,6 +276,25 @@ uint8_t Config_ApplyToSensor(const Config_TypeDef *cfg, void *sensor_handle, uin
         return 1;
     }
     result = 0;  /* MLX返回状态字节，接口返回值归一化为成功/失败。 */
+
+#elif CURRENT_SENSOR_TYPE == SENSOR_TYPE_AK09974C
+    AK09974C_Handle_t *dev = (AK09974C_Handle_t *)sensor_handle;
+    (void)i2c_id;
+
+    LOG_D("CFG", "Applying AK09974C config: drive=%u range=%u mode=%u mcyc=%u",
+          cfg->osr, cfg->range, cfg->op_mode, cfg->mcyc);
+
+    /* 设置寄存器只能在Power-down下修改；先清周期，避免切换驱动时与旧周期冲突。 */
+    result |= AK09974C_Stop(dev);
+    result |= AK09974C_SetMeasureCycle(dev, AK09974C_MCYC_SINGLE);
+    result |= AK09974C_SetRange(dev, (AK09974C_Range_t)cfg->range);
+    result |= AK09974C_SetDrive(dev, (AK09974C_Drive_t)cfg->osr);
+
+    /* 连续模式最后写周期并启动；单次模式由每次采样写RUN触发。 */
+    if (cfg->op_mode == CONFIG_AK_OPMODE_CONTINUOUS) {
+        result |= AK09974C_SetMeasureCycle(dev, cfg->mcyc);
+        if (result == 0) result = AK09974C_Start(dev);
+    }
 #else
     #error "Unsupported sensor type"
 #endif

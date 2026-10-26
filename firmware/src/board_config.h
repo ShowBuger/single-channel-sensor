@@ -27,6 +27,15 @@
 #define BSP_I2C_GPIO_CLK_EN()   __HAL_RCC_GPIOA_CLK_ENABLE()
 
 /* =========================================================================
+ * AK09974C (MA03) — sensor I/O level and I2C addresses
+ * VIO must match the sensor's I/O rail: AK09974C_VIO_1V8 or AK09974C_VIO_1V2.
+ * Address follows IF1/IF2 wiring: 0x21 = IF1->SDA/IF2->SCL, 0x22 = swapped.
+ * ========================================================================= */
+#define BOARD_AK09974C_VIO          AK09974C_VIO_1V8
+#define BOARD_AK09974C_ACTUAL_ADDR  AK09974C_I2C_ADDR_CASE1
+#define BOARD_AK09974C_REF_ADDR     AK09974C_I2C_ADDR_CASE2
+
+/* =========================================================================
  * UART (USART1: TX = PB6, RX = PB7)
  * ========================================================================= */
 #define BSP_UART_INSTANCE           USART1
