@@ -147,7 +147,8 @@ void BSP_UART_IRQHandler(void)
 {
     if (__HAL_UART_GET_FLAG(&huart1, UART_FLAG_RXNE))
     {
-        Serial_RxData = (uint8_t)(huart1.Instance->DR & 0xFF);
+        /* 读RDR即清除RXNE */
+        Serial_RxData = (uint8_t)(huart1.Instance->RDR & 0xFF);
         Serial_RxFlag = 1;
 
         if (Serial_RxData == '\r' || Serial_RxData == '\n')
@@ -163,8 +164,6 @@ void BSP_UART_IRQHandler(void)
         {
             cmdBuffer[cmdIndex++] = Serial_RxData;
         }
-
-        __HAL_UART_CLEAR_FLAG(&huart1, UART_FLAG_RXNE);
     }
 
     HAL_UART_IRQHandler(&huart1);

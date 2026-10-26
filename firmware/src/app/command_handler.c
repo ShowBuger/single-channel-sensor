@@ -12,7 +12,7 @@
 #include "app/config_parser.h"
 #include "app/config_manager.h"
 #include "drivers/bsp/log_manager.h"
-#include "stm32f1xx_hal.h"
+#include "stm32l4xx_hal.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>

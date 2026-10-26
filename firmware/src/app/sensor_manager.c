@@ -1095,7 +1095,6 @@ void data_process()
     {
         if(sensor_calibration[i].calibrated == 1)
         {
-            SensorData before = processed_sensor_data[i].actual;
             apply_mapping(i);
             LOG_D("ALGO", "[6] Mapping: X=%.2f Y=%.2f Z=%.2f (coeff: %.3f,%.3f,%.3f)",
                     processed_sensor_data[i].actual.x, processed_sensor_data[i].actual.y, processed_sensor_data[i].actual.z,

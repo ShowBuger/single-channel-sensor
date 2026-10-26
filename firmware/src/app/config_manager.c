@@ -123,32 +123,36 @@ uint8_t Config_Save(const Config_TypeDef *cfg_in)
 {
     if (Config_Validate(cfg_in)) return 1;
     StoredConfig_TypeDef sc;
-    uint32_t addr, page_err, i, words;
+    /* L4只能按64位双字编程，末尾不足8字节的部分用0xFF补齐（擦除态）。 */
+    uint64_t image[(sizeof(StoredConfig_TypeDef) + 7U) / 8U];
+    uint32_t addr, page_err, i;
     FLASH_EraseInitTypeDef erase;
     HAL_StatusTypeDef st;
-    const uint32_t *src;
 
     memcpy(&sc.config, cfg_in, sizeof(Config_TypeDef));
     sc.magic             = CONFIG_MAGIC_NUMBER;
     sc.config.schema_ver = CONFIG_SCHEMA_VERSION;
     sc.config.checksum   = calculate_checksum(&sc.config);
 
-    HAL_FLASH_Unlock();
+    memset(image, 0xFF, sizeof(image));
+    memcpy(image, &sc, sizeof(sc));
 
-    erase.TypeErase   = FLASH_TYPEERASE_PAGES;
-    erase.PageAddress = CONFIG_FLASH_PAGE_ADDR;
-    erase.NbPages     = 1;
+    HAL_FLASH_Unlock();
+    /* 清除残留错误标志（如复位后的PGSERR），否则L4拒绝新的擦写操作。 */
+    __HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_ALL_ERRORS);
+
+    erase.TypeErase = FLASH_TYPEERASE_PAGES;
+    erase.Banks     = FLASH_BANK_1;
+    erase.Page      = (CONFIG_FLASH_PAGE_ADDR - FLASH_BASE) / CONFIG_FLASH_PAGE_SIZE;
+    erase.NbPages   = 1;
     st = HAL_FLASHEx_Erase(&erase, &page_err);
     if (st != HAL_OK) { HAL_FLASH_Lock(); return 1; }
 
-    addr  = CONFIG_FLASH_PAGE_ADDR;
-    src   = (const uint32_t *)&sc;
-    words = (sizeof(StoredConfig_TypeDef) + 3U) / 4U;
-
-    for (i = 0; i < words; i++) {
-        st = HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, addr, src[i]);
+    addr = CONFIG_FLASH_PAGE_ADDR;
+    for (i = 0; i < sizeof(image) / sizeof(image[0]); i++) {
+        st = HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, addr, image[i]);
         if (st != HAL_OK) { HAL_FLASH_Lock(); return 1; }
-        addr += 4U;
+        addr += 8U;
     }
 
     HAL_FLASH_Lock();

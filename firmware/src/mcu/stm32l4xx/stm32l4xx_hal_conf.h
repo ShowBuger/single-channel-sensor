@@ -25,6 +25,8 @@ extern "C" {
 #define LSE_VALUE               32768U
 #define LSE_STARTUP_TIMEOUT     5000U
 #define MSI_VALUE               4000000U
+#define HSI48_VALUE             48000000U   /* Referenced by HAL RCC_Ex; not used */
+#define EXTERNAL_SAI1_CLOCK_VALUE 2097000U  /* Referenced by HAL RCC_Ex; not used */
 
 /* ---- VDD / tick ---- */
 #define VDD_VALUE               3300U
