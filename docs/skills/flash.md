@@ -1,63 +1,70 @@
 ---
 name: flash
-description: 编译固件并烧录到 STM32，自动检测构建类型和调试器
+description: 编译固件并烧录到 STM32。直接调用 firmware/tools/build.ps1 和 flash.ps1，调试器由脚本自动检测
 ---
 
 # Flash Skill
 
-收到 `/flash` 指令后，执行以下步骤：
+收到 `/flash` 指令后，**直接运行下面的脚本**，不要先浏览代码、阅读脚本内容或询问用户。
+脚本内部已处理工具链检查、路径解析和调试器检测。
 
-## 1. 确认工作目录
+## 1. 定位脚本
 
-切换到固件目录：
-```
-firmware/
-```
-（相对于仓库根目录）
-
-## 2. 询问选项（如果用户未指定）
-
-- **构建类型**：Debug（默认）或 Release
-- **调试器**：daplink（默认）/ openocd / stlink / jlink
-
-如果用户直接输入 `/flash` 不带参数，直接用默认值（Debug + daplink），不需要额外询问。
-
-## 3. 执行构建
-
-运行：
-```powershell
-.\tools\build.ps1
-```
-Release 构建：
-```powershell
-.\tools\build.ps1 -Release
-```
-
-- 如果构建**失败**：输出错误信息，停止，不执行烧录
-- 如果构建**成功**：继续烧录
-
-## 4. 执行烧录
+脚本位于仓库的 `firmware/tools/`。用 git 取仓库根目录，拼出绝对路径：
 
 ```powershell
-.\tools\flash.ps1 -Method daplink
+$root = git rev-parse --show-toplevel
+$tools = Join-Path $root "firmware\tools"
 ```
 
-根据用户选择的调试器替换 `-Method` 参数：
-- `daplink`（默认，CMSIS-DAP）
-- `openocd`（OpenOCD + ST-Link）
-- `stlink`（st-flash）
-- `jlink`（J-Link）
+脚本内部基于自身路径定位工程，**不依赖当前工作目录**，无需 `cd`。
+
+## 2. 解析参数（不要询问用户）
+
+从用户输入中解析，未指定则用默认值：
+
+| 用户输入 | 含义 | 默认 |
+|----------|------|------|
+| `release` | Release 构建 | Debug |
+| `clean` | 清理后重编 | 不清理 |
+| `cubeprog` / `openocd` / `daplink` / `stlink` / `jlink` | 指定调试器 | `auto` |
+
+调试器默认 **不传 `-Method`**，让 `flash.ps1` 自动检测
+（依次尝试 STM32CubeProgrammer → OpenOCD+DAPLink → OpenOCD+ST-Link）。
+
+## 3. 编译
+
+```powershell
+& "$tools\build.ps1"                 # Debug
+& "$tools\build.ps1" -Release        # Release
+& "$tools\build.ps1" -Clean          # 清理后重编（可与 -Release 组合）
+```
+
+- 退出码非 0：输出编译错误，**停止，不烧录**
+- 成功：记下输出中的 Flash/RAM 占用，继续烧录
+
+## 4. 烧录
+
+```powershell
+& "$tools\flash.ps1"                     # 自动检测调试器（默认）
+& "$tools\flash.ps1" -Method openocd     # 用户指定了调试器时
+```
+
+`-Method` 可选值：`cubeprog`、`openocd`（OpenOCD + ST-Link）、`daplink`（OpenOCD + CMSIS-DAP）、`stlink`（st-flash）、`jlink`。
+
+- 用户指定的调试器失败时，可去掉 `-Method` 用自动检测重试一次
+- **禁止**手动执行 `openocd ... stm32l4x lock/unlock`，会设置 RDP 读保护导致无法再烧录
 
 ## 5. 输出结果
 
-- 成功：告知烧录完成，并显示 Flash/RAM 占用
-- 失败：显示 OpenOCD 错误信息，给出排查建议
+- 成功：构建类型、Flash/RAM 占用、实际使用的调试器、是否 Verified OK
+- 失败：关键错误输出（OpenOCD/CubeProgrammer 报错原文）和排查建议（调试器是否连接、目标板是否上电）
 
 ## 使用示例
 
 ```
-/flash                        # Debug 构建 + DAPLink 烧录
-/flash release                # Release 构建 + DAPLink 烧录
-/flash jlink                  # Debug 构建 + J-Link 烧录
-/flash release stlink         # Release 构建 + ST-Link 烧录
+/flash                        # Debug 构建 + 自动检测调试器
+/flash release                # Release 构建 + 自动检测调试器
+/flash openocd                # Debug 构建 + OpenOCD/ST-Link
+/flash release clean jlink    # 清理 + Release 构建 + J-Link
 ```
