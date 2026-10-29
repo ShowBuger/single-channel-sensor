@@ -28,8 +28,9 @@ static IWDG_HandleTypeDef hiwdg;
 static void IWDG_Init(void)
 {
     hiwdg.Instance       = IWDG;
-    hiwdg.Init.Prescaler = IWDG_PRESCALER_32;   /* 40kHz/32 = 1.25kHz */
-    hiwdg.Init.Reload    = 1250;                 /* ~1 second timeout  */
+    hiwdg.Init.Prescaler = IWDG_PRESCALER_32;   /* 32kHz/32 = 1kHz     */
+    hiwdg.Init.Reload    = 1250;                 /* ~1.25 second timeout */
+    hiwdg.Init.Window    = IWDG_WINDOW_DISABLE;  /* L4 有窗口功能，未关闭时 Window=0，喂狗即复位 */
     HAL_IWDG_Init(&hiwdg);
 }
 
