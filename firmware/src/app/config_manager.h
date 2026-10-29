@@ -26,7 +26,7 @@ typedef uint8_t SensorType_t;
  *   SENSOR_TYPE_TMAG3001 -> MA02
  *   SENSOR_TYPE_AK09974C -> MA03
  */
-#define CURRENT_SENSOR_TYPE  SENSOR_TYPE_MLX90393
+#define CURRENT_SENSOR_TYPE  SENSOR_TYPE_AK09974C
 
 typedef struct {
     /* -- Schema version -------------------------------- */

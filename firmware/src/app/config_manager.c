@@ -1,5 +1,5 @@
 #include "config_manager.h"
-#include "stm32l4xx_hal.h"
+#include "stm32h7xx_hal.h"
 #include "board_config.h"
 #include "../drivers/sensors/sensor_hal.h"
 #include "../drivers/bsp/log_manager.h"
@@ -15,6 +15,10 @@
 #endif
 
 #define CONFIG_MAGIC_NUMBER    0x52454C57U   /* "RELW" - version 6: CONTINUOUS mode + 16x OSR */
+#define CONFIG_FLASH_WORD_BYTES  (FLASH_NB_32BITWORD_IN_FLASHWORD * 4U)  /* 32 bytes on H7 */
+#define CONFIG_FLASH_TIMEOUT_MS  5000U
+
+extern void IWDG_Feed(void);
 
 typedef struct {
     uint32_t       magic;
@@ -123,11 +127,13 @@ uint8_t Config_Save(const Config_TypeDef *cfg_in)
 {
     if (Config_Validate(cfg_in)) return 1;
     StoredConfig_TypeDef sc;
-    /* L4只能按64位双字编程，末尾不足8字节的部分用0xFF补齐（擦除态）。 */
-    uint64_t image[(sizeof(StoredConfig_TypeDef) + 7U) / 8U];
-    uint32_t addr, page_err, i;
-    FLASH_EraseInitTypeDef erase;
-    HAL_StatusTypeDef st;
+    /* H7只能按256位Flash字（32字节）编程，末尾不足部分用0xFF补齐（擦除态）。
+     * 源数据须4字节对齐，按32字节对齐以便后续按cache行失效。 */
+    uint32_t image[(sizeof(StoredConfig_TypeDef) + CONFIG_FLASH_WORD_BYTES - 1U) /
+                   CONFIG_FLASH_WORD_BYTES * (CONFIG_FLASH_WORD_BYTES / 4U)]
+        __attribute__((aligned(32)));
+    uint32_t addr, i;
+    uint8_t  ret = 1;
 
     memcpy(&sc.config, cfg_in, sizeof(Config_TypeDef));
     sc.magic             = CONFIG_MAGIC_NUMBER;
@@ -138,26 +144,35 @@ uint8_t Config_Save(const Config_TypeDef *cfg_in)
     memcpy(image, &sc, sizeof(sc));
 
     HAL_FLASH_Unlock();
-    /* 清除残留错误标志（如复位后的PGSERR），否则L4拒绝新的擦写操作。 */
-    __HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_ALL_ERRORS);
+    /* 清除残留错误标志（如复位后的PGSERR），否则H7拒绝新的擦写操作。 */
+    __HAL_FLASH_CLEAR_FLAG_BANK2(FLASH_FLAG_ALL_ERRORS_BANK2);
 
-    erase.TypeErase = FLASH_TYPEERASE_PAGES;
-    erase.Banks     = FLASH_BANK_1;
-    erase.Page      = (CONFIG_FLASH_PAGE_ADDR - FLASH_BASE) / CONFIG_FLASH_PAGE_SIZE;
-    erase.NbPages   = 1;
-    st = HAL_FLASHEx_Erase(&erase, &page_err);
-    if (st != HAL_OK) { HAL_FLASH_Lock(); return 1; }
+    /* 128KB扇区擦除典型约2s，超过IWDG的1s超时：不用阻塞的HAL_FLASHEx_Erase，
+     * 手动启动擦除并在等待期间喂狗。 */
+    FLASH_Erase_Sector(CONFIG_FLASH_SECTOR, CONFIG_FLASH_BANK, FLASH_VOLTAGE_RANGE_3);
+    while (__HAL_FLASH_GET_FLAG_BANK2(FLASH_FLAG_QW_BANK2))
+        IWDG_Feed();
+    if (FLASH_WaitForLastOperation(CONFIG_FLASH_TIMEOUT_MS, CONFIG_FLASH_BANK) != HAL_OK) {
+        FLASH->CR2 &= ~(FLASH_CR_SER | FLASH_CR_SNB);
+        goto out;
+    }
+    FLASH->CR2 &= ~(FLASH_CR_SER | FLASH_CR_SNB);
 
     addr = CONFIG_FLASH_PAGE_ADDR;
-    for (i = 0; i < sizeof(image) / sizeof(image[0]); i++) {
-        st = HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, addr, image[i]);
-        if (st != HAL_OK) { HAL_FLASH_Lock(); return 1; }
-        addr += 8U;
+    for (i = 0; i < sizeof(image) / sizeof(image[0]); i += CONFIG_FLASH_WORD_BYTES / 4U) {
+        if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_FLASHWORD, addr,
+                              (uint32_t)(uintptr_t)&image[i]) != HAL_OK)
+            goto out;
+        addr += CONFIG_FLASH_WORD_BYTES;
     }
+    ret = 0;
 
+out:
     HAL_FLASH_Lock();
-    LOG_I("CFG", "Config saved to Flash");
-    return 0;
+    /* Flash内容已变化，丢弃D-Cache中的旧数据，否则Config_Load会读到旧配置 */
+    SCB_InvalidateDCache_by_Addr((void *)(uintptr_t)CONFIG_FLASH_PAGE_ADDR, (int32_t)sizeof(image));
+    if (ret == 0) LOG_I("CFG", "Config saved to Flash");
+    return ret;
 }
 
 uint8_t Config_Load(Config_TypeDef *cfg)

@@ -16,7 +16,7 @@
 #include "config_manager.h"
 #include "algo_params.h"
 #include "config_parser.h"
-#include "stm32l4xx_hal.h"
+#include "stm32h7xx_hal.h"
 
 extern void IWDG_Feed(void);
 

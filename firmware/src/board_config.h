@@ -3,18 +3,19 @@
 
 /**
  * @file    board_config.h
- * @brief   Board-level hardware configuration — STM32L432KCU6 (single-channel sensor board)
+ * @brief   Board-level hardware configuration — STM32H743ZIT6 (single-channel sensor board)
  *
  * When porting to a new MCU or board revision, only this file needs to change.
  * All BSP drivers read pin/peripheral assignments from these macros.
  */
 
-#include "stm32l4xx_hal.h"
+#include "stm32h7xx_hal.h"
 
 /* =========================================================================
  * MCU identity
  * ========================================================================= */
-#define BOARD_MCU_FREQ_HZ       80000000U   /* PLL target: HSI16 * 10 / 2 = 80 MHz */
+#define BOARD_MCU_FREQ_HZ       400000000U  /* CPU: HSI64 / 4 * 50 / 2 = 400 MHz (VOS1) */
+#define BOARD_HCLK_FREQ_HZ      200000000U  /* AXI/AHB = CPU / 2 */
 
 /* =========================================================================
  * Software I2C bus (PA9 = SCL, PA10 = SDA)
@@ -36,7 +37,8 @@
 #define BOARD_AK09974C_REF_ADDR     AK09974C_I2C_ADDR_CASE2
 
 /* =========================================================================
- * UART (USART1: TX = PB6, RX = PB7)
+ * UART (USART1: TX = PB6, RX = PB7, AF7)
+ * USART1 kernel clock defaults to PCLK2 (100 MHz): 921600 baud error < 0.1%
  * ========================================================================= */
 #define BSP_UART_INSTANCE           USART1
 #define BSP_UART_BAUD               921600U   /* Max stable rate: 8x faster than 115200 */
@@ -52,19 +54,25 @@
 
 #define BSP_UART_GPIO_CLK_EN()      __HAL_RCC_GPIOB_CLK_ENABLE()
 #define BSP_UART_PERIPH_CLK_EN()    __HAL_RCC_USART1_CLK_ENABLE()
+#define BSP_UART_GPIO_AF            GPIO_AF7_USART1
 
 /* =========================================================================
- * Independent Watchdog (IWDG)
+ * Independent Watchdog (IWDG1)
  * 32 kHz LSI / prescaler 32 → 1 kHz tick → reload 1000 ≈ 1 s timeout
  * ========================================================================= */
+#define BSP_IWDG_INSTANCE           IWDG1
 #define BSP_IWDG_PRESCALER          IWDG_PRESCALER_32
 #define BSP_IWDG_RELOAD             1000U
 
 /* =========================================================================
  * Flash — persistent configuration storage
- * STM32L432KCU6: 256 KB Flash, 2 KB pages → last page = 0x0803F000
+ * STM32H743ZIT6: 2 MB Flash, 2 banks x 8 sectors x 128 KB.
+ * Last sector = Bank 2 / sector 7 = 0x081E0000 (excluded in linker script).
+ * Programming unit is a 256-bit flash word (32 bytes).
  * ========================================================================= */
-#define CONFIG_FLASH_PAGE_ADDR      0x0803F000U
-#define CONFIG_FLASH_PAGE_SIZE      2048U   /* bytes — 2 KB page on L432 */
+#define CONFIG_FLASH_PAGE_ADDR      0x081E0000U
+#define CONFIG_FLASH_PAGE_SIZE      (128U * 1024U)  /* bytes — 128 KB sector on H743 */
+#define CONFIG_FLASH_BANK           FLASH_BANK_2
+#define CONFIG_FLASH_SECTOR         FLASH_SECTOR_7
 
 #endif /* __BOARD_CONFIG_H */

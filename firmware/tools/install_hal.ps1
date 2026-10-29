@@ -1,5 +1,6 @@
-# STM32L4xx HAL Driver download script
-# Downloads HAL driver and CMSIS from ST's GitHub mirror into firmware/libs/
+# STM32H7xx HAL Driver download script
+# Downloads HAL driver and CMSIS device pack from ST's GitHub repos into firmware/libs/
+# (component repos instead of the ~1 GB STM32CubeH7 bundle)
 # Usage: .\tools\install_hal.ps1
 
 param(
@@ -30,100 +31,91 @@ if ($FirmwareDir -eq "") { $FirmwareDir = Split-Path -Parent $ScriptDir }
 $LibsDir     = Join-Path $FirmwareDir "libs"
 
 # ── Download targets ──────────────────────────────────────────────────────────
-# ST's GitHub releases for STM32CubeL4 v1.18.1 (latest stable)
-$HAL_ZIP_URL  = "https://github.com/STMicroelectronics/STM32CubeL4/archive/refs/tags/v1.18.1.zip"
-$HAL_ZIP_FILE = Join-Path $env:TEMP "STM32CubeL4-1.18.1.zip"
-$HAL_EXTRACT  = Join-Path $env:TEMP "STM32CubeL4-extract"
+$HAL_VERSION   = "v1.11.6"
+$CMSIS_VERSION = "v1.10.7"
+$HAL_ZIP_URL   = "https://github.com/STMicroelectronics/stm32h7xx-hal-driver/archive/refs/tags/$HAL_VERSION.zip"
+$CMSIS_ZIP_URL = "https://github.com/STMicroelectronics/cmsis-device-h7/archive/refs/tags/$CMSIS_VERSION.zip"
 
-$HAL_DEST   = Join-Path $LibsDir "STM32L4xx_HAL_Driver"
-$CMSIS_DEST = Join-Path $LibsDir "CMSIS"
+$HAL_DEST   = Join-Path $LibsDir "STM32H7xx_HAL_Driver"
+$CMSIS_DEST = Join-Path $LibsDir "CMSIS\Device\ST\STM32H7xx"
+$CMSIS_CORE = Join-Path $LibsDir "CMSIS\Include\cmsis_compiler.h"
 
 Write-Sep
-Write-Info "STM32L4xx HAL Driver Installer"
+Write-Info "STM32H7xx HAL Driver Installer"
 Write-Sep
 Write-Host "  Firmware dir : $FirmwareDir"
 Write-Host "  Libs dir     : $LibsDir"
+Write-Host "  HAL          : $HAL_VERSION"
+Write-Host "  CMSIS device : $CMSIS_VERSION"
 Write-Sep
 Write-Host ""
 
+# CMSIS Core (core_cm7.h etc.) is shared by all series and already in libs/CMSIS
+if (-not (Test-Path $CMSIS_CORE)) {
+    Write-Err "CMSIS Core not found: $CMSIS_CORE"
+    exit 1
+}
+
 # ── Check if already installed ────────────────────────────────────────────────
-$halReady   = Test-Path (Join-Path $HAL_DEST  "Inc\stm32l4xx_hal.h")
-$cmsiReady  = Test-Path (Join-Path $CMSIS_DEST "Include\cmsis_compiler.h")
+$halReady  = Test-Path (Join-Path $HAL_DEST   "Inc\stm32h7xx_hal.h")
+$cmsiReady = Test-Path (Join-Path $CMSIS_DEST "Include\stm32h743xx.h")
 
 if ($halReady -and $cmsiReady -and -not $Force) {
     Write-Ok "HAL driver already installed, skipping"
-    Write-Ok "CMSIS already installed, skipping"
+    Write-Ok "CMSIS device already installed, skipping"
     exit 0
 }
 
-# ── Download ──────────────────────────────────────────────────────────────────
-if (-not (Test-Path $HAL_ZIP_FILE) -or $Force) {
-    Write-Info "Downloading STM32CubeL4 v1.18.1 (~150 MB)..."
-    Write-Info "URL: $HAL_ZIP_URL"
-    Write-Host ""
+# ── Download + extract one GitHub archive into $Dest ──────────────────────────
+function Install-Archive {
+    param([string]$Name, [string]$Url, [string]$Dest)
+
+    $zip     = Join-Path $env:TEMP "$Name.zip"
+    $extract = Join-Path $env:TEMP "$Name-extract"
+
+    Write-Info "Downloading $Name..."
+    Write-Info "URL: $Url"
     try {
         $ProgressPreference = "Continue"
-        Invoke-WebRequest -Uri $HAL_ZIP_URL -OutFile $HAL_ZIP_FILE -UseBasicParsing
+        Invoke-WebRequest -Uri $Url -OutFile $zip -UseBasicParsing
     } catch {
         Write-Err "Download failed: $_"
         Write-Warn "Check network or download manually from:"
-        Write-Warn $HAL_ZIP_URL
+        Write-Warn $Url
         exit 1
     }
-    $sizeMB = [math]::Round((Get-Item $HAL_ZIP_FILE).Length / 1MB, 1)
+    $sizeMB = [math]::Round((Get-Item $zip).Length / 1MB, 1)
     Write-Ok "Downloaded ($sizeMB MB)"
-} else {
-    Write-Warn "Archive already exists, skipping download"
+
+    if (Test-Path $extract) { Remove-Item -Recurse -Force $extract }
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($zip, $extract)
+
+    $root = Get-ChildItem $extract -Directory | Select-Object -First 1
+    if (-not $root) {
+        Write-Err "Could not find extracted $Name root"
+        exit 1
+    }
+
+    if (Test-Path $Dest) { Remove-Item -Recurse -Force $Dest }
+    Copy-Item -Recurse $root.FullName $Dest
+    Write-Ok "$Name -> $Dest"
+
+    Remove-Item -Recurse -Force $extract
+    Remove-Item $zip -ErrorAction SilentlyContinue
 }
 
-# ── Extract ───────────────────────────────────────────────────────────────────
-Write-Info "Extracting archive..."
-if (Test-Path $HAL_EXTRACT) { Remove-Item -Recurse -Force $HAL_EXTRACT }
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-[System.IO.Compression.ZipFile]::ExtractToDirectory($HAL_ZIP_FILE, $HAL_EXTRACT)
-Write-Ok "Extracted to temp dir"
-
-$cubeRoot = Get-ChildItem $HAL_EXTRACT -Directory | Select-Object -First 1
-if (-not $cubeRoot) {
-    Write-Err "Could not find extracted CubeL4 root"
-    exit 1
-}
-$cubeRoot = $cubeRoot.FullName
-Write-Info "CubeL4 root: $cubeRoot"
-
-# ── Copy HAL driver ───────────────────────────────────────────────────────────
-$halSrc = Join-Path $cubeRoot "Drivers\STM32L4xx_HAL_Driver"
-if (-not (Test-Path $halSrc)) {
-    Write-Err "HAL driver not found at: $halSrc"
-    exit 1
-}
-if (Test-Path $HAL_DEST) { Remove-Item -Recurse -Force $HAL_DEST }
-Copy-Item -Recurse $halSrc $HAL_DEST
-Write-Ok "HAL driver -> $HAL_DEST"
-
-# ── Copy CMSIS ────────────────────────────────────────────────────────────────
-$cmsisSrc = Join-Path $cubeRoot "Drivers\CMSIS"
-if (-not (Test-Path $cmsisSrc)) {
-    Write-Err "CMSIS not found at: $cmsisSrc"
-    exit 1
-}
-if (Test-Path $CMSIS_DEST) { Remove-Item -Recurse -Force $CMSIS_DEST }
-Copy-Item -Recurse $cmsisSrc $CMSIS_DEST
-Write-Ok "CMSIS -> $CMSIS_DEST"
-
-# ── Cleanup ───────────────────────────────────────────────────────────────────
-Remove-Item -Recurse -Force $HAL_EXTRACT
-Remove-Item $HAL_ZIP_FILE -ErrorAction SilentlyContinue
-Write-Ok "Cleaned up temp files"
+Install-Archive "stm32h7xx-hal-driver" $HAL_ZIP_URL   $HAL_DEST
+Install-Archive "cmsis-device-h7"      $CMSIS_ZIP_URL $CMSIS_DEST
 
 # ── Verify ────────────────────────────────────────────────────────────────────
-$halOk   = Test-Path (Join-Path $HAL_DEST  "Inc\stm32l4xx_hal.h")
-$cmsiOk  = Test-Path (Join-Path $CMSIS_DEST "Include\cmsis_compiler.h")
-$startOk = Test-Path (Join-Path $CMSIS_DEST "Device\ST\STM32L4xx\Source\Templates\gcc\startup_stm32l432xx.s")
+$halOk   = Test-Path (Join-Path $HAL_DEST   "Inc\stm32h7xx_hal.h")
+$cmsiOk  = Test-Path (Join-Path $CMSIS_DEST "Include\stm32h743xx.h")
+$startOk = Test-Path (Join-Path $CMSIS_DEST "Source\Templates\gcc\startup_stm32h743xx.s")
 
-if (-not $halOk)   { Write-Err "stm32l4xx_hal.h not found after install"; exit 1 }
-if (-not $cmsiOk)  { Write-Err "cmsis_compiler.h not found after install"; exit 1 }
-if (-not $startOk) { Write-Err "startup_stm32l432xx.s not found after install"; exit 1 }
+if (-not $halOk)   { Write-Err "stm32h7xx_hal.h not found after install"; exit 1 }
+if (-not $cmsiOk)  { Write-Err "stm32h743xx.h not found after install"; exit 1 }
+if (-not $startOk) { Write-Err "startup_stm32h743xx.s not found after install"; exit 1 }
 
 Write-Host ""
 Write-Sep

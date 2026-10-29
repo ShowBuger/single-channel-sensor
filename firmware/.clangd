@@ -1,22 +1,23 @@
 # clangd 配置文件
-# 为 ARM Cortex-M3 STM32 项目优化
+# 为 ARM Cortex-M7 STM32H743 项目优化
 
 CompileFlags:
   Add:
     # 目标架构
     - "-target"
     - "arm-none-eabi"
-    - "-mcpu=cortex-m3"
+    - "-mcpu=cortex-m7"
     - "-mthumb"
-    - "-mfloat-abi=soft"
+    - "-mfpu=fpv5-d16"
+    - "-mfloat-abi=hard"
 
     # 标准
     - "-std=gnu11"
 
     # 宏定义
-    - "-DUSE_STDPERIPH_DRIVER"
-    - "-DSTM32F10X_MD"
-    - "-DSTM32F103xB"
+    - "-DUSE_HAL_DRIVER"
+    - "-DSTM32H743xx"
+    - "-DUSE_PWR_LDO_SUPPLY"
     - "-DDEBUG"
 
   Remove:

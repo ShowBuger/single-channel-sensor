@@ -1,5 +1,5 @@
 #include "bsp_uart.h"
-#include "stm32l4xx_hal.h"
+#include "stm32h7xx_hal.h"
 #include "board_config.h"
 #include <stdio.h>
 #include <stdarg.h>
@@ -23,19 +23,19 @@ void Serial_Init(void)
 
     GPIO_InitTypeDef gpio = {0};
 
-    /* TX: PB6, AF7 (USART1) - STM32L4 requires explicit Alternate function */
+    /* TX: PB6, AF7 (USART1) - STM32H7 requires explicit Alternate function */
     gpio.Pin       = BSP_UART_TX_PIN;
     gpio.Mode      = GPIO_MODE_AF_PP;
     gpio.Pull      = GPIO_NOPULL;
     gpio.Speed     = GPIO_SPEED_FREQ_VERY_HIGH;
-    gpio.Alternate = GPIO_AF7_USART1;  /* STM32L4 specific */
+    gpio.Alternate = BSP_UART_GPIO_AF;
     HAL_GPIO_Init(BSP_UART_TX_PORT, &gpio);
 
     /* RX: PB7, AF7 (USART1) */
     gpio.Pin       = BSP_UART_RX_PIN;
     gpio.Mode      = GPIO_MODE_AF_PP;
     gpio.Pull      = GPIO_NOPULL;
-    gpio.Alternate = GPIO_AF7_USART1;  /* STM32L4 specific */
+    gpio.Alternate = BSP_UART_GPIO_AF;
     HAL_GPIO_Init(BSP_UART_RX_PORT, &gpio);
 
     huart1.Instance          = BSP_UART_INSTANCE;
@@ -45,7 +45,10 @@ void Serial_Init(void)
     huart1.Init.Parity       = UART_PARITY_NONE;
     huart1.Init.Mode         = UART_MODE_TX_RX;
     huart1.Init.HwFlowCtl    = UART_HWCONTROL_NONE;
-    huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+    huart1.Init.OverSampling   = UART_OVERSAMPLING_16;
+    huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+    huart1.Init.ClockPrescaler = UART_PRESCALER_DIV1;
+    huart1.FifoMode            = UART_FIFOMODE_DISABLE;  /* 逐字节RXNE中断，不用FIFO */
     HAL_UART_Init(&huart1);
 
     /* Enable RX interrupt */

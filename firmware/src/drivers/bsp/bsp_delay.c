@@ -1,5 +1,5 @@
 #include "bsp_delay.h"
-#include "stm32l4xx_hal.h"
+#include "stm32h7xx_hal.h"
 
 /**
  * @brief  Microsecond delay using DWT cycle counter
@@ -8,7 +8,8 @@
 void Delay_us(uint32_t us)
 {
     uint32_t start = DWT->CYCCNT;
-    uint32_t ticks = us * (HAL_RCC_GetHCLKFreq() / 1000000U);
+    /* DWT counts CPU cycles; on H7 HCLK = CPU/2, so use SystemCoreClock */
+    uint32_t ticks = us * (SystemCoreClock / 1000000U);
     while ((DWT->CYCCNT - start) < ticks);
 }
 
@@ -39,6 +40,7 @@ void Delay_s(uint32_t s)
 void Delay_Init(void)
 {
     CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->LAR    = 0xC5ACCE55U;   /* Cortex-M7: unlock DWT for software access */
     DWT->CYCCNT = 0;
     DWT->CTRL  |= DWT_CTRL_CYCCNTENA_Msk;
 }
