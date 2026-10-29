@@ -100,3 +100,7 @@ nul
 *.pdsbak
 *.PWI
 Backup*/
+
+# Local reference files (not version controlled)
+/docs/ak09974c-en-datasheet-myakm.pdf
+/firmware/sensor_placement_diagram.html
