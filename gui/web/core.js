@@ -59,7 +59,7 @@ function surfaceHeight(x,y,values,reference=1){
   if(Math.abs(x)>=2.5||Math.abs(y)>=2.5)return 0;
   const scale=Math.max(.01,reference),[nx,ny,nz]=values.map(v=>Math.max(-1,Math.min(1,v/scale)));
   const envelope=Math.cos(x*Math.PI/5)**2*Math.cos(y*Math.PI/5)**2;
-  return envelope*(1.55*nz-.5*(nx*x+ny*y));
+  return envelope*(1.55*nz-1.1*(nx*x+ny*y));
 }
 // Follow the local downhill gradient, independently of the global XY vector.
 function surfaceArrow(x,y,values,reference=1){
