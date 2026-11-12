@@ -1,4 +1,5 @@
-/* STM32H7 port: open-drain GPIOs for the software I2C bus. */
+/* STM32 HAL ports (F1/L4/H7): open-drain GPIOs for the software I2C bus.
+ * The GPIO HAL API is identical across these families; pins come from board_pins.h. */
 #include "plat.h"
 #include "board_pins.h"
 

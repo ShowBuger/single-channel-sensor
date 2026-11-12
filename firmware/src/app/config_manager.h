@@ -21,12 +21,15 @@
 #define SENSOR_TYPE_INVALID 0xFFU
 typedef uint8_t SensorType_t;
 
-/* 选择当前使用的传感器类型（决定编译进采集层的驱动和默认产品型号）
+/* 当前使用的传感器类型（决定编译进采集层的驱动和默认产品型号）
  *   SENSOR_TYPE_MLX90393 -> MA01
  *   SENSOR_TYPE_TMAG3001 -> MA02
  *   SENSOR_TYPE_AK09974C -> MA03
+ * 由 CMake 按 BOARD 传入（-DCURRENT_SENSOR_TYPE=...）。重构 P2 之后改为运行期选择。
  */
+#ifndef CURRENT_SENSOR_TYPE
 #define CURRENT_SENSOR_TYPE  SENSOR_TYPE_AK09974C
+#endif
 
 typedef struct {
     /* -- Schema version -------------------------------- */

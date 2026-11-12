@@ -2,6 +2,13 @@
 #include "ak09974c.h"
 #include "board.h"
 #include "../../bsp/bsp_i2c_soft.h"
+
+/* Boards with an AK09974C must define BOARD_AK09974C_VIO in board.h. On other
+ * boards this driver is compiled but never selected (and dropped by
+ * --gc-sections), so any valid value keeps it building. */
+#ifndef BOARD_AK09974C_VIO
+#define BOARD_AK09974C_VIO AK09974C_VIO_1V8
+#endif
 #include "../../bsp/log_manager.h"
 
 static uint8_t ak_init(void *h, uint8_t a1, uint8_t a0, int drdy, uint8_t id)

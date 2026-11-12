@@ -12,43 +12,84 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# ── Board / port ─────────────────────────────────────────────────────────────
-# BOARD selects src/board/<BOARD>/ (board facts and pins); each board names the
-# MCU port under src/port/<PORT>/. Only ma03_h743 is migrated so far; L4/F1
-# boards are added in later refactor phases.
+# ── Board ────────────────────────────────────────────────────────────────────
+# BOARD selects src/board/<BOARD>/ (board facts and pins) and the MCU port under
+# src/port/<PORT>/. The sensor driver is still chosen at compile time until the
+# sensor abstraction (refactor P2) makes it a runtime choice.
+#   ma01_l432 : STM32L432KC + MLX90393
+#   ma02_f103 : STM32F103C8 + TMAG3001
+#   ma03_h743 : STM32H743ZI + AK09974C
 set(BOARD "ma03_h743" CACHE STRING "Target board (src/board/<BOARD>)")
+set_property(CACHE BOARD PROPERTY STRINGS ma01_l432 ma02_f103 ma03_h743)
+
 if(BOARD STREQUAL "ma03_h743")
     set(PORT stm32h7)
+    set(BOARD_SENSOR SENSOR_TYPE_AK09974C)
+elseif(BOARD STREQUAL "ma01_l432")
+    set(PORT stm32l4)
+    set(BOARD_SENSOR SENSOR_TYPE_MLX90393)
+elseif(BOARD STREQUAL "ma02_f103")
+    set(PORT stm32f1)
+    set(BOARD_SENSOR SENSOR_TYPE_TMAG3001)
 else()
     message(FATAL_ERROR "Unknown BOARD '${BOARD}'")
 endif()
-message(STATUS "Board: ${BOARD}  Port: ${PORT}")
 
-# ── MCU ──────────────────────────────────────────────────────────────────────
-set(MCU_LINKER_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/STM32H743ZITx_FLASH.ld)
+# ── MCU port ─────────────────────────────────────────────────────────────────
+set(CMSIS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libs/CMSIS)
 
-# FW_EMU_SP_FPU: 仅供主机端 Unicorn 回归测试使用。Unicorn 的 Cortex-M7 模型
-# 不支持双精度 VFP 指令，打开后改用单精度 FPU 构建（double 由软件库实现），
+# FW_EMU_SP_FPU: 仅供主机端 Unicorn 回归测试使用（H7）。Unicorn 的 Cortex-M7
+# 模型不支持双精度 VFP 指令，打开后改用单精度 FPU 构建（double 由软件库实现），
 # C 代码路径与正式固件相同。正式固件不得打开此选项。
 option(FW_EMU_SP_FPU "Build with single-precision FPU for emulator tests" OFF)
-if(FW_EMU_SP_FPU)
-    set(FW_FPU fpv5-sp-d16)
-else()
-    set(FW_FPU fpv5-d16)
+
+if(PORT STREQUAL "stm32h7")
+    set(MCU_NAME        STM32H743xx)
+    set(HAL_FAMILY      STM32H7xx)
+    set(HAL_PREFIX      stm32h7xx)
+    set(MCU_LINKER_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/STM32H743ZITx_FLASH.ld)
+    set(STARTUP_FILE    startup_stm32h743xx.s)
+    if(FW_EMU_SP_FPU)
+        set(FW_FPU fpv5-sp-d16)
+    else()
+        set(FW_FPU fpv5-d16)
+    endif()
+    set(CPU_OPTIONS -mcpu=cortex-m7 -mthumb -mfpu=${FW_FPU} -mfloat-abi=hard)
+    set(MCU_DEFINES STM32H743xx USE_PWR_LDO_SUPPLY)   # H743: core supplied by LDO
+    set(HAL_MODULES hal hal_cortex hal_rcc hal_rcc_ex hal_gpio hal_dma hal_dma_ex
+                    hal_mdma hal_exti hal_flash hal_flash_ex hal_pwr hal_pwr_ex
+                    hal_uart hal_uart_ex hal_iwdg)
+elseif(PORT STREQUAL "stm32l4")
+    set(MCU_NAME        STM32L432xx)
+    set(HAL_FAMILY      STM32L4xx)
+    set(HAL_PREFIX      stm32l4xx)
+    set(MCU_LINKER_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/STM32L432KCUx_FLASH.ld)
+    set(STARTUP_FILE    startup_stm32l432xx.s)
+    set(CPU_OPTIONS -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard)
+    set(MCU_DEFINES STM32L432xx)
+    set(HAL_MODULES hal hal_cortex hal_rcc hal_rcc_ex hal_gpio hal_dma hal_dma_ex
+                    hal_flash hal_flash_ex hal_pwr hal_pwr_ex
+                    hal_uart hal_uart_ex hal_iwdg)
+elseif(PORT STREQUAL "stm32f1")
+    set(MCU_NAME        STM32F103xB)
+    set(HAL_FAMILY      STM32F1xx)
+    set(HAL_PREFIX      stm32f1xx)
+    set(MCU_LINKER_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/STM32F103C8Tx_FLASH.ld)
+    set(STARTUP_FILE    startup_stm32f103xb.s)
+    set(CPU_OPTIONS -mcpu=cortex-m3 -mthumb -mfloat-abi=soft)
+    set(MCU_DEFINES STM32F103xB)
+    set(HAL_MODULES hal hal_cortex hal_rcc hal_rcc_ex hal_gpio hal_gpio_ex hal_dma
+                    hal_flash hal_flash_ex hal_pwr hal_uart hal_iwdg)
 endif()
 
-set(CPU_OPTIONS
-    -mcpu=cortex-m7
-    -mthumb
-    -mfpu=${FW_FPU}
-    -mfloat-abi=hard
-)
+set(HAL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libs/${HAL_FAMILY}_HAL_Driver)
+message(STATUS "Board: ${BOARD}  Port: ${PORT}  MCU: ${MCU_NAME}  Sensor: ${BOARD_SENSOR}")
 
 # ── Compile definitions ───────────────────────────────────────────────────────
 add_compile_definitions(
     USE_HAL_DRIVER
-    STM32H743xx
-    USE_PWR_LDO_SUPPLY    # H743 has no SMPS: core supplied by internal LDO
+    ${MCU_DEFINES}
+    CURRENT_SENSOR_TYPE=${BOARD_SENSOR}
     FW_VERSION="${PROJECT_VERSION}"   # reported by ML VERSION
 )
 
@@ -82,10 +123,6 @@ add_link_options(
     -u _printf_float      # enable %f in nano.specs
 )
 
-# ── HAL driver root ───────────────────────────────────────────────────────────
-set(HAL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libs/STM32H7xx_HAL_Driver)
-set(CMSIS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libs/CMSIS)
-
 # ── Include directories ───────────────────────────────────────────────────────
 include_directories(
     src
@@ -100,51 +137,31 @@ include_directories(
     src/drivers/sensors/ak09974c
     src/drivers/sensors/tca9548a
     ${CMSIS_DIR}/Core/Include
-    ${CMSIS_DIR}/Device/ST/STM32H7xx/Include
+    ${CMSIS_DIR}/Device/ST/${HAL_FAMILY}/Include
     ${HAL_DIR}/Inc
 )
 
 # ── Sources ───────────────────────────────────────────────────────────────────
-
-# CMSIS device init
 set(CMSIS_SOURCES
-    ${CMSIS_DIR}/Device/ST/STM32H7xx/Source/Templates/system_stm32h7xx.c
+    ${CMSIS_DIR}/Device/ST/${HAL_FAMILY}/Source/Templates/system_${HAL_PREFIX}.c
 )
 
-# HAL driver sources (only modules we use)
-file(GLOB HAL_SOURCES
-    ${HAL_DIR}/Src/stm32h7xx_hal.c
-    ${HAL_DIR}/Src/stm32h7xx_hal_cortex.c
-    ${HAL_DIR}/Src/stm32h7xx_hal_rcc.c
-    ${HAL_DIR}/Src/stm32h7xx_hal_rcc_ex.c
-    ${HAL_DIR}/Src/stm32h7xx_hal_gpio.c
-    ${HAL_DIR}/Src/stm32h7xx_hal_dma.c
-    ${HAL_DIR}/Src/stm32h7xx_hal_dma_ex.c
-    ${HAL_DIR}/Src/stm32h7xx_hal_mdma.c
-    ${HAL_DIR}/Src/stm32h7xx_hal_exti.c
-    ${HAL_DIR}/Src/stm32h7xx_hal_flash.c
-    ${HAL_DIR}/Src/stm32h7xx_hal_flash_ex.c
-    ${HAL_DIR}/Src/stm32h7xx_hal_pwr.c
-    ${HAL_DIR}/Src/stm32h7xx_hal_pwr_ex.c
-    ${HAL_DIR}/Src/stm32h7xx_hal_uart.c
-    ${HAL_DIR}/Src/stm32h7xx_hal_uart_ex.c
-    ${HAL_DIR}/Src/stm32h7xx_hal_iwdg.c
-)
+set(HAL_SOURCES)
+foreach(mod ${HAL_MODULES})
+    list(APPEND HAL_SOURCES ${HAL_DIR}/Src/${HAL_PREFIX}_${mod}.c)
+endforeach()
 
-# Application sources
 file(GLOB APP_SOURCES     src/app/*.c)
-
-file(GLOB BSP_SOURCES      src/drivers/bsp/*.c)
-file(GLOB PORT_SOURCES     src/port/${PORT}/*.c)
-
-file(GLOB_RECURSE SENSOR_SOURCES  src/drivers/sensors/**/*.c)
+file(GLOB BSP_SOURCES     src/drivers/bsp/*.c)
+file(GLOB PORT_SOURCES    src/port/${PORT}/*.c src/port/stm32_common/*.c)
+file(GLOB_RECURSE SENSOR_SOURCES src/drivers/sensors/**/*.c)
 
 set(MAIN_SOURCES
     src/main.c
 )
 
 set(STARTUP_ASM
-    ${CMSIS_DIR}/Device/ST/STM32H7xx/Source/Templates/gcc/startup_stm32h743xx.s
+    ${CMSIS_DIR}/Device/ST/${HAL_FAMILY}/Source/Templates/gcc/${STARTUP_FILE}
 )
 
 # ── Executable ────────────────────────────────────────────────────────────────
@@ -178,5 +195,4 @@ add_custom_command(TARGET ${PROJECT_NAME}.elf POST_BUILD
 )
 
 message(STATUS "Project  : ${PROJECT_NAME}")
-message(STATUS "MCU      : STM32H743xx")
 message(STATUS "HAL root : ${HAL_DIR}")
