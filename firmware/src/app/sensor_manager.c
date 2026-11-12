@@ -7,7 +7,7 @@
 #elif CURRENT_SENSOR_TYPE == SENSOR_TYPE_AK09974C
 #include "../drivers/sensors/ak09974c/ak09974c.h"
 #endif
-#include "board_config.h"
+#include "board.h"
 #include "../drivers/sensors/tca9548a/tca9548a.h"
 #include "../drivers/bsp/bsp_delay.h"
 #include <math.h>
@@ -16,7 +16,7 @@
 #include "config_manager.h"
 #include "algo_params.h"
 #include "config_parser.h"
-#include "stm32h7xx_hal.h"
+#include "plat.h"
 
 extern void IWDG_Feed(void);
 
@@ -292,7 +292,7 @@ uint8_t sensor_stop()
 static uint8_t wait_for_sensor_pair(void)
 {
 #if CURRENT_SENSOR_TYPE == SENSOR_TYPE_TMAG3001
-    uint32_t start = HAL_GetTick();
+    uint32_t start = plat_tick_ms();
     for (;;) {
         uint8_t actual, reference;
         IWDG_Feed();
@@ -304,14 +304,14 @@ static uint8_t wait_for_sensor_pair(void)
         uint8_t reference_new = !reference_sensors[0].sample_seen ||
             (reference & TMAG3001_STATUS_SET_COUNT) != reference_sensors[0].last_set_count;
         if ((actual & reference & TMAG3001_STATUS_READY) && actual_new && reference_new) return 0;
-        if ((uint32_t)(HAL_GetTick() - start) >= 100U) {
+        if ((uint32_t)(plat_tick_ms() - start) >= 100U) {
             LOG_W("SCAN", "Conversion timeout: actual=0x%02X ref=0x%02X", actual, reference);
             return 1;
         }
         Delay_ms(1);
     }
 #elif CURRENT_SENSOR_TYPE == SENSOR_TYPE_AK09974C
-    uint32_t start = HAL_GetTick();
+    uint32_t start = plat_tick_ms();
     for (;;) {
         uint8_t actual, reference;
         IWDG_Feed();
@@ -323,7 +323,7 @@ static uint8_t wait_for_sensor_pair(void)
                 LOG_D("SCAN", "Magnetic overflow: actual=0x%02X ref=0x%02X", actual, reference);
             return 0;
         }
-        if ((uint32_t)(HAL_GetTick() - start) >= 100U) {
+        if ((uint32_t)(plat_tick_ms() - start) >= 100U) {
             LOG_W("SCAN", "Conversion timeout: actual=0x%02X ref=0x%02X", actual, reference);
             return 1;
         }

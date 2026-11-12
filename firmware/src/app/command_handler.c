@@ -12,7 +12,7 @@
 #include "app/config_parser.h"
 #include "app/config_manager.h"
 #include "drivers/bsp/log_manager.h"
-#include "stm32h7xx_hal.h"
+#include "plat.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -344,8 +344,8 @@ static void Handle_Reset(const char *cmd)
 {
     (void)cmd;
     Serial_Printf("System resetting...\r\n");
-    HAL_Delay(100);  /* 等待串口发送完成 */
-    NVIC_SystemReset();  /* 执行软件复位 */
+    plat_delay_ms(100);  /* 等待串口发送完成 */
+    plat_sys_reset();  /* 执行软件复位 */
 }
 
 static void Handle_Restore(const char *cmd)
@@ -354,6 +354,6 @@ static void Handle_Restore(const char *cmd)
     Serial_Printf("Restoring factory defaults...\r\n");
     Config_RestoreDefault();
     Serial_Printf("Factory defaults restored. Resetting...\r\n");
-    HAL_Delay(100);
-    NVIC_SystemReset();
+    plat_delay_ms(100);
+    plat_sys_reset();
 }

@@ -12,6 +12,18 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# ── Board / port ─────────────────────────────────────────────────────────────
+# BOARD selects src/board/<BOARD>/ (board facts and pins); each board names the
+# MCU port under src/port/<PORT>/. Only ma03_h743 is migrated so far; L4/F1
+# boards are added in later refactor phases.
+set(BOARD "ma03_h743" CACHE STRING "Target board (src/board/<BOARD>)")
+if(BOARD STREQUAL "ma03_h743")
+    set(PORT stm32h7)
+else()
+    message(FATAL_ERROR "Unknown BOARD '${BOARD}'")
+endif()
+message(STATUS "Board: ${BOARD}  Port: ${PORT}")
+
 # ── MCU ──────────────────────────────────────────────────────────────────────
 set(MCU_LINKER_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/STM32H743ZITx_FLASH.ld)
 
@@ -75,9 +87,11 @@ set(CMSIS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libs/CMSIS)
 
 # ── Include directories ───────────────────────────────────────────────────────
 include_directories(
-    src                      # board_config.h lives here
+    src
+    src/platform             # MCU-neutral platform interface (plat.h)
+    src/board/${BOARD}       # board.h, board_pins.h
+    src/port/${PORT}         # HAL config and interrupt handlers
     src/app
-    src/mcu/stm32h7xx        # MCU-specific config and interrupt handlers
     src/drivers/bsp
     src/drivers/sensors
     src/drivers/sensors/mlx90393
@@ -87,7 +101,6 @@ include_directories(
     ${CMSIS_DIR}/Core/Include
     ${CMSIS_DIR}/Device/ST/STM32H7xx/Include
     ${HAL_DIR}/Inc
-    ${CMAKE_CURRENT_SOURCE_DIR}/src   # ensure stm32h7xx_hal_conf.h is found by HAL sources
 )
 
 # ── Sources ───────────────────────────────────────────────────────────────────
@@ -120,17 +133,13 @@ file(GLOB HAL_SOURCES
 # Application sources
 file(GLOB APP_SOURCES     src/app/*.c)
 
-# BSP sources -- exclude bsp_i2c.c (hardware I2C, unused) and bsp_dma.c (not ported yet)
-file(GLOB BSP_SOURCES_RAW  src/drivers/bsp/*.c)
-list(FILTER BSP_SOURCES_RAW EXCLUDE REGEX ".*bsp_i2c\\.c$")
-list(FILTER BSP_SOURCES_RAW EXCLUDE REGEX ".*bsp_dma\\.c$")
-set(BSP_SOURCES ${BSP_SOURCES_RAW})
+file(GLOB BSP_SOURCES      src/drivers/bsp/*.c)
+file(GLOB PORT_SOURCES     src/port/${PORT}/*.c)
 
 file(GLOB_RECURSE SENSOR_SOURCES  src/drivers/sensors/**/*.c)
 
 set(MAIN_SOURCES
     src/main.c
-    src/mcu/stm32h7xx/stm32h7xx_it.c
 )
 
 set(STARTUP_ASM
@@ -143,6 +152,7 @@ add_executable(${PROJECT_NAME}.elf
     ${HAL_SOURCES}
     ${APP_SOURCES}
     ${BSP_SOURCES}
+    ${PORT_SOURCES}
     ${SENSOR_SOURCES}
     ${MAIN_SOURCES}
     ${STARTUP_ASM}

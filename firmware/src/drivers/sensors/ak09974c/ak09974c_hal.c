@@ -1,6 +1,6 @@
 #include "../sensor_hal.h"
 #include "ak09974c.h"
-#include "board_config.h"
+#include "board.h"
 #include "../../bsp/bsp_i2c_soft.h"
 #include "../../bsp/log_manager.h"
 
