@@ -1,0 +1,100 @@
+---
+name: hwtest
+description: 通过串口对实际板卡运行自动化硬件测试（协议、采样率、命令时延、行完整性、噪声），输出报告并与基线比较。直接调用 firmware/tools/hwtest.py
+---
+
+# HW Test Skill
+
+收到 `/hwtest` 指令后，**直接运行测试脚本**，不要先浏览代码或询问用户。
+脚本自动识别 ST-Link 虚拟串口，结束后在 `tests/hw_reports/` 生成 JSON 报告和原始字节流。
+
+## 1. 前置检查
+
+```powershell
+$root = git rev-parse --show-toplevel
+python -c "import serial" 2>$null; if ($LASTEXITCODE -ne 0) { python -m pip install pyserial }
+python "$root\firmware\tools\hwtest.py" ports
+```
+
+- 没有 `STLink Virtual COM Port`：报告"未检测到板卡"，提示检查 USB 与供电，**停止**。
+- 打开串口失败（退出码 2）：提示用户关闭上位机 GUI 或其他串口终端（串口只能被一个程序占用），**停止**。
+
+## 2. 解析参数（不要询问用户）
+
+| 用户输入 | 含义 | 脚本参数 | 默认 |
+|---|---|---|---|
+| `flash` | 先编译烧录再测试 | 先执行 `/flash` 的流程 | 不烧录 |
+| `<数字>s`，如 `30s` | 采样统计时长 | `--seconds 30` | 10 |
+| `rate <Hz>` | 期望采样率 | `--expect-rate <Hz>` | 10（当前固件）；重构 P4 之后 TMAG3001/AK09974C 为 100，MLX90393 为 20 |
+| `COMx` | 指定串口 | `--port COMx` | 自动识别 |
+| `log` | 测量日志级别对采样率的影响 | `--log-impact` | 关闭 |
+| `keep` | 测完保持采集运行 | `--leave-running` | 测完停止 |
+
+`log` 会通过 `ML LOGLEVEL <n>` 写 Flash 两次（每次擦除约 2 s），结束时恢复原级别。只在用户明确要求时使用。
+
+## 3. 运行
+
+```powershell
+python "$root\firmware\tools\hwtest.py" suite --seconds 10
+```
+
+用户要求 `flash` 时，先按 `/flash` 的步骤编译烧录（`firmware/tools/build.ps1`、`flash.ps1`），烧录成功并等待 1 秒后再运行测试；编译或烧录失败则停止。
+
+单条命令调试：
+
+```powershell
+python "$root\firmware\tools\hwtest.py" cmd "ML GETCFG" --expect "CFG_END"
+python "$root\firmware\tools\hwtest.py" monitor --seconds 5 --raw tests\hw_reports\dump.bin
+```
+
+## 4. 测试项
+
+| 测试 | 内容 | 判定 |
+|---|---|---|
+| `sync_import_cancel` | 连接后发送 `ML IMPORT_CANCEL` | 收到独占一行的 `IMPORT_CANCELLED`（旧固件允许 `Unknown:`） |
+| `loglevel_query` | `ML LOGLEVEL` 查询（不写 Flash） | 收到 `LogLevel=n` |
+| `getcfg` | `ML GETCFG` | `CFG_BEGIN` 与 `CFG_END` 之间是合法 JSON |
+| `stop` | `ML STOP` | 回复 `Stopped`，之后 1 s 内没有样本行 |
+| `start` | `ML START` | 回复 `Sensor started` |
+| `sample_rate` | 统计样本间隔 | 速率在期望值 ±20% 内；给出中位数、p95、最大值、标准差、超过 2 倍中位数的间隙数 |
+| `serial_load` | 每样本行数、字节率、链路占用 | 仅记录 |
+| `noise_baseline` | 各轴均值、标准差、最小量化步长 | 输出经算法处理（flag ≠ 0x00）时为 WARN，结果不能当原始噪声 |
+| `line_integrity` | 是否有无法解码的行 | 有则 WARN |
+| `cmd_under_stream` | 采集中反复发送查询命令 | 每条回复都收到且独占一行；给出时延中位数与最大值 |
+| `log_impact` | 可选，见 `log` 参数 | 记录不同日志级别下的采样率 |
+
+## 5. 已知的测量限制
+
+- **ST-Link 虚拟串口在打开后的约 100–300 ms 内会吐出残缺的旧数据**（截断的行头、行中丢字节）。这是 USB 桥的行为，不是固件问题。脚本在打开后先丢弃 0.4 s 的数据再通信。上位机 GUI 也需要同样处理（见 `docs/REFACTOR_DESIGN.md` 第 18 节）。
+- 时间戳取自主机收到数据的时刻，受 USB 批量传输影响，单个间隔有几毫秒到几十毫秒的抖动。速率与中位数可信，单点间隔只能作参考；精确的采样时序需要固件侧时间戳（重构后的 `v2` 样本行）。
+- 原始噪声需要 `FLAG_RES = 0x00`。`ML CHFLAG` 会写 Flash，本脚本不修改它；需要时让用户确认后手动设置，测完恢复。
+
+## 6. 输出结果
+
+用表格汇总每项的 PASS/FAIL/WARN 与关键数值，并给出报告路径。与基线对比时，读取 `tests/hw_reports/` 中最早的一份报告或用户指定的报告，列出速率、间隔中位数、命令时延的变化。
+
+**FAIL 时**：引用报告中的 `line`、`raw_context`（十六进制）等原文，并说明可能原因；不要擅自修改固件或设置。
+
+## 7. 禁止事项
+
+- 不发送 `ML RESET`、`ML RESTORE`、`ML SET`、`ML SAVECFG`、`ML IMPORT_START/DATA/END`、`ML CHFLAG`、`ML SETMAP`。
+- 除 `log` 参数外，不发送带参数的 `ML LOGLEVEL`。
+
+## 当前基线（2026-11-12，MA03 / H743 / AK09974C，重构前）
+
+| 指标 | 值 |
+|---|---|
+| 采样率 | 9.09 Hz（主循环 100 ms 延时 + 约 24 ms 处理） |
+| 间隔中位数 / p95 / 最大 | 124 / 126 / 128 ms |
+| 命令时延中位数 / 最大（采集中） | 约 95–98 / 150–166 ms |
+| 链路占用 | 218 B/s，约 0.2% |
+| 设备配置 | product=MA03，flag=0x3B，LogLevel=3 |
+
+## 使用示例
+
+```
+/hwtest                  # 默认 10 s 测试
+/hwtest flash 30s        # 编译烧录后测试 30 s
+/hwtest rate 100         # 期望 100 Hz（重构后）
+/hwtest log              # 额外测量日志级别影响（写 Flash）
+```

@@ -105,3 +105,4 @@ Backup*/
 /docs/ak09974c-en-datasheet-myakm.pdf
 /firmware/sensor_placement_diagram.html
 **/build_emu/
+tests/hw_reports/
