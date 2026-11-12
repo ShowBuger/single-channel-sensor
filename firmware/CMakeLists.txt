@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.22)
 set(CMAKE_TOOLCHAIN_FILE ${CMAKE_CURRENT_SOURCE_DIR}/cmake/arm-none-eabi-gcc.cmake)
 
 project(single_channel_sensor
-    VERSION 1.0.0
+    VERSION 1.1.0
     LANGUAGES C ASM
 )
 
@@ -49,6 +49,7 @@ add_compile_definitions(
     USE_HAL_DRIVER
     STM32H743xx
     USE_PWR_LDO_SUPPLY    # H743 has no SMPS: core supplied by internal LDO
+    FW_VERSION="${PROJECT_VERSION}"   # reported by ML VERSION
 )
 
 # ── Compile options ───────────────────────────────────────────────────────────

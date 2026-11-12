@@ -110,6 +110,8 @@ uint8_t get_sensor_data(void);
 void data_process(void);
 void print_sensor_data(uint8_t sensor_index);
 uint8_t sensor_stop(void);
+/* Name of the sensor driver compiled into this firmware, e.g. "AK09974C". */
+const char *Sensor_GetName(void);
 void print_processed_sensor_data(uint8_t sensor_index);
 void print_calibration_data(uint8_t sensor_index);
 uint8_t perform_sensor_calibration(void);

@@ -13,6 +13,7 @@
 #include "app/config_manager.h"
 #include "drivers/bsp/log_manager.h"
 #include "plat.h"
+#include "board.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -46,6 +47,7 @@ static void Handle_LogLevel(const char *cmd);
 static void Handle_LogLevelQuery(const char *cmd);
 static void Handle_Reset(const char *cmd);
 static void Handle_Restore(const char *cmd);
+static void Handle_Version(const char *cmd);
 
 /* -----------------------------------------------------------------------
  * Command table - ADD NEW COMMANDS HERE
@@ -74,6 +76,7 @@ static const CommandEntry_t g_command_table[] = {
     {"ML LOGLEVEL",     Handle_LogLevelQuery},
 
     /* System */
+    {"ML VERSION",      Handle_Version},
     {"ML RESET",        Handle_Reset},
     {"ML RESTORE",      Handle_Restore},
 };
@@ -356,4 +359,15 @@ static void Handle_Restore(const char *cmd)
     Serial_Printf("Factory defaults restored. Resetting...\r\n");
     plat_delay_ms(100);
     plat_sys_reset();
+}
+
+/* ML VERSION — capability line for host negotiation (REFACTOR_DESIGN 11.3).
+ * proto 2 = this command exists; sample lines are still the legacy format,
+ * so no optional features are announced yet. Older firmware answers
+ * "Unknown: ML VERSION", which hosts treat as proto 1. */
+static void Handle_Version(const char *cmd)
+{
+    (void)cmd;
+    Serial_Printf("VERSION proto=2 fw=%s board=%s mcu=%s sensors=%s channels=1 features=\r\n",
+                  FW_VERSION, BOARD_NAME, plat_mcu_name(), Sensor_GetName());
 }

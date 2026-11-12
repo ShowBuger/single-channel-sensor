@@ -213,8 +213,8 @@ class Suite:
         print(f"  [{mark}] {name:<28} {status:<4} {detail}")
 
     def run(self):
-        steps = [self.t_sync, self.t_loglevel, self.t_getcfg, self.t_stop, self.t_stream,
-                 self.t_cmd_under_stream]
+        steps = [self.t_sync, self.t_version, self.t_loglevel, self.t_getcfg, self.t_stop,
+                 self.t_stream, self.t_cmd_under_stream]
         if self.a.log_impact:
             steps.append(self.t_log_impact)
         for step in steps:
@@ -234,6 +234,21 @@ class Suite:
         else:
             self.record("sync_import_cancel", "FAIL", reason="no reply line",
                         raw_found=r.get("raw_found"), raw_context=r.get("raw_context"))
+
+    # T1b ----------------------------------------------------------------------
+    def t_version(self):
+        r = self.d.request("ML VERSION", r"^(VERSION .*|Unknown.*)$", 3)
+        if not r["ok"]:
+            self.record("version", "FAIL", reason="no reply")
+        elif r["line"].startswith("Unknown"):
+            self.info["version"] = {"proto": "1"}
+            self.record("version", "WARN", note="firmware predates ML VERSION (proto 1)")
+        else:
+            fields = dict(kv.split("=", 1) for kv in r["line"].split()[1:] if "=" in kv)
+            self.info["version"] = fields
+            ok = r["exact"] and fields.get("proto", "").isdigit() and "board" in fields
+            self.record("version", "PASS" if ok else "FAIL", **{k: fields.get(k) for k in
+                        ("proto", "fw", "board", "mcu", "sensors")})
 
     # T2 -----------------------------------------------------------------------
     def t_loglevel(self):

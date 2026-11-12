@@ -283,6 +283,11 @@ uint8_t sensor_start()
    }
 }
 
+const char *Sensor_GetName(void)
+{
+    return SENSOR_HAL.name;
+}
+
 uint8_t sensor_stop()
 {
    SENSOR_Run[0] = 0;
