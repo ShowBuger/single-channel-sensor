@@ -8,8 +8,14 @@ function previewValue(config,group,key){
   if(group==='algo'&&key==='flag')return '0x'+value.toString(16).toUpperCase().padStart(2,'0');
   if(group==='log')return `${[localize('关闭','Off'),localize('错误','Error'),localize('警告','Warning'),localize('信息','Info'),localize('调试','Debug')][value]}（${value}）`;
   if(group==='sensor'){
-    if(key==='type')return `${['MLX90393','TMAG3001'][value]}（${value}）`;
-    if(C.sensorFieldActive(config.product,key)){
+    if(key==='type')return `${C.SENSOR_NAMES[value]}（${value}）`;
+    if(config.product==='MA03'){
+      if(key==='osr')return `${[localize('超低噪声','Super low noise'),localize('低噪声','Low noise'),localize('常规','Normal'),localize('低功耗','Low power')][value]}（${value}）`;
+      if(key==='range')return `${value?localize('宽量程 XY ±78 mT / Z ±200 mT','Wide XY ±78 mT / Z ±200 mT'):localize('常规量程 ±36 mT','Normal ±36 mT')}（${value}）`;
+      if(key==='opmode')return `${[localize('单次触发','Single trigger'),localize('连续测量','Continuous measurement')][value]}（${value}）`;
+      if(key==='mcyc')return `${value*0.5} ms（${value}）`;
+    }
+    else if(C.sensorFieldActive(config.product,key)){
       if(key==='tcmp')return `${value?localize('启用','On'):localize('关闭','Off')}（${value}）`;
       if(key==='range')return `±${(config.sensor.version===0?[40,80]:[120,240])[value]} mT（${value}）`;
       if(key==='opmode')return `${[localize('待机','Standby'),localize('睡眠','Sleep'),localize('连续测量','Continuous measurement'),localize('唤醒与睡眠','Wake and sleep')][value]}（${value}）`;
@@ -67,7 +73,7 @@ class ImportPanel {
       }
       section.append(table);$('jsonPreview').append(section);
     }
-    $('importNotes').textContent=localize(`${config.product} 使用 ${config.sensor.type===0?'MLX90393':'TMAG3001'}；全部参数统一存储，未生效字段仍会保存和读回。 `,`${config.product} uses ${config.sensor.type===0?'MLX90393':'TMAG3001'}; all parameters are stored, including inactive fields, and can be read back. `)+(missing.length?localize(`缺少的 ${missing.length} 个字段使用该产品默认值。 `,`Missing ${missing.length} fields use the product defaults. `):localize('这是完整配置。 ','Configuration is complete. '))+localize('应用可能重新标定，请保持传感器静止。','Applying may recalibrate the sensor. Keep it still.');
+    $('importNotes').textContent=localize(`${config.product} 使用 ${C.SENSOR_NAMES[config.sensor.type]}；全部参数统一存储，未生效字段仍会保存和读回。 `,`${config.product} uses ${C.SENSOR_NAMES[config.sensor.type]}; all parameters are stored, including inactive fields, and can be read back. `)+(missing.length?localize(`缺少的 ${missing.length} 个字段使用该产品默认值。 `,`Missing ${missing.length} fields use the product defaults. `):localize('这是完整配置。 ','Configuration is complete. '))+localize('应用可能重新标定，请保持传感器静止。','Applying may recalibrate the sensor. Keep it still.');
   }
   download(value,name){const url=URL.createObjectURL(new Blob([JSON.stringify(value,null,2)+'\n'],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
   async apply(){if(!this.prepared||!this.device.connected||this.busy)return;const prepared=this.prepared;this.controller=new AbortController();this.busy=true;$('importProgress').hidden=false;$('importProgressBar').value=0;this.sync();await this.operation(async()=>{try{

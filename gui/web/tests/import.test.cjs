@@ -69,7 +69,7 @@ test('missing fields use firmware defaults and BOM plus aliases are supported',(
 });
 test('TMAG3001 sensor type names, numeric values, aliases and fields normalize',()=>{
   const named=C.prepareImport({sensor:{type:'TMAG3001',gain_sel:15,osr:5,dig_filt:0,res_x:3,res_y:2,res_z:1,tcmp_en:1,range:1,op_mode:3,mag_ch:6,sensor_version:1}});
-  assert.deepEqual(named.config.sensor,{type:1,gain:15,osr:5,filt:0,resx:3,resy:2,resz:1,tcmp:1,range:1,opmode:3,magch:6,version:1});
+  assert.deepEqual(named.config.sensor,{type:1,gain:15,osr:5,filt:0,resx:3,resy:2,resz:1,tcmp:1,range:1,opmode:3,magch:6,version:1,mcyc:0});
   const numeric=C.prepareImport({sensor:{type:1,opmode:0,magch:7,version:0}});
   assert.equal(numeric.config.sensor.type,1);
   assert.throws(()=>C.prepareImport({sensor:{type:'MLX90393'}}),/sensor\.type/);
@@ -145,4 +145,18 @@ test('MA02 defaults agree with the firmware and product/type conflicts are rejec
   assert.equal(C.prepareImport({product:'MA02',sensor:{resx:3,filt:5}}).config.sensor.filt,5);
   assert.equal(C.sensorFieldActive('MA02','filt'),false);
   assert.equal(C.sensorFieldActive('MA02','range'),true);
+});
+test('MA03 AK09974C defaults, validation and mcyc handling',()=>{
+  const p=C.prepareImport({product:'MA03'});
+  assert.deepEqual({type:p.config.sensor.type,gain:p.config.sensor.gain,osr:p.config.sensor.osr,range:p.config.sensor.range,opmode:p.config.sensor.opmode,mcyc:p.config.sensor.mcyc},{type:2,gain:0,osr:1,range:0,opmode:1,mcyc:10});
+  assert.equal(JSON.parse(p.wire).sensor.mcyc,10);
+  assert.equal(C.prepareImport({product:'MA03',sensor:{type:'AK09974C',drive:3,cycle:1}}).config.sensor.osr,3);
+  assert.throws(()=>C.prepareImport({product:'MA03',sensor:{type:1}}),/不一致/);
+  assert.throws(()=>C.prepareImport({product:'MA03',sensor:{gain:1}}),/MA03/);
+  assert.throws(()=>C.prepareImport({product:'MA03',sensor:{opmode:2}}),/MA03/);
+  assert.throws(()=>C.prepareImport({product:'MA03',sensor:{osr:0,mcyc:16}}),/mcyc/);
+  assert.equal(C.prepareImport({product:'MA03',sensor:{osr:0,opmode:0,mcyc:0}}).config.sensor.mcyc,0);
+  assert.equal(C.sensorFieldActive('MA03','mcyc'),true);assert.equal(C.sensorFieldActive('MA03','magch'),false);
+  const ma02=C.prepareImport({product:'MA02'});assert.equal(ma02.config.sensor.mcyc,0);assert(!('mcyc' in JSON.parse(ma02.wire).sensor));assert(!ma02.missing.includes('sensor.mcyc'));
+  assert.throws(()=>C.prepareImport({product:'MA02',sensor:{mcyc:5}}),/mcyc/);
 });

@@ -208,24 +208,30 @@ class SerialClient{
   }
 }
 function readbackEqual(actual,expected){return Math.abs(actual-Math.fround(expected))<=Math.max(.00051,Math.abs(expected)*1e-6);}
-const IMPORT_DEFAULTS={product:'MA02',sensor:{type:1,gain:5,osr:4,filt:0,resx:0,resy:0,resz:0,tcmp:0,range:0,opmode:2,magch:7,version:0},algo:{flag:0,xmap:1,ymap:1,zmap:1,dead:8.5,spike:20,stab:.1},log:{level:4}};
+const IMPORT_DEFAULTS={product:'MA02',sensor:{type:1,gain:5,osr:4,filt:0,resx:0,resy:0,resz:0,tcmp:0,range:0,opmode:2,magch:7,version:0,mcyc:0},algo:{flag:0,xmap:1,ymap:1,zmap:1,dead:8.5,spike:20,stab:.1},log:{level:4}};
+const PRODUCT_TYPES={MA01:0,MA02:1,MA03:2},SENSOR_NAMES=['MLX90393','TMAG3001','AK09974C'];
+/* AK09974C 各驱动模式允许的最小连续测量周期（手册表10.2，单位0.5ms） */
+const AK_MIN_MCYC=[0x11,0x06,0x02,0x01];
 function productDefaults(product='MA02'){
-  if(product!=='MA01'&&product!=='MA02')throw new Error(localize('product 产品型号必须是 MA01（MLX90393）或 MA02（TMAG3001）。','Product model must be MA01(MLX90393) or MA02(TMAG3001).'));
+  if(!Object.hasOwn(PRODUCT_TYPES,product))throw new Error(localize('product 产品型号必须是 MA01（MLX90393）、MA02（TMAG3001）或 MA03（AK09974C）。','Product model must be MA01(MLX90393), MA02(TMAG3001) or MA03(AK09974C).'));
   const config=JSON.parse(JSON.stringify(IMPORT_DEFAULTS));config.product=product;
   if(product==='MA01'){Object.assign(config.sensor,{type:0,gain:7,osr:2,opmode:0});Object.assign(config.algo,{flag:123,xmap:.1,ymap:.1,zmap:-.1});}
+  if(product==='MA03')Object.assign(config.sensor,{type:2,gain:0,osr:1,range:0,opmode:1,mcyc:10});
   return config;
 }
 function sensorFieldActive(product,key){
   if(['type','gain','osr'].includes(key))return true;
+  if(product==='MA03')return['range','opmode','mcyc'].includes(key);
   return(product==='MA01'?['filt','resx','resy','resz','tcmp']:['range','opmode','magch','version']).includes(key);
 }
-const IMPORT_FIELDS={sensor:{type:[localize('传感器类型','Sensor type'),0,1],gain:[localize('增益档位','Gain setting'),0,15],osr:[localize('过采样档位','Oversampling setting'),0,5],filt:[localize('数字滤波等级','Digital filter level'),0,7],resx:[localize('X 轴分辨率','X axis resolution'),0,3],resy:[localize('Y 轴分辨率','Y axis resolution'),0,3],resz:[localize('Z 轴分辨率','Z axis resolution'),0,3],tcmp:[localize('温度补偿','Temperature compensation'),0,1],range:[localize('磁场量程','Magnetic field range'),0,1],opmode:[localize('工作模式','Operating mode'),0,3],magch:[localize('磁场测量通道','Magnetic measurement channels'),0,7],version:[localize('传感器版本','Sensor version'),0,1]},algo:{flag:[localize('算法功能标志','Algorithm flags'),0,255],xmap:[localize('X 轴映射系数','X axis mapping factor')],ymap:[localize('Y 轴映射系数','Y axis mapping factor')],zmap:[localize('Z 轴映射系数','Z axis mapping factor')],dead:[localize('死区倍数','Dead-zone multiplier')],spike:[localize('尖峰过滤倍数','Spike filter multiplier')],stab:[localize('稳定性阈值','Stability threshold')]},log:{level:[localize('日志等级','Log level'),0,4]}};
-const ALIASES={sensor:{sensor_type:'type',gain_sel:'gain',dig_filt:'filt',res_x:'resx',res_y:'resy',res_z:'resz',tcmp_en:'tcmp',op_mode:'opmode',mode:'opmode',mag_ch:'magch',channel:'magch',sensor_version:'version'},algo:{FLAG_RES:'flag',flag_res:'flag',X_MAPPING_VALUE:'xmap',Y_MAPPING_VALUE:'ymap',Z_MAPPING_VALUE:'zmap',x_map:'xmap',y_map:'ymap',z_map:'zmap',dead_value:'dead',spike_multiplier:'spike',stability_threshold:'stab',stability:'stab'},log:{}};
+const IMPORT_FIELDS={sensor:{type:[localize('传感器类型','Sensor type'),0,2],gain:[localize('增益档位','Gain setting'),0,15],osr:[localize('过采样档位','Oversampling setting'),0,5],filt:[localize('数字滤波等级','Digital filter level'),0,7],resx:[localize('X 轴分辨率','X axis resolution'),0,3],resy:[localize('Y 轴分辨率','Y axis resolution'),0,3],resz:[localize('Z 轴分辨率','Z axis resolution'),0,3],tcmp:[localize('温度补偿','Temperature compensation'),0,1],range:[localize('磁场量程','Magnetic field range'),0,1],opmode:[localize('工作模式','Operating mode'),0,3],magch:[localize('磁场测量通道','Magnetic measurement channels'),0,7],version:[localize('传感器版本','Sensor version'),0,1],mcyc:[localize('连续测量周期','Continuous measurement cycle'),0,255]},algo:{flag:[localize('算法功能标志','Algorithm flags'),0,255],xmap:[localize('X 轴映射系数','X axis mapping factor')],ymap:[localize('Y 轴映射系数','Y axis mapping factor')],zmap:[localize('Z 轴映射系数','Z axis mapping factor')],dead:[localize('死区倍数','Dead-zone multiplier')],spike:[localize('尖峰过滤倍数','Spike filter multiplier')],stab:[localize('稳定性阈值','Stability threshold')]},log:{level:[localize('日志等级','Log level'),0,4]}};
+const ALIASES={sensor:{sensor_type:'type',gain_sel:'gain',dig_filt:'filt',res_x:'resx',res_y:'resy',res_z:'resz',tcmp_en:'tcmp',op_mode:'opmode',mode:'opmode',mag_ch:'magch',channel:'magch',sensor_version:'version',cycle:'mcyc',drive:'osr'},algo:{FLAG_RES:'flag',flag_res:'flag',X_MAPPING_VALUE:'xmap',Y_MAPPING_VALUE:'ymap',Z_MAPPING_VALUE:'zmap',x_map:'xmap',y_map:'ymap',z_map:'zmap',dead_value:'dead',spike_multiplier:'spike',stability_threshold:'stab',stability:'stab'},log:{}};
 function normalizeSensorType(value){
   if(typeof value==='string'){
     const name=value.trim().toUpperCase();
     if(name==='TMAG3001')return 1;
     if(name==='MLX90393')return 0;
+    if(name==='AK09974C')return 2;
   }
   return value;
 }
@@ -258,15 +264,25 @@ function prepareImport(input){
     }
   }
   if(!seen.size)throw new Error(localize('配置文件未包含任何可用参数。','Configuration contains no usable parameters.'));
-  const expectedType=config.product==='MA01'?0:1;
-  if(config.sensor.type!==expectedType)throw new Error(localize(`sensor.type 与产品型号不一致：${config.product} 必须为 ${expectedType===0?'MLX90393（0）':'TMAG3001（1）'}。`,`sensor.type does not match the product: ${config.product} must be ${expectedType===0?'MLX90393(0)':'TMAG3001(1)'}.`));
+  const expectedType=PRODUCT_TYPES[config.product],expectedName=`${SENSOR_NAMES[expectedType]}（${expectedType}）`;
+  if(config.sensor.type!==expectedType)throw new Error(localize(`sensor.type 与产品型号不一致：${config.product} 必须为 ${expectedName}。`,`sensor.type does not match the product: ${config.product} must be ${expectedName.replace('（','(').replace('）',')')}.`));
+  if(config.product==='MA03'){
+    const s=config.sensor;
+    if(s.gain!==0||s.osr>3||s.opmode>1)throw new Error(localize('MA03 的 sensor.gain 必须为 0，sensor.osr（驱动模式）必须为 0–3，sensor.opmode 必须为 0–1。','MA03 sensor.gain must be 0, sensor.osr (drive mode) must be 0–3, sensor.opmode must be 0–1.'));
+    if(s.opmode===1&&s.mcyc<AK_MIN_MCYC[s.osr])throw new Error(localize(`MA03 连续模式下 sensor.mcyc 不能小于 ${AK_MIN_MCYC[s.osr]}（驱动模式 ${s.osr} 的最小周期）。`,`In MA03 continuous mode sensor.mcyc must be at least ${AK_MIN_MCYC[s.osr]} (minimum cycle for drive mode ${s.osr}).`));
+  }else{
+    /* mcyc仅MA03使用；其他型号固件不回读该字段，固定为0且不下发。 */
+    if(seen.has('sensor.mcyc')&&config.sensor.mcyc!==0)throw new Error(localize('sensor.mcyc 仅 MA03 使用，其他型号必须为 0 或省略。','sensor.mcyc is only used by MA03; other products must set 0 or omit it.'));
+    config.sensor.mcyc=0;seen.add('sensor.mcyc');
+  }
   if(config.product==='MA01'&&(config.sensor.gain>7||config.sensor.osr>3))throw new Error(localize('MA01 的 sensor.gain 必须为 0–7，sensor.osr 必须为 0–3。','MA01 sensor.gain must be 0–7, sensor.osr must be 0–3.'));
   const missing=seen.has('product')?[]:['product'];for(const[group,fields]of Object.entries(IMPORT_FIELDS))for(const key of Object.keys(fields))if(!seen.has(group+'.'+key))missing.push(group+'.'+key);
-  const wire=JSON.stringify({...config,algo:{...config.algo,flag:'0x'+config.algo.flag.toString(16).toUpperCase().padStart(2,'0')}}),bytes=new TextEncoder().encode(wire).length;
+  const wireSensor={...config.sensor};if(config.product!=='MA03')delete wireSensor.mcyc;
+  const wire=JSON.stringify({...config,sensor:wireSensor,algo:{...config.algo,flag:'0x'+config.algo.flag.toString(16).toUpperCase().padStart(2,'0')}}),bytes=new TextEncoder().encode(wire).length;
   if(bytes>1023)throw new Error(localize('规范化配置超过 1023 字节，无法导入。','Normalized configuration exceeds 1023 bytes; import unavailable.'));
   // All canonical keys/values are ASCII. 15-byte prefix + 47-byte chunk = 62.
   const chunks=wire.match(/.{1,47}/g)||[];
   return{config,wire,bytes,chunks,missing};
 }
-return{parseLine,LineFramer,SampleBuffer,validateConfig,configCommands,csv,SerialLog,percentile95,vectorStyle,surfaceHeight,surfaceArrow,arrowMesh,SerialClient,prepareImport,IMPORT_DEFAULTS,IMPORT_FIELDS,productDefaults,sensorFieldActive,readbackEqual};
+return{parseLine,LineFramer,SampleBuffer,validateConfig,configCommands,csv,SerialLog,percentile95,vectorStyle,surfaceHeight,surfaceArrow,arrowMesh,SerialClient,prepareImport,IMPORT_DEFAULTS,IMPORT_FIELDS,productDefaults,sensorFieldActive,readbackEqual,SENSOR_NAMES,AK_MIN_MCYC};
 });

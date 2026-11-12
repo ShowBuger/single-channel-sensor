@@ -167,8 +167,8 @@ const pairs=[
     "Application submitted; verify the device state: "
   ],
   [
-    "product 产品型号必须是 MA01（MLX90393）或 MA02（TMAG3001）。",
-    "Product model must be MA01(MLX90393) or MA02(TMAG3001)."
+    "product 产品型号必须是 MA01（MLX90393）、MA02（TMAG3001）或 MA03（AK09974C）。",
+    "Product model must be MA01(MLX90393), MA02(TMAG3001) or MA03(AK09974C)."
   ],
   [
     "传感器类型",
