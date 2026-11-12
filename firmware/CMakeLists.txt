@@ -15,10 +15,20 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # ── MCU ──────────────────────────────────────────────────────────────────────
 set(MCU_LINKER_SCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/STM32H743ZITx_FLASH.ld)
 
+# FW_EMU_SP_FPU: 仅供主机端 Unicorn 回归测试使用。Unicorn 的 Cortex-M7 模型
+# 不支持双精度 VFP 指令，打开后改用单精度 FPU 构建（double 由软件库实现），
+# C 代码路径与正式固件相同。正式固件不得打开此选项。
+option(FW_EMU_SP_FPU "Build with single-precision FPU for emulator tests" OFF)
+if(FW_EMU_SP_FPU)
+    set(FW_FPU fpv5-sp-d16)
+else()
+    set(FW_FPU fpv5-d16)
+endif()
+
 set(CPU_OPTIONS
     -mcpu=cortex-m7
     -mthumb
-    -mfpu=fpv5-d16
+    -mfpu=${FW_FPU}
     -mfloat-abi=hard
 )
 
