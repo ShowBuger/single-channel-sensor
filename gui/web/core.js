@@ -85,7 +85,11 @@ function arrowMesh(start,end,shaftRadius=.019,headRadius=.05,sections=8){
   vertices.push([...end]);for(let i=0;i<sections;i++){const j=(i+1)%sections;faces.push([i,j,sections+j],[i,sections+j,sections+i],[sections*2+i,sections*2+j,sections*3]);}return{vertices,faces};
 }
 class SerialClient{
-  constructor(serialApi,options={}){this.api=serialApi;this.timeout=options.timeout||5000;this.listeners=new Map();this.port=null;this.reader=null;this.pending=null;this.queue=Promise.resolve();this.state='disconnected';this.generation=0;this.closing=null;this.writeTask=null;this.writer=null;this.onDisconnect=e=>{if(e.target===this.port||e.port===this.port)this.disconnect(localize('设备已拔出','Device unplugged'));};this.api?.addEventListener?.('disconnect',this.onDisconnect);}
+  // settleMs: after the port opens, ST-Link's VCP replays a stale, partly dropped
+  // buffer for ~100-300 ms (verified on hardware). Lines received in that window are
+  // discarded and the first command waits for it, otherwise a reply can be glued to
+  // a truncated old line and the exact-line match times out.
+  constructor(serialApi,options={}){this.api=serialApi;this.timeout=options.timeout||5000;this.settleMs=options.settleMs??400;this.settling=false;this.listeners=new Map();this.port=null;this.reader=null;this.pending=null;this.queue=Promise.resolve();this.state='disconnected';this.generation=0;this.closing=null;this.writeTask=null;this.writer=null;this.onDisconnect=e=>{if(e.target===this.port||e.port===this.port)this.disconnect(localize('设备已拔出','Device unplugged'));};this.api?.addEventListener?.('disconnect',this.onDisconnect);}
   on(name,fn){if(!this.listeners.has(name))this.listeners.set(name,new Set());this.listeners.get(name).add(fn);return()=>this.listeners.get(name).delete(fn);}
   emit(name,value){for(const fn of this.listeners.get(name)||[])fn(value);}
   get connected(){return this.state==='connected';}
@@ -94,7 +98,7 @@ class SerialClient{
     if(!this.api)throw new Error(localize('当前浏览器未提供 Web Serial，请用桌面版 Edge / Chrome 打开此页面。','This browser does not provide Web Serial. Use desktop Edge / Chrome to open this page.'));
     if(this.state!=='disconnected')throw new Error(localize('连接正在使用，请先断开。','Connection is in use. Disconnect first.'));
     this.setState('connecting');let port;
-    try{port=await this.api.requestPort();await port.open({baudRate:Number(baudRate),dataBits:8,stopBits:1,parity:'none',flowControl:'none',bufferSize:65536});this.port=port;this.generation++;this.queue=Promise.resolve();this.framer=new LineFramer(line=>this.handleLine(line),()=>this.emit('warning',localize('串口文本行过长，已丢弃并重新同步。','Serial line too long; discarded and resynchronized.')));this.setState('connected');this.readTask=this.readLoop(port);return port.getInfo?.()||{};}
+    try{port=await this.api.requestPort();await port.open({baudRate:Number(baudRate),dataBits:8,stopBits:1,parity:'none',flowControl:'none',bufferSize:65536});this.port=port;this.generation++;this.queue=Promise.resolve();this.framer=new LineFramer(line=>this.handleLine(line),()=>this.emit('warning',localize('串口文本行过长，已丢弃并重新同步。','Serial line too long; discarded and resynchronized.')));this.settling=this.settleMs>0;this.setState('connected');this.readTask=this.readLoop(port);if(this.settling){await new Promise(resolve=>setTimeout(resolve,this.settleMs));this.framer.buffer='';this.settling=false;}return port.getInfo?.()||{};}
     catch(error){if(port)try{await port.close();}catch{}this.port=null;this.setState('disconnected',error.name==='NotFoundError'?localize('已取消选择串口','Serial port selection canceled'):error.message);throw error;}
   }
   async readLoop(port){
@@ -111,7 +115,7 @@ class SerialClient{
     this.closing=(async()=>{try{await this.reader?.cancel();}catch{}await this.readTask;try{await this.writer?.abort(reason);}catch{}try{await this.writeTask;}catch{}try{await this.port?.close();}catch(error){this.emit('warning',localize('关闭串口：','Closing serial port: ')+error.message);}this.port=null;this.reader=null;this.readTask=null;this.setState('disconnected',reason);})();
     try{await this.closing;}finally{this.closing=null;}
   }
-  handleLine(line){const event=parseLine(line);event.raw=line;this.emit('line',event);if(event.kind==='sample'){if(event.channel===0)this.emit('sample',event.values);}else if(event.kind==='invalid')this.emit('warning',localize('丢弃格式无效的采样行：','Discarded malformed sample: ')+event.line);if(event.line==='System_Reset'&&this.pending){this.pending.reject(new Error(localize('设备在命令执行期间重启，请重新连接。','Device restarted during a command. Please reconnect.')));void this.disconnect(localize('设备已重启','Device restarted'));return;}this.pending?.accept(event);}
+  handleLine(line){if(this.settling)return;const event=parseLine(line);event.raw=line;this.emit('line',event);if(event.kind==='sample'){if(event.channel===0)this.emit('sample',event.values);}else if(event.kind==='invalid')this.emit('warning',localize('丢弃格式无效的采样行：','Discarded malformed sample: ')+event.line);if(event.line==='System_Reset'&&this.pending){this.pending.reject(new Error(localize('设备在命令执行期间重启，请重新连接。','Device restarted during a command. Please reconnect.')));void this.disconnect(localize('设备已重启','Device restarted'));return;}this.pending?.accept(event);}
   transaction(fn){const generation=this.generation;const result=this.queue.then(()=>{if(!this.connected||this.generation!==generation)throw new Error(localize('串口未连接或连接已改变。','Serial port is not connected or the session changed.'));return fn();});this.queue=result.catch(()=>{});return result;}
   async request(command,match,timeout=this.timeout){
     if(!this.connected)throw new Error(localize('串口未连接。','Serial port is not connected.'));if(command.length>62||/[\r\n]/.test(command))throw new Error(localize('无效的串口命令。','Invalid serial command.'));
