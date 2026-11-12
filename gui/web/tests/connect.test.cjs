@@ -44,3 +44,20 @@ test('without a settle window the same stale replay breaks the first command (re
   await assert.rejects(client.resetImport({allowUnsupported:true}),/超时|timed out/i);
 });
 
+test('readVersion parses the capability line and returns null on older firmware',async()=>{
+  const line='VERSION proto=2 fw=1.1.0 board=ma03_h743 mcu=STM32H743 sensors=AK09974C channels=1 features=';
+  let dev=staleDevice({version:line});
+  let client=new C.SerialClient({requestPort:async()=>dev.port},{timeout:300,settleMs:100});
+  await client.connect();
+  const v=await client.readVersion();
+  assert.equal(v.proto,'2');assert.equal(v.fw,'1.1.0');assert.equal(v.board,'ma03_h743');
+  assert.equal(v.mcu,'STM32H743');assert.equal(v.sensors,'AK09974C');assert.equal(v.features,'');
+  await client.disconnect();
+
+  dev=staleDevice();
+  client=new C.SerialClient({requestPort:async()=>dev.port},{timeout:300,settleMs:100});
+  await client.connect();
+  assert.equal(await client.readVersion(),null);
+  assert.equal(client.state,'connected','old firmware must stay connected');
+  await client.disconnect();
+});

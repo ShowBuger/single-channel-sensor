@@ -113,7 +113,7 @@ internal static class FieldBridge {
         // Enforced by the native bridge, independent of the page's controls.
         return Regex.IsMatch(command,@"^ML (START|STOP|CALIB|RESET)$");
 #else
-        if(Regex.IsMatch(command,@"^ML (START|STOP|CALIB|RESET|FLAG|MAPPING|MERSURE|LOGLEVEL|GETCFG|IMPORT_END|IMPORT_CANCEL|CHFLAG (0x[0-9A-Fa-f]{1,2}|[0-9]{1,3})|SETMAP [XYZ] [+-]?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?)$"))return true;
+        if(Regex.IsMatch(command,@"^ML (START|STOP|CALIB|RESET|FLAG|MAPPING|MERSURE|LOGLEVEL|GETCFG|VERSION|IMPORT_END|IMPORT_CANCEL|CHFLAG (0x[0-9A-Fa-f]{1,2}|[0-9]{1,3})|SETMAP [XYZ] [+-]?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?)$"))return true;
         var start=Regex.Match(command,@"^ML IMPORT_START ([0-9]{1,4})$");
         if(start.Success){int n=int.Parse(start.Groups[1].Value);return n>0&&n<=1023;}
         return Regex.IsMatch(command,"^ML IMPORT_DATA [A-Za-z0-9_{}\":,.+ -]{1,47}$");

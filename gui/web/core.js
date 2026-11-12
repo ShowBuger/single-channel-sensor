@@ -151,6 +151,11 @@ class SerialClient{
     });}catch(error){throw new Error(localize('完整配置读取失败：','Full configuration read failed: ')+error.message);}
   }
   readFullConfig(){return this.transaction(()=>this.readFullConfigDirect());}
+  // ML VERSION -> {proto, fw, board, mcu, sensors, ...}; null on firmware that predates it (proto 1).
+  readVersion(){return this.transaction(()=>this.request('ML VERSION',e=>{
+    if(/^VERSION /.test(e.line))return Object.fromEntries(e.line.split(/\s+/).slice(1).map(kv=>kv.split('=')).filter(p=>p.length===2&&p[0]));
+    if(/^Unknown(?: command)?:/.test(e.line))return null;
+  }));}
   resetImport({allowUnsupported=false}={}){return this.transaction(()=>this.request('ML IMPORT_CANCEL',e=>{
     if(e.line==='IMPORT_CANCELLED')return true;
     if(/^Unknown(?: command)?:/.test(e.line)){if(allowUnsupported)return false;throw new Error(localize('当前固件不支持配置导入，请更新固件。','The firmware does not support configuration import. Update the firmware.'));}
