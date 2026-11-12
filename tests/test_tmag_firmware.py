@@ -97,7 +97,7 @@ class Firmware:
         self.stub('Serial_GetCommandFlag', lambda: 1)
         self.stub('Serial_GetCommandBuffer', lambda: 0x20003200)
         self.output.clear()
-        self.call('serial_command_process')
+        self.call('CommandHandler_Process')
         return ''.join(self.output)
 
     def fake_flash(self):
@@ -126,7 +126,7 @@ class TmagBus:
         f.stub('TMAG3001_WriteReg', self.write_reg)
         f.stub('TMAG3001_ReadRegs', self.read_regs)
         f.stub('I2C_DevicePresent', lambda: 0)
-        f.stub('HAL_GetTick', lambda: self.now)
+        f.stub('plat_tick_ms', lambda: self.now)
         f.stub('Delay_ms', self.delay)
         f.stub('IWDG_Feed', lambda: self.feeds.append(self.now))
         f.stub('IIC_Start', lambda: self.tx.clear())
@@ -206,15 +206,15 @@ class TmagTests(unittest.TestCase):
     def test_real_scan_applies_correct_registers_and_auto_detects_version(self):
         f, bus = self.f, self.bus
         self.assertEqual(f.call('Scan_Ports'), 1)
-        self.assertEqual(f.u.mem_read(f.symbols['tmag_actual_sensors'] + 1, 1)[0], 0x36)
-        self.assertEqual(f.u.mem_read(f.symbols['tmag_reference_sensors'] + 1, 1)[0], 0x35)
+        self.assertEqual(f.u.mem_read(f.symbols['actual_sensors'] + 1, 1)[0], 0x36)
+        self.assertEqual(f.u.mem_read(f.symbols['reference_sensors'] + 1, 1)[0], 0x35)
         for addr in (0x36, 0x35):
             self.assertEqual(bus.regs[addr, 0] & 0x1c, 0x10)  # average 16x in CONFIG_1
             self.assertEqual(bus.regs[addr, 1] & 3, 2)
             self.assertEqual(bus.regs[addr, 3] & 3, 0)
             self.assertIn((addr, 0x18, 0x10), bus.writes)
             self.assertIn((addr, 0x1c, 6), bus.writes)
-        handle = f.symbols['tmag_actual_sensors']
+        handle = f.symbols['actual_sensors']
         # ARM EABI selects a byte-sized enum for these values.
         self.assertEqual(f.u.mem_read(handle + 2, 1)[0], 1)
 
@@ -222,7 +222,7 @@ class TmagTests(unittest.TestCase):
         f, bus = self.f, self.bus
         f.call('Scan_Ports')
         bus.regs[0x36, 3] = 0xc0
-        handle = f.symbols['tmag_actual_sensors']
+        handle = f.symbols['actual_sensors']
         self.assertEqual(f.call('TMAG3001_SetRange', handle, 1), 0)
         self.assertEqual(bus.regs[0x36, 3], 0xc3)
         self.assertEqual(f.call('TMAG3001_SetRange', handle, 0), 0)
