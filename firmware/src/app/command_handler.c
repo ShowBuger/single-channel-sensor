@@ -17,6 +17,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 
 /* -----------------------------------------------------------------------
  * Command handler function type
@@ -27,6 +28,39 @@ typedef struct {
     const char *cmd_name;           /* Command string (e.g., "ML START") */
     CommandHandler_Func handler;    /* Handler function */
 } CommandEntry_t;
+
+/* -----------------------------------------------------------------------
+ * Response callback (P5: injected by T_CMD to send via TxQueue)
+ * ----------------------------------------------------------------------- */
+static CommandHandler_ResponseCallback s_response_callback = NULL;
+
+/**
+ * SendResponse: Internal helper that routes responses through callback or Serial_Printf.
+ * P5: All command handlers call this instead of Serial_Printf directly.
+ */
+static void SendResponse(const char *response)
+{
+    if (s_response_callback) {
+        s_response_callback(response);
+    } else {
+        /* Fallback: direct UART (bare-metal mode or callback not set) */
+        Serial_SendString((char *)response);
+    }
+}
+
+/**
+ * SendResponsef: Printf-style variant of SendResponse.
+ * P5: Formats message to temporary buffer, then calls SendResponse.
+ */
+static void SendResponsef(const char *fmt, ...)
+{
+    char buf[128];  /* Same size as Serial_Printf's internal buffer */
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+    SendResponse(buf);
+}
 
 /* -----------------------------------------------------------------------
  * Forward declarations of command handlers
@@ -92,6 +126,11 @@ void CommandHandler_Init(void)
     /* Reserved for future initialization if needed */
 }
 
+void CommandHandler_SetResponseCallback(CommandHandler_ResponseCallback callback)
+{
+    s_response_callback = callback;
+}
+
 void CommandHandler_Process(void)
 {
     if (!Serial_GetCommandFlag()) return;
@@ -124,7 +163,7 @@ void CommandHandler_Process(void)
     }
 
     /* No match found */
-    Serial_Printf("Unknown: %s\r\n", cmd);
+    SendResponsef("Unknown: %s\r\n", cmd);
 }
 
 /* -----------------------------------------------------------------------
@@ -136,19 +175,19 @@ static void Handle_Start(const char *cmd)
     (void)cmd;
     if (sensor_start() == 0)
     {
-        Serial_Printf("Sensor started\r\n");
-        Serial_Printf("Running: %s\r\n", SENSOR_Run[0] ? "sensor0" : "none");
+        SendResponse("Sensor started\r\n");
+        SendResponsef("Running: %s\r\n", SENSOR_Run[0] ? "sensor0" : "none");
     }
     else
     {
-        Serial_Printf("Failed to start\r\n");
+        SendResponse("Failed to start\r\n");
     }
 }
 
 static void Handle_Stop(const char *cmd)
 {
     (void)cmd;
-    Serial_Printf(sensor_stop() == 0 ? "Stopped\r\n" : "Stop failed\r\n");
+    SendResponse(sensor_stop() == 0 ? "Stopped\r\n" : "Stop failed\r\n");
 }
 
 static void Handle_Measure(const char *cmd)
@@ -162,14 +201,14 @@ static void Handle_Measure(const char *cmd)
     }
     else
     {
-        Serial_Printf("Start failed\r\n");
+        SendResponse("Start failed\r\n");
     }
 }
 
 static void Handle_Calib(const char *cmd)
 {
     (void)cmd;
-    Serial_Printf(perform_sensor_calibration() == 0
+    SendResponse(perform_sensor_calibration() == 0
            ? "Calibration OK\r\n" : "Calibration FAIL\r\n");
 }
 
@@ -184,29 +223,29 @@ static void Handle_ChFlag(const char *cmd)
         {
             FLAG_RES = (uint8_t)val;
             Config_Save_All();
-            Serial_Printf("FLAG_RES=0x%02X\r\n", FLAG_RES);
+            SendResponsef("FLAG_RES=0x%02X\r\n", FLAG_RES);
         }
         else
         {
-            Serial_Printf("Out of range\r\n");
+            SendResponse("Out of range\r\n");
         }
     }
     else
     {
-        Serial_Printf("Usage: ML CHFLAG <hex|dec>\r\n");
+        SendResponse("Usage: ML CHFLAG <hex|dec>\r\n");
     }
 }
 
 static void Handle_Flag(const char *cmd)
 {
     (void)cmd;
-    Serial_Printf("FLAG_RES: 0x%02X\r\n", FLAG_RES);
+    SendResponsef("FLAG_RES: 0x%02X\r\n", FLAG_RES);
 }
 
 static void Handle_Mapping(const char *cmd)
 {
     (void)cmd;
-    Serial_Printf("X=%.3f Y=%.3f Z=%.3f\r\n",
+    SendResponsef("X=%.3f Y=%.3f Z=%.3f\r\n",
                   X_MAPPING_VALUE, Y_MAPPING_VALUE, Z_MAPPING_VALUE);
 }
 
@@ -220,28 +259,28 @@ static void Handle_SetMap(const char *cmd)
         {
             X_MAPPING_VALUE = val;
             Mapping_Value_Save();
-            Serial_Printf("X=%.3f\r\n", val);
+            SendResponsef("X=%.3f\r\n", val);
         }
         else if (axis == 'Y' || axis == 'y')
         {
             Y_MAPPING_VALUE = val;
             Mapping_Value_Save();
-            Serial_Printf("Y=%.3f\r\n", val);
+            SendResponsef("Y=%.3f\r\n", val);
         }
         else if (axis == 'Z' || axis == 'z')
         {
             Z_MAPPING_VALUE = val;
             Mapping_Value_Save();
-            Serial_Printf("Z=%.3f\r\n", val);
+            SendResponsef("Z=%.3f\r\n", val);
         }
         else
         {
-            Serial_Printf("Axis X/Y/Z\r\n");
+            SendResponse("Axis X/Y/Z\r\n");
         }
     }
     else
     {
-        Serial_Printf("Usage: ML SETMAP <X|Y|Z> <val>\r\n");
+        SendResponse("Usage: ML SETMAP <X|Y|Z> <val>\r\n");
     }
 }
 
@@ -254,7 +293,7 @@ static void Handle_Set(const char *cmd)
         Config_TypeDef candidate = g_config;
         if (Config_ParseSingleKV(&candidate, key, value) || Config_Validate(&candidate))
         {
-            Serial_Printf("Error: invalid config %s\r\n", key);
+            SendResponsef("Error: invalid config %s\r\n", key);
             return;
         }
         g_config = candidate;
@@ -264,18 +303,18 @@ static void Handle_Set(const char *cmd)
         Z_MAPPING_VALUE = g_config.Z_MAPPING_VALUE;
         AlgoParams_Load(&g_config);
         Log_SetLevel((LogLevel_t)g_config.log_level);
-        Serial_Printf("SET %s=%s\r\n", key, value);
+        SendResponsef("SET %s=%s\r\n", key, value);
     }
     else
     {
-        Serial_Printf("Usage: ML SET <key> <value>\r\n");
+        SendResponse("Usage: ML SET <key> <value>\r\n");
     }
 }
 
 static void Handle_SaveCfg(const char *cmd)
 {
     (void)cmd;
-    Serial_Printf(Config_Save_All() == 0 ? "Saved\r\n" : "Save FAIL\r\n");
+    SendResponse(Config_Save_All() == 0 ? "Saved\r\n" : "Save FAIL\r\n");
 }
 
 static void Handle_ApplyCfg(const char *cmd)
@@ -289,7 +328,7 @@ static void Handle_ApplyCfg(const char *cmd)
     uint8_t was_running = SENSOR_Run[0];
     sensor_stop();
     uint8_t failed = was_running ? sensor_start() : (Scan_Ports() == 0);
-    Serial_Printf(failed ? "Config apply failed.\r\n" : "Config applied.\r\n");
+    SendResponse(failed ? "Config apply failed.\r\n" : "Config applied.\r\n");
 }
 
 static void Handle_GetCfg(const char *cmd)
@@ -298,27 +337,27 @@ static void Handle_GetCfg(const char *cmd)
     /* Each printf stays below the UART's 100-byte formatting buffer.
      * This read-only snapshot reports configured sensor values and live
      * algorithm/log values; it is not an I2C register readback. */
-    Serial_Printf("CFG_BEGIN\r\n");
-    Serial_Printf("{\"product\":\"%s\",", g_config.product_model);
-    Serial_Printf("\"sensor\":{\"type\":%u,\"gain\":%u,\"osr\":%u,\"filt\":%u,",
+    SendResponse("CFG_BEGIN\r\n");
+    SendResponsef("{\"product\":\"%s\",", g_config.product_model);
+    SendResponsef("\"sensor\":{\"type\":%u,\"gain\":%u,\"osr\":%u,\"filt\":%u,",
                   g_config.sensor_type, g_config.gain_sel, g_config.osr, g_config.dig_filt);
-    Serial_Printf("\"resx\":%u,\"resy\":%u,\"resz\":%u,\"tcmp\":%u,\"range\":%u,",
+    SendResponsef("\"resx\":%u,\"resy\":%u,\"resz\":%u,\"tcmp\":%u,\"range\":%u,",
                   g_config.res_x, g_config.res_y, g_config.res_z, g_config.tcmp_en, g_config.range);
-    Serial_Printf("\"opmode\":%u,\"magch\":%u,\"version\":%u",
+    SendResponsef("\"opmode\":%u,\"magch\":%u,\"version\":%u",
                   g_config.op_mode, g_config.mag_ch, g_config.sensor_version);
     /* mcyc只属于AK09974C，其他型号保持原有字段集合。 */
     if (g_config.sensor_type == SENSOR_TYPE_AK09974C)
-        Serial_Printf(",\"mcyc\":%u", g_config.mcyc);
-    Serial_Printf("},");
+        SendResponsef(",\"mcyc\":%u", g_config.mcyc);
+    SendResponse("},");
     /* Nine significant digits round-trip an IEEE float32. */
-    Serial_Printf("\"algo\":{\"flag\":\"0x%02X\",\"xmap\":%.9g,",
+    SendResponsef("\"algo\":{\"flag\":\"0x%02X\",\"xmap\":%.9g,",
                   FLAG_RES, (double)X_MAPPING_VALUE);
-    Serial_Printf("\"ymap\":%.9g,\"zmap\":%.9g,",
+    SendResponsef("\"ymap\":%.9g,\"zmap\":%.9g,",
                   (double)Y_MAPPING_VALUE, (double)Z_MAPPING_VALUE);
-    Serial_Printf("\"dead\":%.9g,\"spike\":%.9g,\"stab\":%.9g},",
+    SendResponsef("\"dead\":%.9g,\"spike\":%.9g,\"stab\":%.9g},",
                   (double)g_algo.dead_value, (double)g_algo.spike_multiplier,
                   (double)g_algo.stability_threshold);
-    Serial_Printf("\"log\":{\"level\":%u}}\r\nCFG_END\r\n", (unsigned)Log_GetLevel());
+    SendResponsef("\"log\":{\"level\":%u}}\r\nCFG_END\r\n", (unsigned)Log_GetLevel());
 }
 
 static void Handle_LogLevel(const char *cmd)
@@ -329,24 +368,24 @@ static void Handle_LogLevel(const char *cmd)
         Log_SetLevel((LogLevel_t)lvl);
         g_config.log_level = (uint8_t)lvl;
         Config_Save_All();
-        Serial_Printf("LogLevel=%d\r\n", lvl);
+        SendResponsef("LogLevel=%d\r\n", lvl);
     }
     else
     {
-        Serial_Printf("Usage: ML LOGLEVEL <0-4>\r\n");
+        SendResponse("Usage: ML LOGLEVEL <0-4>\r\n");
     }
 }
 
 static void Handle_LogLevelQuery(const char *cmd)
 {
     (void)cmd;
-    Serial_Printf("LogLevel=%d (0=NONE 1=E 2=W 3=I 4=D)\r\n", (int)Log_GetLevel());
+    SendResponsef("LogLevel=%d (0=NONE 1=E 2=W 3=I 4=D)\r\n", (int)Log_GetLevel());
 }
 
 static void Handle_Reset(const char *cmd)
 {
     (void)cmd;
-    Serial_Printf("System resetting...\r\n");
+    SendResponse("System resetting...\r\n");
     plat_delay_ms(100);  /* 等待串口发送完成 */
     plat_sys_reset();  /* 执行软件复位 */
 }
@@ -354,9 +393,9 @@ static void Handle_Reset(const char *cmd)
 static void Handle_Restore(const char *cmd)
 {
     (void)cmd;
-    Serial_Printf("Restoring factory defaults...\r\n");
+    SendResponse("Restoring factory defaults...\r\n");
     Config_RestoreDefault();
-    Serial_Printf("Factory defaults restored. Resetting...\r\n");
+    SendResponse("Factory defaults restored. Resetting...\r\n");
     plat_delay_ms(100);
     plat_sys_reset();
 }
@@ -368,6 +407,6 @@ static void Handle_Restore(const char *cmd)
 static void Handle_Version(const char *cmd)
 {
     (void)cmd;
-    Serial_Printf("VERSION proto=2 fw=%s board=%s mcu=%s sensors=%s channels=1 features=\r\n",
+    SendResponsef("VERSION proto=2 fw=%s board=%s mcu=%s sensors=%s channels=1 features=\r\n",
                   FW_VERSION, BOARD_NAME, plat_mcu_name(), Sensor_GetName());
 }

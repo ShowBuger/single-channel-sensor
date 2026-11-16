@@ -1113,6 +1113,34 @@ void print_sensor_data(uint8_t sensor_index)
  * 参数: sensor_index - 传感器索引 (0-4)
  * 返回: 无
  */
+/**
+ * 函数: format_processed_sensor_data
+ * 功能: 将处理后的传感器数据格式化到字符串缓冲区
+ * 参数: sensor_index - 传感器索引, buf - 输出缓冲区, bufsize - 缓冲区大小
+ * 返回: 写入的字节数（不含null终止符），如果数据无效则返回0
+ * P5: T_PROC 调用此函数格式化数据，然后通过 TxQueue 发送到 T_TX
+ */
+int format_processed_sensor_data(uint8_t sensor_index, char *buf, size_t bufsize)
+{
+    if (processed_sensor_data[sensor_index].valid == 0) {
+        return 0;  /* 数据无效，不输出 */
+    }
+
+    /* 格式化实际传感器处理后数据 */
+    int len = snprintf(buf, bufsize, "sensor%d:%.2f,%.2f,%.2f\r\n",
+                       sensor_index,
+                       processed_sensor_data[sensor_index].actual.x,
+                       processed_sensor_data[sensor_index].actual.y,
+                       processed_sensor_data[sensor_index].actual.z);
+
+    /* 检查截断：snprintf 返回值 >= bufsize 表示输出被截断 */
+    if (len < 0 || (size_t)len >= bufsize) {
+        return 0;  /* 格式化失败或缓冲区太小 */
+    }
+
+    return len;
+}
+
 void print_processed_sensor_data(uint8_t sensor_index)
 {
     if(processed_sensor_data[sensor_index].valid == 0) return;

@@ -138,11 +138,13 @@ static void task_acquisition(void *param)
  *   - Send to T_TX via TxQueue
  *
  * This task is pure computation: no I/O except queue operations.
+ * P5: Uses format_processed_sensor_data() to generate output, then sends via TxQueue.
  */
 static void task_processing(void *param)
 {
     (void)param;
     SamplePacket_t pkt;
+    TxMessage_t msg;
 
     LOG_I("PROC", "T_PROC started");
 
@@ -151,13 +153,6 @@ static void task_processing(void *param)
         if (xQueueReceive(s_sample_queue, &pkt, portMAX_DELAY) != pdPASS) {
             continue;  /* Should never happen with portMAX_DELAY */
         }
-
-        /* P4: Use existing data_process() pipeline via print_processed_sensor_data().
-         * The function reads sensor_data[0] and writes processed_sensor_data[0],
-         * then formats output to UART. We'll intercept the formatted string.
-         *
-         * TODO P5: Refactor data_process() to return formatted string instead of
-         * directly calling Serial_SendString(). */
 
         /* Re-populate sensor_data[0] from packet (data_process reads from here) */
         sensor_data[0].actual.x = pkt.actual.x_uT;
@@ -172,19 +167,22 @@ static void task_processing(void *param)
 
         sensor_data[0].valid = pkt.actual.valid ? 1 : 0;
 
-        /* Run algorithm and formatting.
-         * P4 limitation: print_processed_sensor_data() still calls Serial_SendString
-         * directly, so we can't intercept the output yet. This will be fixed in P5.
-         * For now, just call it directly (maintains P3 behavior). */
-        print_processed_sensor_data(0);
+        /* Run algorithm pipeline: sensor_data[0] → processed_sensor_data[0] */
+        data_process();
 
-        /* P4 TODO: Once print_processed_sensor_data is refactored to return a string,
-         * package it into TxMessage_t and send to T_TX:
-         *
-         * msg.type = TX_MSG_DATA;
-         * snprintf(msg.text, TX_MSG_MAX_LEN, "... formatted output ...");
-         * xQueueSend(s_tx_queue, &msg, portMAX_DELAY);
-         */
+        /* P5: Format output and send to T_TX via TxQueue */
+        msg.type = TX_MSG_DATA;
+        int len = format_processed_sensor_data(0, msg.text, TX_MSG_MAX_LEN);
+
+        if (len > 0) {
+            /* Send to T_TX (non-blocking: drop if queue full to avoid blocking acquisition) */
+            if (xQueueSend(s_tx_queue, &msg, 0) != pdPASS) {
+                /* Queue full: data line dropped. Only log in debug builds. */
+                #ifdef DEBUG
+                LOG_W("PROC", "Data output dropped (TxQueue full)");
+                #endif
+            }
+        }
     }
 }
 
@@ -198,19 +196,42 @@ static void task_processing(void *param)
  *   - Parse and dispatch commands
  *   - Send responses via TxQueue (not directly to UART)
  *
- * P4 limitation: CommandHandler_Process() still calls Serial_SendString directly.
- * Will be refactored in P5 to use a response callback that enqueues to TxQueue.
+ * P5: CommandHandler uses response callback to enqueue responses to TxQueue.
  */
+
+/**
+ * cmd_response_sender: Callback for CommandHandler to send responses via TxQueue.
+ * P5: Injected into CommandHandler_SetResponseCallback() so all command responses
+ * go through T_TX instead of direct Serial_SendString.
+ */
+static void cmd_response_sender(const char *response)
+{
+    TxMessage_t msg;
+    msg.type = TX_MSG_RESPONSE;
+
+    /* Copy response to message buffer (truncate if too long) */
+    size_t len = strlen(response);
+    if (len >= TX_MSG_MAX_LEN) {
+        len = TX_MSG_MAX_LEN - 1;
+    }
+    memcpy(msg.text, response, len);
+    msg.text[len] = '\0';
+
+    /* Send to T_TX (block indefinitely: commands are rare, queue unlikely to be full) */
+    xQueueSend(s_tx_queue, &msg, portMAX_DELAY);
+}
+
 static void task_command(void *param)
 {
     (void)param;
 
     LOG_I("CMD", "T_CMD started");
 
+    /* P5: Set response callback to route all command responses through TxQueue */
+    CommandHandler_SetResponseCallback(cmd_response_sender);
+
     for (;;) {
-        /* P4: Use existing CommandHandler_Process() which polls serial buffer.
-         * It still sends responses directly via Serial_SendString.
-         * TODO P5: Refactor to use response callback → TxQueue. */
+        /* Process incoming commands (uses response callback to send via TxQueue) */
         CommandHandler_Process();
 
         /* Yield briefly to avoid busy-wait */
