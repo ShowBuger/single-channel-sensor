@@ -1,12 +1,16 @@
-# Flash 配置映射（TMAG3001 分支）
+# Flash 配置映射
 
 配置保持统一的56字节结构，MA01、MA02与MA03的同名字段位置相同。
-本分支的采集驱动固定为TMAG3001，只接受MA02/type=1的硬件配置。
-MA01/type=0可在网页预览、导出，但应由MLX固件应用；型号与类型冲突会被拒绝。
+固件编入的传感器驱动由 `config_manager.h` 的 `CURRENT_SENSOR_TYPE` 决定（当前为
+MA03/AK09974C），只接受 `sensor.type` 与之一致的配置（`config_parser.c` 返回 3 表示型号不符）。
+其他型号的配置可在网页预览、导出，但应由对应型号的固件应用；型号与类型冲突会被拒绝。
 
 ## 固定存储布局
 
-- Flash页：0x0800FC00，1024字节。
+- 存储区：STM32H743 Bank2 扇区 7，起始 0x081E0000，扇区 128 KB（链接脚本已排除）。
+  按 256 位 Flash 字（32 字节）编程，记录末尾以 0xFF 补齐；擦除约 1–2 s，期间喂狗。
+  记录结构：偏移 0 为魔数（4 字节），偏移 4 起为下表的配置结构。地址由
+  `firmware/src/board/<board>/board_pins.h` 定义，经 `plat_cfgstore_*` 访问。
 - 魔数：0x52454C57，占页偏移0–3。
 - Schema：5；本次没有修改版本、魔数或字段布局。
 - Config_TypeDef为56字节，StoredConfig_TypeDef为60字节。
@@ -17,32 +21,32 @@ MA01/type=0可在网页预览、导出，但应由MLX固件应用；型号与类
 
 | 配置偏移 | Flash 地址 | 字段 / JSON 键 | 长度 |
 | --- | --- | --- | --- |
-| 0 | 0x0800FC04 | schema_ver | 1 |
-| 1 | 0x0800FC05 | sensor_type / sensor.type | 1 |
-| 2 | 0x0800FC06 | FLAG_RES / algo.flag | 1 |
-| 3 | 0x0800FC07 | gain_sel / sensor.gain | 1 |
-| 4 | 0x0800FC08 | osr / sensor.osr | 1 |
-| 5 | 0x0800FC09 | dig_filt / sensor.filt | 1 |
-| 6 | 0x0800FC0A | res_x / sensor.resx | 1 |
-| 7 | 0x0800FC0B | res_y / sensor.resy | 1 |
-| 8 | 0x0800FC0C | res_z / sensor.resz | 1 |
-| 9 | 0x0800FC0D | tcmp_en / sensor.tcmp | 1 |
-| 10 | 0x0800FC0E | range / sensor.range | 1 |
-| 11 | 0x0800FC0F | op_mode / sensor.opmode | 1 |
-| 12 | 0x0800FC10 | mag_ch / sensor.magch | 1 |
-| 13 | 0x0800FC11 | sensor_version / sensor.version | 1 |
-| 14 | 0x0800FC12 | log_level / log.level | 1 |
-| 15 | 0x0800FC13 | 编译器对齐填充 | 1 |
-| 16 | 0x0800FC14 | X_MAPPING_VALUE / algo.xmap | 4 |
-| 20 | 0x0800FC18 | Y_MAPPING_VALUE / algo.ymap | 4 |
-| 24 | 0x0800FC1C | Z_MAPPING_VALUE / algo.zmap | 4 |
-| 28 | 0x0800FC20 | dead_value / algo.dead | 4 |
-| 32 | 0x0800FC24 | spike_multiplier / algo.spike | 4 |
-| 36 | 0x0800FC28 | stability_threshold / algo.stab | 4 |
-| 40 | 0x0800FC2C | product_model / product | 8 |
-| 48 | 0x0800FC34 | mcyc / sensor.mcyc（仅MA03使用，原填充字节；MA01/MA02为0） | 1 |
-| 49–51 | 0x0800FC35 | 编译器对齐填充 | 3 |
-| 52 | 0x0800FC38 | checksum | 4 |
+| 0 | 0x081E0004 | schema_ver | 1 |
+| 1 | 0x081E0005 | sensor_type / sensor.type | 1 |
+| 2 | 0x081E0006 | FLAG_RES / algo.flag | 1 |
+| 3 | 0x081E0007 | gain_sel / sensor.gain | 1 |
+| 4 | 0x081E0008 | osr / sensor.osr | 1 |
+| 5 | 0x081E0009 | dig_filt / sensor.filt | 1 |
+| 6 | 0x081E000A | res_x / sensor.resx | 1 |
+| 7 | 0x081E000B | res_y / sensor.resy | 1 |
+| 8 | 0x081E000C | res_z / sensor.resz | 1 |
+| 9 | 0x081E000D | tcmp_en / sensor.tcmp | 1 |
+| 10 | 0x081E000E | range / sensor.range | 1 |
+| 11 | 0x081E000F | op_mode / sensor.opmode | 1 |
+| 12 | 0x081E0010 | mag_ch / sensor.magch | 1 |
+| 13 | 0x081E0011 | sensor_version / sensor.version | 1 |
+| 14 | 0x081E0012 | log_level / log.level | 1 |
+| 15 | 0x081E0013 | 编译器对齐填充 | 1 |
+| 16 | 0x081E0014 | X_MAPPING_VALUE / algo.xmap | 4 |
+| 20 | 0x081E0018 | Y_MAPPING_VALUE / algo.ymap | 4 |
+| 24 | 0x081E001C | Z_MAPPING_VALUE / algo.zmap | 4 |
+| 28 | 0x081E0020 | dead_value / algo.dead | 4 |
+| 32 | 0x081E0024 | spike_multiplier / algo.spike | 4 |
+| 36 | 0x081E0028 | stability_threshold / algo.stab | 4 |
+| 40 | 0x081E002C | product_model / product | 8 |
+| 48 | 0x081E0034 | mcyc / sensor.mcyc（仅MA03使用，原填充字节；MA01/MA02为0） | 1 |
+| 49–51 | 0x081E0035 | 编译器对齐填充 | 3 |
+| 52 | 0x081E0038 | checksum | 4 |
 
 
 ## 默认配置

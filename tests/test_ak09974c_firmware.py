@@ -20,7 +20,8 @@ import unittest
 from pathlib import Path
 
 from unicorn import Uc, UC_ARCH_ARM, UC_MODE_THUMB, UC_MODE_MCLASS, UC_HOOK_CODE
-from unicorn.arm_const import (UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_PC, UC_ARM_REG_R0,
+from unicorn.arm_const import (UC_CPU_ARM_CORTEX_M7, UC_ARM_REG_C1_C0_2, UC_ARM_REG_FPEXC,
+                               UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_PC, UC_ARM_REG_R0,
                                UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3)
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -157,6 +158,11 @@ class Firmware:
         self.sym = {p[2]: int(p[0], 16) for p in (l.split() for l in out.splitlines()) if len(p) == 3}
         binary = (BUILD / "single_channel_sensor.bin").read_bytes()
         u = self.u = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_MCLASS)
+        # H743 固件以 -mfpu=fpv5-d16 -mfloat-abi=hard 构建：选用 Cortex-M7 并开启 FPU，
+        # 否则任何浮点指令都会报 UC_ERR_INSN_INVALID。
+        u.ctl_set_cpu_model(UC_CPU_ARM_CORTEX_M7)
+        u.reg_write(UC_ARM_REG_C1_C0_2, u.reg_read(UC_ARM_REG_C1_C0_2) | (0xF << 20))
+        u.reg_write(UC_ARM_REG_FPEXC, 0x40000000)
         u.mem_map(0x08000000, 0x40000)
         u.mem_write(0x08000000, binary)
         u.mem_map(0x20000000, 0x10000)
@@ -174,8 +180,8 @@ class Firmware:
         self.stub('Serial_SendString', lambda: self.output.append(self.string(self.reg(0))))
         self.stub('Delay_ms', lambda: setattr(b, 'now', b.now + self.reg(0)))
         self.stub('Delay_us', lambda: setattr(b, 'now', b.now + self.reg(0) / 1000))
-        self.stub('HAL_Delay', lambda: setattr(b, 'now', b.now + self.reg(0)))
-        self.stub('HAL_GetTick', lambda: int(b.now))
+        self.stub('plat_delay_ms', lambda: setattr(b, 'now', b.now + self.reg(0)))
+        self.stub('plat_tick_ms', lambda: int(b.now))
         self.stub('IIC_Start', lambda: b.start())
         self.stub('IIC_Stop', lambda: b.stop())
         self.stub('I2C_WriteByte', lambda: b.write_byte(self.reg(1)))

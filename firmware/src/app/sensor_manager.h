@@ -110,7 +110,22 @@ uint8_t get_sensor_data(void);
 void data_process(void);
 void print_sensor_data(uint8_t sensor_index);
 uint8_t sensor_stop(void);
+/* Name of the sensor driver compiled into this firmware, e.g. "AK09974C". */
+const char *Sensor_GetName(void);
 void print_processed_sensor_data(uint8_t sensor_index);
+
+/**
+ * @brief Format processed sensor data into a string buffer (P5: for TxQueue)
+ * @param sensor_index Sensor index (0 for single-channel system)
+ * @param buf Output buffer
+ * @param bufsize Buffer size
+ * @return Number of bytes written (excluding null terminator), or 0 if data invalid
+ *
+ * P5: T_PROC calls this to format data, then sends result via TxQueue to T_TX.
+ * Bare-metal code can still call print_processed_sensor_data() for direct output.
+ */
+int format_processed_sensor_data(uint8_t sensor_index, char *buf, size_t bufsize);
+
 void print_calibration_data(uint8_t sensor_index);
 uint8_t perform_sensor_calibration(void);
 

@@ -15,9 +15,7 @@
 #define TCA9548A_CH7    0x80
 #define TCA9548A_CH_NONE 0x00
 
-// 初始化TCA9548A (配置RESET引脚并释放复位)
-void TCA9548A_Init(void);
-
+// 复位引脚属于板级 GPIO，由 board/port 负责；本驱动只做 I2C 通道选择。
 uint8_t TCA9548A_SelectChannel(uint8_t i2c_id, uint8_t tca_addr, uint8_t channel);
 
 uint8_t TCA9548A_ReadChannel(uint8_t i2c_id, uint8_t tca_addr, uint8_t *channel);

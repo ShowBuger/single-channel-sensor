@@ -1,76 +1,52 @@
 #include "bsp_uart.h"
-#include "stm32h7xx_hal.h"
-#include "board_config.h"
+#include "plat.h"
+#include "board.h"
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
-
-static UART_HandleTypeDef huart1;
 
 uint8_t Serial_RxData;
 uint8_t Serial_RxFlag;
 
 #define CMD_BUFFER_SIZE 64
-static char    cmdBuffer[CMD_BUFFER_SIZE];
-static uint8_t cmdIndex     = 0;
-static uint8_t cmdReadyFlag = 0;
+static char             cmdBuffer[CMD_BUFFER_SIZE];
+static uint8_t          cmdIndex     = 0;
+static volatile uint8_t cmdReadyFlag = 0;
+
+/* Interrupt context: assemble one command line, terminated by CR or LF. */
+static void on_rx_byte(uint8_t b)
+{
+    Serial_RxData = b;
+    Serial_RxFlag = 1;
+    if (b == '\r' || b == '\n') {
+        if (cmdIndex > 0) {
+            cmdBuffer[cmdIndex] = '\0';
+            cmdReadyFlag = 1;
+            cmdIndex     = 0;
+        }
+    } else if (cmdIndex < CMD_BUFFER_SIZE - 1) {
+        cmdBuffer[cmdIndex++] = (char)b;
+    }
+}
 
 void Serial_Init(void)
 {
-    /* GPIO + peripheral clocks */
-    BSP_UART_GPIO_CLK_EN();
-    BSP_UART_PERIPH_CLK_EN();
-
-    GPIO_InitTypeDef gpio = {0};
-
-    /* TX: PB6, AF7 (USART1) - STM32H7 requires explicit Alternate function */
-    gpio.Pin       = BSP_UART_TX_PIN;
-    gpio.Mode      = GPIO_MODE_AF_PP;
-    gpio.Pull      = GPIO_NOPULL;
-    gpio.Speed     = GPIO_SPEED_FREQ_VERY_HIGH;
-    gpio.Alternate = BSP_UART_GPIO_AF;
-    HAL_GPIO_Init(BSP_UART_TX_PORT, &gpio);
-
-    /* RX: PB7, AF7 (USART1) */
-    gpio.Pin       = BSP_UART_RX_PIN;
-    gpio.Mode      = GPIO_MODE_AF_PP;
-    gpio.Pull      = GPIO_NOPULL;
-    gpio.Alternate = BSP_UART_GPIO_AF;
-    HAL_GPIO_Init(BSP_UART_RX_PORT, &gpio);
-
-    huart1.Instance          = BSP_UART_INSTANCE;
-    huart1.Init.BaudRate     = BSP_UART_BAUD;
-    huart1.Init.WordLength   = UART_WORDLENGTH_8B;
-    huart1.Init.StopBits     = UART_STOPBITS_1;
-    huart1.Init.Parity       = UART_PARITY_NONE;
-    huart1.Init.Mode         = UART_MODE_TX_RX;
-    huart1.Init.HwFlowCtl    = UART_HWCONTROL_NONE;
-    huart1.Init.OverSampling   = UART_OVERSAMPLING_16;
-    huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-    huart1.Init.ClockPrescaler = UART_PRESCALER_DIV1;
-    huart1.FifoMode            = UART_FIFOMODE_DISABLE;  /* 逐字节RXNE中断，不用FIFO */
-    HAL_UART_Init(&huart1);
-
-    /* Enable RX interrupt */
-    __HAL_UART_ENABLE_IT(&huart1, UART_IT_RXNE);
-
-    HAL_NVIC_SetPriority(BSP_UART_IRQn, 1, 1);
-    HAL_NVIC_EnableIRQ(BSP_UART_IRQn);
+    plat_uart_init(BOARD_UART_BAUD, on_rx_byte);
 }
 
 void Serial_SendByte(uint8_t byte)
 {
-    HAL_UART_Transmit(&huart1, &byte, 1, HAL_MAX_DELAY);
+    plat_uart_write(&byte, 1);
 }
 
 void Serial_SendArray(uint8_t *arr, uint16_t len)
 {
-    HAL_UART_Transmit(&huart1, arr, len, HAL_MAX_DELAY);
+    plat_uart_write(arr, len);
 }
 
 void Serial_SendString(char *str)
 {
-    HAL_UART_Transmit(&huart1, (uint8_t *)str, (uint16_t)strlen(str), HAL_MAX_DELAY);
+    plat_uart_write((const uint8_t *)str, (uint16_t)strlen(str));
 }
 
 void Serial_SendNumber(uint32_t num, uint8_t len)
@@ -143,31 +119,4 @@ char *Serial_GetCommandBuffer(void)
 void Serial_ProcessCommand(void)
 {
     /* Command processing delegated to main.c */
-}
-
-/* UART IRQ handler — symbol resolved from board_config.h */
-void BSP_UART_IRQHandler(void)
-{
-    if (__HAL_UART_GET_FLAG(&huart1, UART_FLAG_RXNE))
-    {
-        /* 读RDR即清除RXNE */
-        Serial_RxData = (uint8_t)(huart1.Instance->RDR & 0xFF);
-        Serial_RxFlag = 1;
-
-        if (Serial_RxData == '\r' || Serial_RxData == '\n')
-        {
-            if (cmdIndex > 0)
-            {
-                cmdBuffer[cmdIndex] = '\0';
-                cmdReadyFlag = 1;
-                cmdIndex     = 0;
-            }
-        }
-        else if (cmdIndex < CMD_BUFFER_SIZE - 1)
-        {
-            cmdBuffer[cmdIndex++] = Serial_RxData;
-        }
-    }
-
-    HAL_UART_IRQHandler(&huart1);
 }

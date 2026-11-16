@@ -51,6 +51,6 @@ foreach ($skill in $skills) {
 Write-Sep
 Write-Host "  Done! Installed $($skills.Count) skill(s)." -ForegroundColor Cyan
 Write-Host ""
-Write-Host "  Claude Code : type /commit or /flash in Claude Code" -ForegroundColor DarkGray
-Write-Host "  Codex CLI   : type /commit or /flash in Codex"       -ForegroundColor DarkGray
+Write-Host "  Claude Code : type /commit, /flash or /hwtest in Claude Code" -ForegroundColor DarkGray
+Write-Host "  Codex CLI   : type /commit, /flash or /hwtest in Codex"       -ForegroundColor DarkGray
 Write-Host ""

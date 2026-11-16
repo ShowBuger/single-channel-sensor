@@ -21,12 +21,13 @@
 #define SENSOR_TYPE_INVALID 0xFFU
 typedef uint8_t SensorType_t;
 
-/* 选择当前使用的传感器类型（决定编译进采集层的驱动和默认产品型号）
+/* 板上装的传感器由 board.h 的 BOARD_SENSOR_TYPE / BOARD_PRODUCT_MODEL 声明：
  *   SENSOR_TYPE_MLX90393 -> MA01
  *   SENSOR_TYPE_TMAG3001 -> MA02
  *   SENSOR_TYPE_AK09974C -> MA03
+ * 采集层在运行期按该类型查找驱动（Sensor_FindDriver），应用代码中没有按型号的 #if。
  */
-#define CURRENT_SENSOR_TYPE  SENSOR_TYPE_AK09974C
+#include "board.h"
 
 typedef struct {
     /* -- Schema version -------------------------------- */
@@ -96,7 +97,7 @@ _Static_assert(offsetof(Config_TypeDef, mcyc) == 48, "Config mcyc offset changed
 _Static_assert(offsetof(Config_TypeDef, checksum) == 52, "Config checksum offset changed");
 
 /* Default values - 通用 */
-#define CONFIG_DEFAULT_SENSOR_TYPE      CURRENT_SENSOR_TYPE
+#define CONFIG_DEFAULT_SENSOR_TYPE      BOARD_SENSOR_TYPE
 #define CONFIG_DEFAULT_FLAG_RES         0x00U
 #define CONFIG_DEFAULT_LOG_LEVEL        4U     /* Debug 级别 */
 #define CONFIG_DEFAULT_X_MAP            1.0f
@@ -106,16 +107,8 @@ _Static_assert(offsetof(Config_TypeDef, checksum) == 52, "Config checksum offset
 #define CONFIG_DEFAULT_SPIKE_MULT       20.0f
 #define CONFIG_DEFAULT_STABILITY_THR    0.1f
 
-/* 根据当前传感器类型自动选择默认产品型号 */
-#if CURRENT_SENSOR_TYPE == SENSOR_TYPE_MLX90393
-#define CONFIG_DEFAULT_PRODUCT_MODEL    "MA01"
-#elif CURRENT_SENSOR_TYPE == SENSOR_TYPE_TMAG3001
-#define CONFIG_DEFAULT_PRODUCT_MODEL    "MA02"
-#elif CURRENT_SENSOR_TYPE == SENSOR_TYPE_AK09974C
-#define CONFIG_DEFAULT_PRODUCT_MODEL    "MA03"
-#else
-#error "Unknown sensor type for CONFIG_DEFAULT_PRODUCT_MODEL"
-#endif
+/* 默认产品型号取自板级清单 */
+#define CONFIG_DEFAULT_PRODUCT_MODEL    BOARD_PRODUCT_MODEL
 
 /* Default values - MLX90393 */
 #define CONFIG_DEFAULT_MLX_GAIN_SEL     7U     /* x1 最低增益 */
@@ -152,6 +145,9 @@ SensorType_t Config_SensorTypeForProduct(const char *product);
 void    Config_RestoreDefault(void);
 
 /* 传感器配置应用 - 根据传感器类型自动应用配置 */
-uint8_t Config_ApplyToSensor(const Config_TypeDef *cfg, void *sensor_handle, uint8_t i2c_id);
+struct SensorDriver;
+/* Write the hardware part of cfg to one sensor through its driver. */
+uint8_t Config_ApplyToSensor(const Config_TypeDef *cfg, const struct SensorDriver *drv,
+                             void *ctx, uint8_t bus);
 
 #endif /* __CONFIG_MANAGER_H */

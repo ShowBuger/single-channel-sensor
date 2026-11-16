@@ -25,6 +25,7 @@ $tools = Join-Path $root "firmware\tools"
 
 | 用户输入 | 含义 | 默认 |
 |----------|------|------|
+| `ma01` / `ma02` / `ma03` | 板型：`ma01_l432`（L432 + MLX90393）、`ma02_f103`（F103 + TMAG3001）、`ma03_h743`（H743 + AK09974C） | `ma03_h743` |
 | `release` | Release 构建 | Debug |
 | `clean` | 清理后重编 | 不清理 |
 | `cubeprog` / `openocd` / `daplink` / `stlink` / `jlink` | 指定调试器 | `auto` |
@@ -35,7 +36,8 @@ $tools = Join-Path $root "firmware\tools"
 ## 3. 编译
 
 ```powershell
-& "$tools\build.ps1"                 # Debug
+& "$tools\build.ps1"                 # Debug，默认板型 ma03_h743，输出 firmware/build
+& "$tools\build.ps1" -Board ma02_f103 # 其他板型，输出 firmware/build_<board>
 & "$tools\build.ps1" -Release        # Release
 & "$tools\build.ps1" -Clean          # 清理后重编（可与 -Release 组合）
 ```
@@ -48,6 +50,7 @@ $tools = Join-Path $root "firmware\tools"
 ```powershell
 & "$tools\flash.ps1"                     # 自动检测调试器（默认）
 & "$tools\flash.ps1" -Method openocd     # 用户指定了调试器时
+& "$tools\flash.ps1" -Board ma02_f103    # 必须与编译时的板型一致：决定 HEX 路径与调试目标
 ```
 
 `-Method` 可选值：`cubeprog`、`openocd`（OpenOCD + ST-Link）、`daplink`（OpenOCD + CMSIS-DAP）、`stlink`（st-flash）、`jlink`。
@@ -67,4 +70,5 @@ $tools = Join-Path $root "firmware\tools"
 /flash release                # Release 构建 + 自动检测调试器
 /flash openocd                # Debug 构建 + OpenOCD/ST-Link
 /flash release clean jlink    # 清理 + Release 构建 + J-Link
+/flash ma02                   # MA02（F103）Debug 构建并烧录
 ```

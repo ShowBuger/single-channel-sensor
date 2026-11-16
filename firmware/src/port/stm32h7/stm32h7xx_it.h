@@ -14,6 +14,7 @@ void SVC_Handler(void);
 void DebugMon_Handler(void);
 void PendSV_Handler(void);
 void SysTick_Handler(void);
+void TIM6_DAC_IRQHandler(void);  /* HAL timebase on TIM6 (P3) */
 
 #ifdef __cplusplus
 }

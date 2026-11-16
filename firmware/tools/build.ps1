@@ -1,6 +1,8 @@
 # STM32 CMake build script (PowerShell)
 
 param(
+    [ValidateSet("ma03_h743", "ma01_l432", "ma02_f103")]
+    [string]$Board = "ma03_h743",
     [switch]$Release,
     [switch]$Clean,
     [switch]$Verbose,
@@ -13,6 +15,7 @@ $ErrorActionPreference = "Stop"
 if ($Help) {
     Write-Host "Usage: .\tools\build.ps1 [options]"
     Write-Host ""
+    Write-Host "  -Board B     ma03_h743 (default) | ma01_l432 | ma02_f103"
     Write-Host "  -Release     Release build (default: Debug)"
     Write-Host "  -Clean       Clean before build"
     Write-Host "  -Verbose     Verbose compiler output"
@@ -28,13 +31,15 @@ Ensure-ArmToolchain
 
 # Paths
 $ProjectRoot = Split-Path -Parent $ScriptDir
-$BuildDir    = Join-Path $ProjectRoot "build"
+# Default board keeps the historical "build" directory; other boards get build_<board>.
+$BuildDir    = if ($Board -eq "ma03_h743") { Join-Path $ProjectRoot "build" } else { Join-Path $ProjectRoot "build_$Board" }
 $BuildType   = if ($Release) { "Release" } else { "Debug" }
 
 Write-Host ("=" * 44) -ForegroundColor Blue
 Write-Host "STM32 CMake Build" -ForegroundColor Blue
 Write-Host ("=" * 44) -ForegroundColor Blue
 Write-Host "  Project : $ProjectRoot"
+Write-Host "  Board   : $Board"
 Write-Host "  Build   : $BuildDir"
 Write-Host "  Type    : $BuildType"
 Write-Host "  Jobs    : $Jobs"
@@ -73,6 +78,7 @@ $cmakeArgs = @(
     "-S", $ProjectRoot,
     "-G", "Ninja",
     "-DCMAKE_BUILD_TYPE=$BuildType",
+    "-DBOARD=$Board",
     "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
 )
 & cmake @cmakeArgs

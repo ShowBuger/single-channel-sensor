@@ -6,6 +6,8 @@
 # flashing. Use STM32CubeProgrammer OB panel to clear RDP if this happens.
 
 param(
+    [ValidateSet("ma03_h743", "ma01_l432", "ma02_f103")]
+    [string]$Board = "ma03_h743",
     [ValidateSet("auto", "cubeprog", "openocd", "daplink", "stlink", "jlink")]
     [string]$Method = "auto",
     [string]$HexFile = "",
@@ -44,7 +46,12 @@ if ($Help) {
 # Paths
 $ScriptDir   = Split-Path -Parent $PSCommandPath
 $ProjectRoot = Split-Path -Parent $ScriptDir
-$BuildDir    = Join-Path $ProjectRoot "build"
+# Default board keeps the historical "build" directory; other boards get build_<board>.
+$BuildDir    = if ($Board -eq "ma03_h743") { Join-Path $ProjectRoot "build" } else { Join-Path $ProjectRoot "build_$Board" }
+
+# Per-board debugger targets (OpenOCD target script, J-Link device name)
+$OcdTarget   = @{ "ma03_h743" = "target/stm32h7x.cfg"; "ma01_l432" = "target/stm32l4x.cfg"; "ma02_f103" = "target/stm32f1x.cfg" }[$Board]
+$JlinkDevice = @{ "ma03_h743" = "STM32H743ZI";         "ma01_l432" = "STM32L432KC";         "ma02_f103" = "STM32F103C8" }[$Board]
 
 if ($HexFile -eq "") {
     $HexFile = Join-Path $BuildDir "single_channel_sensor.hex"
@@ -111,10 +118,10 @@ function Get-AutoMethod {
     # Fall back to OpenOCD
     if (-not (Get-Command "openocd" -ErrorAction SilentlyContinue)) { return $null }
 
-    $out = (openocd -f interface/cmsis-dap.cfg -f target/stm32h7x.cfg -c "init" -c "exit" 2>&1 | Out-String)
+    $out = (openocd -f interface/cmsis-dap.cfg -f $OcdTarget -c "init" -c "exit" 2>&1 | Out-String)
     if ($out -match "Examination succeed") { return "daplink" }
 
-    $out = (openocd -f interface/stlink.cfg -f target/stm32h7x.cfg -c "init" -c "exit" 2>&1 | Out-String)
+    $out = (openocd -f interface/stlink.cfg -f $OcdTarget -c "init" -c "exit" 2>&1 | Out-String)
     if ($out -match "Examination succeed") { return "openocd" }
 
     return $null
@@ -171,10 +178,10 @@ switch ($Method) {
         $cmd     = "program `"$hexUnix`" $verify $reset exit"
 
         Write-Warn ">> Running OpenOCD (DAPLink/CMSIS-DAP)..."
-        Write-Host "   openocd -f interface/cmsis-dap.cfg -f target/stm32h7x.cfg -c `"$cmd`""
+        Write-Host "   openocd -f interface/cmsis-dap.cfg -f $OcdTarget -c `"$cmd`""
         Write-Host ""
 
-        openocd -f interface/cmsis-dap.cfg -f target/stm32h7x.cfg -c $cmd
+        openocd -f interface/cmsis-dap.cfg -f $OcdTarget -c $cmd
 
         if ($LASTEXITCODE -ne 0) {
             Write-Err "OpenOCD failed (exit $LASTEXITCODE)"
@@ -191,10 +198,10 @@ switch ($Method) {
         $cmd     = "program `"$hexUnix`" $verify $reset exit"
 
         Write-Warn ">> Running OpenOCD (ST-Link)..."
-        Write-Host "   openocd -f interface/stlink.cfg -f target/stm32h7x.cfg -c `"$cmd`""
+        Write-Host "   openocd -f interface/stlink.cfg -f $OcdTarget -c `"$cmd`""
         Write-Host ""
 
-        openocd -f interface/stlink.cfg -f target/stm32h7x.cfg -c $cmd
+        openocd -f interface/stlink.cfg -f $OcdTarget -c $cmd
 
         if ($LASTEXITCODE -ne 0) {
             Write-Err "OpenOCD failed (exit $LASTEXITCODE)"
@@ -243,7 +250,7 @@ switch ($Method) {
         @"
 si SWD
 speed 4000
-device STM32H743ZI
+device $JlinkDevice
 loadfile "$hexUnix"
 $resetCmd
 qc

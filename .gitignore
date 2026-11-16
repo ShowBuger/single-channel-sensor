@@ -104,3 +104,8 @@ Backup*/
 # Local reference files (not version controlled)
 /docs/ak09974c-en-datasheet-myakm.pdf
 /firmware/sensor_placement_diagram.html
+**/build_emu/
+tests/hw_reports/
+
+# FreeRTOS Kernel (downloaded separately, see firmware/libs/README.md)
+firmware/libs/FreeRTOS-Kernel/
