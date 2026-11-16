@@ -9,4 +9,9 @@
 #define BOARD_NAME                  "ma01_l432"
 #define BOARD_UART_BAUD             921600U
 
+/* Sensor manifest: what is fitted on this board. The acquisition layer looks the
+ * driver up at runtime; imported configs must match this type and product. */
+#define BOARD_SENSOR_TYPE           SENSOR_TYPE_MLX90393
+#define BOARD_PRODUCT_MODEL         "MA01"
+
 #endif /* BOARD_H */

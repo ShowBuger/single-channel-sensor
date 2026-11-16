@@ -5,13 +5,6 @@
 #include <string.h>
 #include "config_parser.h"
 
-#if CURRENT_SENSOR_TYPE == SENSOR_TYPE_TMAG3001
-#include "../drivers/sensors/tmag3001/tmag3001.h"
-#elif CURRENT_SENSOR_TYPE == SENSOR_TYPE_MLX90393
-#include "../drivers/sensors/mlx90393/mlx90393.h"
-#elif CURRENT_SENSOR_TYPE == SENSOR_TYPE_AK09974C
-#include "../drivers/sensors/ak09974c/ak09974c.h"
-#endif
 
 #define CONFIG_MAGIC_NUMBER    0x52454C57U   /* "RELW" - version 6: CONTINUOUS mode + 16x OSR */
 
@@ -178,111 +171,20 @@ void Config_RestoreDefault(void)
 }
 
 /**
- * @brief 应用配置到传感器
- * @param cfg 配置结构
- * @param sensor_handle 传感器句柄（MLX90393_Handle*、TMAG3001_Handle_t* 或 AK09974C_Handle_t*）
- * @param i2c_id I2C总线ID
- * @return 0=成功, 非0=失败
+ * @brief Apply the hardware part of cfg to one sensor through its driver.
+ * Sensor-specific register handling lives in each driver adapter (xxx_hal.c).
  */
-uint8_t Config_ApplyToSensor(const Config_TypeDef *cfg, void *sensor_handle, uint8_t i2c_id)
+uint8_t Config_ApplyToSensor(const Config_TypeDef *cfg, const SensorDriver_t *drv,
+                             void *ctx, uint8_t bus)
 {
-    if (!sensor_handle || Config_Validate(cfg)) return 1;
-    uint8_t result = 0;
+    uint8_t result;
 
-#if CURRENT_SENSOR_TYPE == SENSOR_TYPE_TMAG3001
-    TMAG3001_Handle_t *dev = (TMAG3001_Handle_t *)sensor_handle;
-
-    LOG_D("CFG", "Applying TMAG3001 config: gain=%u osr=%u range=%u mode=%u ch=%u",
-          cfg->gain_sel, cfg->osr, cfg->range, cfg->op_mode, cfg->mag_ch);
-
-    /* 应用增益配置 */
-    if (cfg->gain_sel <= 15) {
-        result |= TMAG3001_SetMagGain(dev, (TMAG3001_MagGain_t)cfg->gain_sel);
-    } else {
-        LOG_W("CFG", "Invalid gain %u, using default", cfg->gain_sel);
-        result |= TMAG3001_SetMagGain(dev, TMAG3001_GAIN_1_0);
-    }
-
-    /* 应用平均次数配置 */
-    if (cfg->osr <= 5) {
-        result |= TMAG3001_SetConvAvg(dev, (TMAG3001_ConvAvg_t)cfg->osr);
-    } else {
-        LOG_W("CFG", "Invalid osr %u, using default", cfg->osr);
-        result |= TMAG3001_SetConvAvg(dev, TMAG3001_AVG_4X);
-    }
-
-    /* 应用量程配置 */
-    if (cfg->range <= 1) {
-        result |= TMAG3001_SetRange(dev, (TMAG3001_Range_t)cfg->range);
-    } else {
-        LOG_W("CFG", "Invalid range %u, using default", cfg->range);
-        result |= TMAG3001_SetRange(dev, TMAG3001_RANGE_40mT);
-    }
-
-    /* 应用通道选择配置 */
-    if (cfg->mag_ch <= 7) {
-        result |= TMAG3001_SetMagChannels(dev, (TMAG3001_MagChannel_t)cfg->mag_ch);
-    } else {
-        LOG_W("CFG", "Invalid mag_ch %u, using default", cfg->mag_ch);
-        result |= TMAG3001_SetMagChannels(dev, TMAG3001_CH_XYZ);
-    }
-
-    /* 清除 POR 和诊断状态标志 */
-    result |= TMAG3001_ClearStatusFlags(dev);
-    /* 工作模式最后写入，避免提前进入睡眠后后续寄存器写入失败。 */
-    result |= TMAG3001_SetOperatingMode(dev, (TMAG3001_OperatingMode_t)cfg->op_mode);
-
-#elif CURRENT_SENSOR_TYPE == SENSOR_TYPE_MLX90393
-    MLX90393_Handle *dev = (MLX90393_Handle *)sensor_handle;
-
-    LOG_D("CFG", "Applying MLX90393 config: gain=%u osr=%u filt=%u res=%u/%u/%u tcmp=%u",
-          cfg->gain_sel, cfg->osr, cfg->dig_filt, cfg->res_x, cfg->res_y, cfg->res_z, cfg->tcmp_en);
-
-    /* 使用MLX90393_Config结构批量配置 */
-    MLX90393_Config mlx_cfg;
-    mlx_cfg.gain_sel   = (cfg->gain_sel <= 7) ? cfg->gain_sel : CONFIG_DEFAULT_MLX_GAIN_SEL;
-    mlx_cfg.osr        = (cfg->osr <= 3) ? cfg->osr : CONFIG_DEFAULT_MLX_OSR;
-    mlx_cfg.dig_filt   = (cfg->dig_filt <= 7) ? cfg->dig_filt : CONFIG_DEFAULT_MLX_DIG_FILT;
-    mlx_cfg.res_x      = (cfg->res_x <= 3) ? cfg->res_x : CONFIG_DEFAULT_MLX_RES;
-    mlx_cfg.res_y      = (cfg->res_y <= 3) ? cfg->res_y : CONFIG_DEFAULT_MLX_RES;
-    mlx_cfg.res_z      = (cfg->res_z <= 3) ? cfg->res_z : CONFIG_DEFAULT_MLX_RES;
-    mlx_cfg.tcmp_en    = (cfg->tcmp_en <= 1) ? cfg->tcmp_en : CONFIG_DEFAULT_MLX_TCMP_EN;
-    mlx_cfg.burst_rate = 0;  /* 不使用Burst模式 */
-
-    result = MLX90393_configureAll(dev, i2c_id, &mlx_cfg);
-    if (error_process(result) != MLX90393_ERROR_NONE) {
-        LOG_E("CFG", "MLX90393 config apply failed");
-        return 1;
-    }
-    result = 0;  /* MLX返回状态字节，接口返回值归一化为成功/失败。 */
-
-#elif CURRENT_SENSOR_TYPE == SENSOR_TYPE_AK09974C
-    AK09974C_Handle_t *dev = (AK09974C_Handle_t *)sensor_handle;
-    (void)i2c_id;
-
-    LOG_D("CFG", "Applying AK09974C config: drive=%u range=%u mode=%u mcyc=%u",
-          cfg->osr, cfg->range, cfg->op_mode, cfg->mcyc);
-
-    /* 设置寄存器只能在Power-down下修改；先清周期，避免切换驱动时与旧周期冲突。 */
-    result |= AK09974C_Stop(dev);
-    result |= AK09974C_SetMeasureCycle(dev, AK09974C_MCYC_SINGLE);
-    result |= AK09974C_SetRange(dev, (AK09974C_Range_t)cfg->range);
-    result |= AK09974C_SetDrive(dev, (AK09974C_Drive_t)cfg->osr);
-
-    /* 连续模式最后写周期并启动；单次模式由每次采样写RUN触发。 */
-    if (cfg->op_mode == CONFIG_AK_OPMODE_CONTINUOUS) {
-        result |= AK09974C_SetMeasureCycle(dev, cfg->mcyc);
-        if (result == 0) result = AK09974C_Start(dev);
-    }
-#else
-    #error "Unsupported sensor type"
-#endif
-
+    if (!drv || !ctx || Config_Validate(cfg)) return 1;
+    result = drv->configure(ctx, bus, cfg);
     if (result == 0) {
         LOG_I("CFG", "Sensor config applied successfully");
     } else {
         LOG_E("CFG", "Sensor config apply failed with error %u", result);
     }
-
     return result;
 }

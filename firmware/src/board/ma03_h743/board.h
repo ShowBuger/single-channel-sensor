@@ -12,6 +12,11 @@
 #define BOARD_NAME                  "ma03_h743"
 #define BOARD_UART_BAUD             921600U
 
+/* Sensor manifest: what is fitted on this board. The acquisition layer looks the
+ * driver up at runtime; imported configs must match this type and product. */
+#define BOARD_SENSOR_TYPE           SENSOR_TYPE_AK09974C
+#define BOARD_PRODUCT_MODEL         "MA03"
+
 /* AK09974C: VIO must match the sensor I/O rail (1V8 on MA03).
  * Address follows IF1/IF2 wiring: 0x21 = IF1->SDA/IF2->SCL, 0x22 = swapped. */
 #define BOARD_AK09974C_VIO          AK09974C_VIO_1V8

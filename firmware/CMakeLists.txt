@@ -14,23 +14,26 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # ── Board ────────────────────────────────────────────────────────────────────
 # BOARD selects src/board/<BOARD>/ (board facts and pins) and the MCU port under
-# src/port/<PORT>/. The sensor driver is still chosen at compile time until the
-# sensor abstraction (refactor P2) makes it a runtime choice.
+# src/port/<PORT>/. The fitted sensor is declared in board.h (BOARD_SENSOR_TYPE);
+# its driver is looked up at runtime from the sensor registry.
 #   ma01_l432 : STM32L432KC + MLX90393
 #   ma02_f103 : STM32F103C8 + TMAG3001
 #   ma03_h743 : STM32H743ZI + AK09974C
 set(BOARD "ma03_h743" CACHE STRING "Target board (src/board/<BOARD>)")
 set_property(CACHE BOARD PROPERTY STRINGS ma01_l432 ma02_f103 ma03_h743)
 
+# BOARD_SENSOR_DRIVERS: drivers linked into this board's image (directory names
+# under src/drivers/sensors). Each becomes SENSOR_DRV_<NAME> for the registry,
+# so unused drivers cost no Flash (matters on the 64 KB F103).
 if(BOARD STREQUAL "ma03_h743")
     set(PORT stm32h7)
-    set(BOARD_SENSOR SENSOR_TYPE_AK09974C)
+    set(BOARD_SENSOR_DRIVERS ak09974c)
 elseif(BOARD STREQUAL "ma01_l432")
     set(PORT stm32l4)
-    set(BOARD_SENSOR SENSOR_TYPE_MLX90393)
+    set(BOARD_SENSOR_DRIVERS mlx90393)
 elseif(BOARD STREQUAL "ma02_f103")
     set(PORT stm32f1)
-    set(BOARD_SENSOR SENSOR_TYPE_TMAG3001)
+    set(BOARD_SENSOR_DRIVERS tmag3001)
 else()
     message(FATAL_ERROR "Unknown BOARD '${BOARD}'")
 endif()
@@ -83,13 +86,12 @@ elseif(PORT STREQUAL "stm32f1")
 endif()
 
 set(HAL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libs/${HAL_FAMILY}_HAL_Driver)
-message(STATUS "Board: ${BOARD}  Port: ${PORT}  MCU: ${MCU_NAME}  Sensor: ${BOARD_SENSOR}")
+message(STATUS "Board: ${BOARD}  Port: ${PORT}  MCU: ${MCU_NAME}")
 
 # ── Compile definitions ───────────────────────────────────────────────────────
 add_compile_definitions(
     USE_HAL_DRIVER
     ${MCU_DEFINES}
-    CURRENT_SENSOR_TYPE=${BOARD_SENSOR}
     FW_VERSION="${PROJECT_VERSION}"   # reported by ML VERSION
 )
 
@@ -154,7 +156,18 @@ endforeach()
 file(GLOB APP_SOURCES     src/app/*.c)
 file(GLOB BSP_SOURCES     src/drivers/bsp/*.c)
 file(GLOB PORT_SOURCES    src/port/${PORT}/*.c src/port/stm32_common/*.c)
-file(GLOB_RECURSE SENSOR_SOURCES src/drivers/sensors/**/*.c)
+set(SENSOR_SOURCES src/drivers/sensors/sensor_registry.c)
+set(SENSOR_DRIVER_DEFINES)
+foreach(drv ${BOARD_SENSOR_DRIVERS} tca9548a)
+    file(GLOB drv_src src/drivers/sensors/${drv}/*.c)
+    list(APPEND SENSOR_SOURCES ${drv_src})
+endforeach()
+foreach(drv ${BOARD_SENSOR_DRIVERS})
+    string(TOUPPER ${drv} DRV)
+    list(APPEND SENSOR_DRIVER_DEFINES SENSOR_DRV_${DRV}=1)
+endforeach()
+add_compile_definitions(${SENSOR_DRIVER_DEFINES})
+message(STATUS "Sensor drivers: ${BOARD_SENSOR_DRIVERS}")
 
 set(MAIN_SOURCES
     src/main.c

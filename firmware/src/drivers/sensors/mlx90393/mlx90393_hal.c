@@ -1,59 +1,68 @@
+/* MLX90393 adapter for the uniform sensor driver interface. */
 #include "../sensor_hal.h"
 #include "mlx90393.h"
+#include "../../bsp/log_manager.h"
 
-static uint8_t mlx_init(void *h, uint8_t a1, uint8_t a0, int drdy, uint8_t id)
+#define XYZT (MLX90393_FLAG_X | MLX90393_FLAG_Y | MLX90393_FLAG_Z)
+
+static uint8_t mlx_probe(void *ctx, uint8_t bus, SensorRole_t role)
 {
-    return MLX90393_begin((MLX90393_Handle *)h, a1, a0, drdy, id);
+    /* Address pins: A1 = 0; A0 = 0 for the actual sensor, 1 for the reference. No DRDY. */
+    return MLX90393_begin((MLX90393_Handle *)ctx, 0, (role == SENSOR_ROLE_ACTUAL) ? 0 : 1, -1, bus);
 }
 
-static uint8_t mlx_configure(void *h, uint8_t id, const SensorHwConfig_t *cfg)
+static uint8_t mlx_configure(void *ctx, uint8_t bus, const Config_TypeDef *cfg)
 {
     MLX90393_Config mc;
-    mc.gain_sel   = cfg->gain;
-    mc.res_x      = cfg->res_x;
-    mc.res_y      = cfg->res_y;
-    mc.res_z      = cfg->res_z;
-    mc.osr        = cfg->osr;
-    mc.dig_filt   = cfg->dig_filt;
-    mc.tcmp_en    = cfg->tcmp_en;
-    mc.burst_rate = 0;
-    return MLX90393_configureAll((MLX90393_Handle *)h, id, &mc);
+    uint8_t result;
+
+    LOG_D("CFG", "Applying MLX90393 config: gain=%u osr=%u filt=%u res=%u/%u/%u tcmp=%u",
+          cfg->gain_sel, cfg->osr, cfg->dig_filt, cfg->res_x, cfg->res_y, cfg->res_z, cfg->tcmp_en);
+
+    mc.gain_sel   = (cfg->gain_sel <= 7) ? cfg->gain_sel : CONFIG_DEFAULT_MLX_GAIN_SEL;
+    mc.osr        = (cfg->osr <= 3)      ? cfg->osr      : CONFIG_DEFAULT_MLX_OSR;
+    mc.dig_filt   = (cfg->dig_filt <= 7) ? cfg->dig_filt : CONFIG_DEFAULT_MLX_DIG_FILT;
+    mc.res_x      = (cfg->res_x <= 3)    ? cfg->res_x    : CONFIG_DEFAULT_MLX_RES;
+    mc.res_y      = (cfg->res_y <= 3)    ? cfg->res_y    : CONFIG_DEFAULT_MLX_RES;
+    mc.res_z      = (cfg->res_z <= 3)    ? cfg->res_z    : CONFIG_DEFAULT_MLX_RES;
+    mc.tcmp_en    = (cfg->tcmp_en <= 1)  ? cfg->tcmp_en  : CONFIG_DEFAULT_MLX_TCMP_EN;
+    mc.burst_rate = 0;   /* no burst mode */
+
+    result = MLX90393_configureAll((MLX90393_Handle *)ctx, bus, &mc);
+    if (error_process(result) != MLX90393_ERROR_NONE) {
+        LOG_E("CFG", "MLX90393 config apply failed");
+        return 1;
+    }
+    return 0;   /* MLX returns a status byte; normalise to success/failure */
 }
 
-#define XYZT (MLX90393_FLAG_X|MLX90393_FLAG_Y|MLX90393_FLAG_Z)
-
-static uint8_t mlx_start(void *h, uint8_t id)
+static uint8_t mlx_trigger(void *ctx, uint8_t bus)
 {
-    uint8_t status = MLX90393_startMeasurement((MLX90393_Handle *)h, id, XYZT);
-    /* startMeasurement 返回原始状态字节：bit5(SM_MODE)=单次测量模式属正常，
-     * 只有 bit4(ERROR) 才代表失败。与 mlx_read 一致，用 error_process 归一化。 */
+    uint8_t status = MLX90393_startMeasurement((MLX90393_Handle *)ctx, bus, XYZT);
+    /* Raw status: bit5 (SM_MODE) is normal in single-measurement mode, only bit4
+     * (ERROR) means failure — normalise like mlx_read. */
     return error_process(status);
 }
 
-static uint8_t mlx_read(void *h, uint8_t id, SensorData_t *out)
+static uint8_t mlx_read(void *ctx, uint8_t bus, SensorData_t *out)
 {
     MLX90393_RawData raw;
-    uint8_t st = MLX90393_readMeasurement((MLX90393_Handle *)h, id, XYZT, &raw);
+    uint8_t st = MLX90393_readMeasurement((MLX90393_Handle *)ctx, bus, XYZT, &raw);
     if (error_process(st) != MLX90393_ERROR_NONE) return 1;
     MLX90393_Data d = MLX90393_convertRaw(raw);
     out->x = d.x; out->y = d.y; out->z = d.z; out->t = d.t;
     return 0;
 }
 
-static SensorData_t mlx_convert(void *raw)
-{
-    MLX90393_Data d = MLX90393_convertRaw(*(MLX90393_RawData *)raw);
-    SensorData_t out = { d.x, d.y, d.z, d.t };
-    return out;
-}
-
-const SensorHAL_t g_hal_mlx90393 = {
-    .name            = "MLX90393",
-    .init            = mlx_init,
-    .configure       = mlx_configure,
-    .start_meas      = mlx_start,
-    .read_meas       = mlx_read,
-    .convert_raw     = mlx_convert,
-    .meas_interval_ms = 8,
-    .handle_size     = sizeof(MLX90393_Handle),
+const SensorDriver_t g_drv_mlx90393 = {
+    .name               = "MLX90393",
+    .type               = SENSOR_TYPE_MLX90393,
+    .ctx_size           = sizeof(MLX90393_Handle),
+    .settle_ms          = 20,     /* OSR=2 (x4), 3 axes ~15 ms, with margin; no status polling */
+    .probe              = mlx_probe,
+    .configure          = mlx_configure,
+    .sampling_supported = NULL,
+    .trigger            = mlx_trigger,
+    .ready              = NULL,
+    .read               = mlx_read,
 };

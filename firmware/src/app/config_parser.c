@@ -1,6 +1,9 @@
 #include "config_parser.h"
 #include "config_manager.h"
+#include "board.h"
+#ifdef SENSOR_DRV_AK09974C
 #include "../drivers/sensors/ak09974c/ak09974c.h"
+#endif
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -211,7 +214,7 @@ uint8_t Config_Validate(const Config_TypeDef *cfg)
     SensorType_t type = Config_SensorTypeForProduct(cfg->product_model);
     if (type == SENSOR_TYPE_INVALID || cfg->sensor_type != type) return 2;
     /* 本分支采集层固定为TMAG3001，不允许把其他型号配置写入当前硬件。 */
-    if (type != CURRENT_SENSOR_TYPE) return 3;
+    if (type != BOARD_SENSOR_TYPE) return 3;   /* config is for another board/sensor */
     if (cfg->dig_filt > 7 || cfg->res_x > 3 || cfg->res_y > 3 || cfg->res_z > 3 || cfg->tcmp_en > 1) return 12;
     if (cfg->range > 1 || cfg->op_mode > 3 || cfg->mag_ch > 7 || cfg->sensor_version > 1) return 22;
 
@@ -226,9 +229,11 @@ uint8_t Config_Validate(const Config_TypeDef *cfg)
         if (cfg->gain_sel != 0) return 40;
         if (cfg->osr > 3) return 41;
         if (cfg->op_mode > CONFIG_AK_OPMODE_CONTINUOUS) return 42;
+#ifdef SENSOR_DRV_AK09974C
         /* 连续模式周期不得小于驱动模式的最小测量周期（手册表10.2） */
         if (cfg->op_mode == CONFIG_AK_OPMODE_CONTINUOUS &&
             cfg->mcyc < AK09974C_MinMeasureCycle((AK09974C_Drive_t)cfg->osr)) return 43;
+#endif
     }
 
     /* 检查日志级别 */
