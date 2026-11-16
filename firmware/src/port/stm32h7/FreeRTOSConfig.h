@@ -27,7 +27,7 @@
 #define configIDLE_SHOULD_YIELD                  1
 
 /* Memory allocation */
-#define configTOTAL_HEAP_SIZE                    (8 * 1024)  /* 8 KB, tune in P3 */
+#define configTOTAL_HEAP_SIZE                    (16 * 1024)  /* 16 KB: 4 tasks + queues + overhead */
 #define configSUPPORT_STATIC_ALLOCATION          0
 #define configSUPPORT_DYNAMIC_ALLOCATION         1
 

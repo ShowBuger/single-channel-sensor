@@ -312,6 +312,7 @@ uint8_t get_sensor_data()
 
     /*等待测量完成*/
     Delay_ms(drv()->settle_ms);
+    IWDG_Feed();  /* 延时后立即喂狗，防止校准过程看门狗复位 */
     if (wait_for_sensor_pair()) {
         sensor_data[i].valid = 0;
         return 1;

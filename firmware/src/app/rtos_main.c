@@ -79,6 +79,9 @@ static void task_acquisition(void *param)
     LOG_I("ACQ", "T_ACQ started, 10 Hz sampling");
 
     for (;;) {
+        /* P4 workaround: Feed watchdog here since Idle may not run if T_TX blocks */
+        IWDG_Feed();
+
         /* Only sample if sensor is running */
         if (SENSOR_Run[0] != 1) {
             vTaskDelay(pdMS_TO_TICKS(100));
@@ -237,15 +240,14 @@ static void task_transmit(void *param)
     LOG_I("TX", "T_TX started (single writer)");
 
     for (;;) {
-        /* Wait for message from any producer (blocks indefinitely) */
-        if (xQueueReceive(s_tx_queue, &msg, portMAX_DELAY) != pdPASS) {
-            continue;
+        /* P4: Use timeout instead of portMAX_DELAY to allow other tasks to run.
+         * T_TX has priority 4, higher than Idle (0), so if it blocks forever,
+         * Idle cannot run and watchdog won't be fed. */
+        if (xQueueReceive(s_tx_queue, &msg, pdMS_TO_TICKS(100)) == pdPASS) {
+            /* Send message atomically (entire string in one call) */
+            Serial_SendString(msg.text);
         }
-
-        /* Send message atomically (entire string in one call) */
-        Serial_SendString(msg.text);
-
-        /* P5 TODO: Use DMA-based transmission for true non-blocking send */
+        /* Timeout expired: loop continues, allows scheduler to run other tasks */
     }
 }
 
