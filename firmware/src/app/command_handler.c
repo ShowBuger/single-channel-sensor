@@ -175,8 +175,7 @@ static void Handle_Start(const char *cmd)
     (void)cmd;
     if (sensor_start() == 0)
     {
-        SendResponse("Sensor started\r\n");
-        SendResponsef("Running: %s\r\n", SENSOR_Run[0] ? "sensor0" : "none");
+        SendResponse("Sensor started successfully\r\n");
     }
     else
     {
