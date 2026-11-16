@@ -3,13 +3,18 @@
 #include "log_manager.h"
 #include "plat.h"
 
-/* Bit-banged I2C on top of plat_swi2c_*; timing unchanged from the original
- * driver (10 us half periods, ~40-50 kHz). Pin assignment comes from the board. */
+/* Bit-banged I2C on top of plat_swi2c_*. Timing optimized for ~400 kHz
+ * (1.25 us half periods). Actual speed depends on 1V8 side pull-up (4.7K)
+ * and PCA9306 rise time. Pin assignment comes from the board. */
 #define IIC_SCL_HIGH(i)  plat_swi2c_scl((i), 1)
 #define IIC_SCL_LOW(i)   plat_swi2c_scl((i), 0)
 #define IIC_SDA_HIGH(i)  plat_swi2c_sda((i), 1)
 #define IIC_SDA_LOW(i)   plat_swi2c_sda((i), 0)
 #define IIC_SDA_READ(i)  plat_swi2c_sda_read(i)
+
+/* Target 400 kHz: 1.25 us half period. At 480 MHz, short inline delays
+ * are sufficient. For lower clock speeds, may need Delay_us(1). */
+#define I2C_HALF_PERIOD_US  1   /* Configurable timing parameter */
 
 void SoftI2C_Init(void)
 {
@@ -22,9 +27,9 @@ void IIC_Start(uint8_t idx)
 {
     IIC_SDA_HIGH(idx);
     IIC_SCL_HIGH(idx);
-    Delay_us(10);
+    Delay_us(I2C_HALF_PERIOD_US);
     IIC_SDA_LOW(idx);
-    Delay_us(10);
+    Delay_us(I2C_HALF_PERIOD_US);
     IIC_SCL_LOW(idx);
 }
 
@@ -32,11 +37,11 @@ void IIC_Stop(uint8_t idx)
 {
     IIC_SDA_LOW(idx);
     IIC_SCL_LOW(idx);
-    Delay_us(10);
+    Delay_us(I2C_HALF_PERIOD_US);
     IIC_SCL_HIGH(idx);
-    Delay_us(10);
+    Delay_us(I2C_HALF_PERIOD_US);
     IIC_SDA_HIGH(idx);
-    Delay_us(10);
+    Delay_us(I2C_HALF_PERIOD_US);
 }
 
 void I2C_WriteByte(uint8_t idx, uint8_t data)
@@ -45,15 +50,14 @@ void I2C_WriteByte(uint8_t idx, uint8_t data)
     for (i = 0; i < 8; i++)
     {
         IIC_SCL_LOW(idx);
-        Delay_us(5);
         if (data & 0x80)
             IIC_SDA_HIGH(idx);
         else
             IIC_SDA_LOW(idx);
         data <<= 1;
-        Delay_us(5);
+        Delay_us(I2C_HALF_PERIOD_US);
         IIC_SCL_HIGH(idx);
-        Delay_us(10);
+        Delay_us(I2C_HALF_PERIOD_US);
     }
     IIC_SCL_LOW(idx);
 }
@@ -65,12 +69,12 @@ uint8_t I2C_ReadByte(uint8_t idx)
     for (i = 0; i < 8; i++)
     {
         IIC_SCL_LOW(idx);
-        Delay_us(10);
+        Delay_us(I2C_HALF_PERIOD_US);
         IIC_SCL_HIGH(idx);
         data <<= 1;
         if (IIC_SDA_READ(idx))
             data |= 0x01;
-        Delay_us(10);
+        Delay_us(I2C_HALF_PERIOD_US);
     }
     IIC_SCL_LOW(idx);
     return data;
@@ -80,9 +84,8 @@ uint8_t I2C_WaitAck(uint8_t idx)
 {
     uint8_t timeout = 0;
     IIC_SDA_HIGH(idx);
-    Delay_us(5);
     IIC_SCL_HIGH(idx);
-    Delay_us(5);
+    Delay_us(I2C_HALF_PERIOD_US);
     while (IIC_SDA_READ(idx))
     {
         timeout++;
@@ -103,9 +106,9 @@ void I2C_SendAck(uint8_t idx, uint8_t ack)
         IIC_SDA_LOW(idx);
     else
         IIC_SDA_HIGH(idx);
-    Delay_us(5);
+    Delay_us(I2C_HALF_PERIOD_US);
     IIC_SCL_HIGH(idx);
-    Delay_us(10);
+    Delay_us(I2C_HALF_PERIOD_US);
     IIC_SCL_LOW(idx);
     IIC_SDA_HIGH(idx);
 }
