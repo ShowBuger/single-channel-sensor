@@ -148,9 +148,9 @@ function drawSurface(){const{ctx:c,w,h}=context(surface);if(!w||!h)return;const 
     // Lambert shading from the quad normal (cross product of its diagonals).
     const d1=vertices[2].map((v,i)=>v-vertices[0][i]),d2=vertices[3].map((v,i)=>v-vertices[1][i]),normal=[d1[1]*d2[2]-d1[2]*d2[1],d1[2]*d2[0]-d1[0]*d2[2],d1[0]*d2[1]-d1[1]*d2[0]];
     const shade=.42+.68*Math.max(0,normal.reduce((n,v,i)=>n+v*light[i],0)/(Math.hypot(...normal)||1));
-    // Raised areas tint warm, depressed areas tint cool, so XY tilt reads as two tones.
-    const center=height(x+step/2,y+step/2),strength=Math.min(1,Math.abs(center)/1.55),t=.82*strength**.8,tint=center>=0?[226,150,70]:[72,122,226];
-    const color=[244,249,248].map((v,i)=>Math.min(255,Math.round((v*(1-t)+tint[i]*t)*shade)));
+    // Color intensity based on absolute height, using the main style color.
+    const strength=Math.min(1,Math.abs(height(x+step/2,y+step/2))/1.55),t=.12+.7*strength;
+    const color=[244,249,248].map((v,i)=>Math.min(255,Math.round((v*(1-t)+style.color[i]*t)*shade)));
     faces.push({p,depth:p.reduce((n,p)=>n+p[2],0)/4,color:`rgb(${color.join(',')})`,stroke:'rgba(100,151,143,.26)'});
   }
   if(showArrows)for(let x=-2;x<=2.01;x+=.4)for(let y=-2;y<=2.01;y+=.4){
