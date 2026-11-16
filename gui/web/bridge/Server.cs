@@ -111,7 +111,7 @@ internal static class FieldBridge {
         if(command==null||command.Length>62||command.Any(c=>c<32||c>126))return false;
 #if FIELD_RELEASE
         // Enforced by the native bridge, independent of the page's controls.
-        return Regex.IsMatch(command,@"^ML (START|STOP|CALIB|RESET)$");
+        return Regex.IsMatch(command,@"^ML (START|STOP|CALIB|RESET|VERSION)$");
 #else
         if(Regex.IsMatch(command,@"^ML (START|STOP|CALIB|RESET|FLAG|MAPPING|MERSURE|LOGLEVEL|GETCFG|VERSION|IMPORT_END|IMPORT_CANCEL|CHFLAG (0x[0-9A-Fa-f]{1,2}|[0-9]{1,3})|SETMAP [XYZ] [+-]?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?)$"))return true;
         var start=Regex.Match(command,@"^ML IMPORT_START ([0-9]{1,4})$");
