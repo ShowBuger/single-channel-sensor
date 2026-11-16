@@ -55,7 +55,8 @@ static QueueHandle_t s_tx_queue;      /* T_CMD/T_PROC → T_TX */
 /**
  * T_ACQ: Acquisition task (priority 5, highest).
  *
- * Runs at 10 Hz (100 ms period) in P4. Will be upgraded to 100 Hz in later phases.
+ * Runs at 100 Hz (10 ms period) for TMAG3001 + AK09974C combination.
+ * MLX90393 would run at lower rate (~20 Hz) if present.
  *
  * Responsibilities:
  *   - Trigger both actual and reference sensors
@@ -75,8 +76,10 @@ static void task_acquisition(void *param)
     (void)param;
     SamplePacket_t pkt;
     uint32_t seq = 0;
+    TickType_t last_wake_time = xTaskGetTickCount();
+    const TickType_t period = pdMS_TO_TICKS(10);  /* 100 Hz = 10 ms period */
 
-    LOG_I("ACQ", "T_ACQ started, 10 Hz sampling");
+    LOG_I("ACQ", "T_ACQ started, 100 Hz sampling");
 
     for (;;) {
         /* P4 workaround: Feed watchdog here since Idle may not run if T_TX blocks */
@@ -84,7 +87,7 @@ static void task_acquisition(void *param)
 
         /* Only sample if sensor is running */
         if (SENSOR_Run[0] != 1) {
-            vTaskDelay(pdMS_TO_TICKS(100));
+            vTaskDelayUntil(&last_wake_time, period);
             continue;
         }
 
@@ -119,8 +122,9 @@ static void task_acquisition(void *param)
             #endif
         }
 
-        /* P4: Fixed 10 Hz (100 ms period). Will upgrade to 100 Hz in P5. */
-        vTaskDelay(pdMS_TO_TICKS(100));
+        /* 100 Hz sampling: fixed-rate scheduling with vTaskDelayUntil
+         * ensures 10 ms period regardless of get_sensor_data() execution time */
+        vTaskDelayUntil(&last_wake_time, period);
     }
 }
 
@@ -135,16 +139,19 @@ static void task_acquisition(void *param)
  *   - Pull samples from SampleQueue (blocking wait)
  *   - Run algorithm pipeline (calibration, filtering, mapping, etc.)
  *   - Format output as protocol string
- *   - Send to T_TX via TxQueue
+ *   - Send to T_TX via TxQueue (rate-limited to match acquisition rate)
  *
  * This task is pure computation: no I/O except queue operations.
  * P5: Uses format_processed_sensor_data() to generate output, then sends via TxQueue.
+ * Rate limiting ensures output interval matches acquisition interval (100 Hz = 10 ms).
  */
 static void task_processing(void *param)
 {
     (void)param;
     SamplePacket_t pkt;
     TxMessage_t msg;
+    TickType_t last_output = 0;
+    const TickType_t min_interval = pdMS_TO_TICKS(10);  /* 100 Hz = 10 ms interval */
 
     LOG_I("PROC", "T_PROC started");
 
@@ -170,19 +177,27 @@ static void task_processing(void *param)
         /* Run algorithm pipeline: sensor_data[0] → processed_sensor_data[0] */
         data_process();
 
-        /* P5: Format output and send to T_TX via TxQueue */
-        msg.type = TX_MSG_DATA;
-        int len = format_processed_sensor_data(0, msg.text, TX_MSG_MAX_LEN);
+        /* Rate limiting: ensure output interval >= 10 ms (100 Hz) to prevent duplicate outputs */
+        TickType_t now = xTaskGetTickCount();
+        if ((now - last_output) >= min_interval) {
+            /* P5: Format output and send to T_TX via TxQueue */
+            msg.type = TX_MSG_DATA;
+            int len = format_processed_sensor_data(0, msg.text, TX_MSG_MAX_LEN);
 
-        if (len > 0) {
-            /* Send to T_TX (non-blocking: drop if queue full to avoid blocking acquisition) */
-            if (xQueueSend(s_tx_queue, &msg, 0) != pdPASS) {
-                /* Queue full: data line dropped. Only log in debug builds. */
-                #ifdef DEBUG
-                LOG_W("PROC", "Data output dropped (TxQueue full)");
-                #endif
+            if (len > 0) {
+                /* Send to T_TX (non-blocking: drop if queue full to avoid blocking acquisition) */
+                if (xQueueSend(s_tx_queue, &msg, 0) == pdPASS) {
+                    last_output = now;
+                } else {
+                    /* Queue full: data line dropped. Only log in debug builds. */
+                    #ifdef DEBUG
+                    LOG_W("PROC", "Data output dropped (TxQueue full)");
+                    #endif
+                }
             }
         }
+        /* Note: Samples processed faster than 10 ms are consumed but not output,
+         * ensuring steady 100 Hz output rate regardless of algorithm execution time. */
     }
 }
 

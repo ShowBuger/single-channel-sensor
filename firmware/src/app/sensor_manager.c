@@ -342,7 +342,7 @@ uint8_t get_sensor_data()
 
     /*标记数据有效*/
     sensor_data[i].valid = 1;
-    data_process();
+    /* P4: data_process() moved to T_PROC (algorithm task separation) */
     return 0;
 }
 
