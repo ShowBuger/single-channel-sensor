@@ -16,6 +16,7 @@ extern "C" {
 #define HAL_IWDG_MODULE_ENABLED
 #define HAL_PWR_MODULE_ENABLED
 #define HAL_RCC_MODULE_ENABLED
+#define HAL_TIM_MODULE_ENABLED      /* P3: TIM6 for HAL timebase (SysTick owned by FreeRTOS) */
 #define HAL_UART_MODULE_ENABLED
 
 /* ---- Oscillator values ---- */
@@ -58,6 +59,7 @@ extern "C" {
 #include "stm32h7xx_hal_cortex.h"
 #include "stm32h7xx_hal_flash.h"
 #include "stm32h7xx_hal_pwr.h"
+#include "stm32h7xx_hal_tim.h"
 #include "stm32h7xx_hal_uart.h"
 #include "stm32h7xx_hal_iwdg.h"
 

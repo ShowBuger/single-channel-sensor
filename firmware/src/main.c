@@ -30,6 +30,11 @@ void IWDG_Feed(void)
 /* -----------------------------------------------------------------------
  * main
  * ----------------------------------------------------------------------- */
+/* P3: FreeRTOS entry point (rtos_main.c) */
+#ifdef USE_FREERTOS
+extern void rtos_main(void);
+#endif
+
 int main(void)
 {
     plat_sys_init();    /* caches, HAL, clock tree; captures reset flags */
@@ -48,6 +53,11 @@ int main(void)
     IWDG_Feed();        /* 初始化耗时较长，喂一次防止在此处复位 */
     sensor_start();     /* 内含扫描、配置应用和校准 */
 
+#ifdef USE_FREERTOS
+    /* P3: Start FreeRTOS scheduler (does not return) */
+    rtos_main();
+#else
+    /* Bare-metal super loop (P0-P2 behavior) */
     while (1)
     {
         IWDG_Feed();        /* 主循环每次迭代喂狗 */
@@ -59,4 +69,5 @@ int main(void)
             plat_delay_ms(100);  /* 100ms 间隔 = 10 Hz 采集频率 */
         }
     }
+#endif
 }

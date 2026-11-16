@@ -61,7 +61,7 @@ if(PORT STREQUAL "stm32h7")
     set(MCU_DEFINES STM32H743xx USE_PWR_LDO_SUPPLY)   # H743: core supplied by LDO
     set(HAL_MODULES hal hal_cortex hal_rcc hal_rcc_ex hal_gpio hal_dma hal_dma_ex
                     hal_mdma hal_exti hal_flash hal_flash_ex hal_pwr hal_pwr_ex
-                    hal_uart hal_uart_ex hal_iwdg)
+                    hal_uart hal_uart_ex hal_iwdg hal_tim hal_tim_ex)
 elseif(PORT STREQUAL "stm32l4")
     set(MCU_NAME        STM32L432xx)
     set(HAL_FAMILY      STM32L4xx)
@@ -93,6 +93,7 @@ add_compile_definitions(
     USE_HAL_DRIVER
     ${MCU_DEFINES}
     FW_VERSION="${PROJECT_VERSION}"   # reported by ML VERSION
+    USE_FREERTOS                      # P3: Enable FreeRTOS integration
 )
 
 # ── Compile options ───────────────────────────────────────────────────────────
@@ -153,6 +154,46 @@ foreach(mod ${HAL_MODULES})
     list(APPEND HAL_SOURCES ${HAL_DIR}/Src/${HAL_PREFIX}_${mod}.c)
 endforeach()
 
+# ── FreeRTOS ──────────────────────────────────────────────────────────────────
+# P3: FreeRTOS kernel source must be downloaded separately (see libs/README.md)
+set(FREERTOS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libs/FreeRTOS-Kernel)
+
+if(NOT EXISTS ${FREERTOS_DIR}/tasks.c)
+    message(WARNING "FreeRTOS-Kernel not found in libs/. Run: cd libs && curl -L https://github.com/FreeRTOS/FreeRTOS-Kernel/archive/refs/tags/V11.1.0.zip -o freertos.zip && unzip freertos.zip && mv FreeRTOS-Kernel-11.1.0 FreeRTOS-Kernel")
+    message(WARNING "Building without FreeRTOS (bare-metal mode)")
+    set(FREERTOS_SOURCES)
+else()
+    # Cortex-M port selection
+    if(PORT STREQUAL "stm32h7")
+        set(FREERTOS_PORT_DIR ${FREERTOS_DIR}/portable/GCC/ARM_CM7/r0p1)
+    elseif(PORT STREQUAL "stm32l4")
+        set(FREERTOS_PORT_DIR ${FREERTOS_DIR}/portable/GCC/ARM_CM4F)
+    elseif(PORT STREQUAL "stm32f1")
+        set(FREERTOS_PORT_DIR ${FREERTOS_DIR}/portable/GCC/ARM_CM3)
+    endif()
+
+    set(FREERTOS_SOURCES
+        ${FREERTOS_DIR}/tasks.c
+        ${FREERTOS_DIR}/queue.c
+        ${FREERTOS_DIR}/list.c
+        ${FREERTOS_DIR}/timers.c
+        ${FREERTOS_DIR}/event_groups.c
+        ${FREERTOS_DIR}/stream_buffer.c
+        ${FREERTOS_DIR}/portable/MemMang/heap_4.c
+        ${FREERTOS_PORT_DIR}/port.c
+    )
+
+    include_directories(
+        ${FREERTOS_DIR}/include
+        ${FREERTOS_PORT_DIR}
+        src/port/${PORT}  # FreeRTOSConfig.h lives here
+    )
+
+    message(STATUS "FreeRTOS V11.1.0 enabled (port: ${FREERTOS_PORT_DIR})")
+endif()
+
+# ── Application sources ───────────────────────────────────────────────────────
+
 file(GLOB APP_SOURCES     src/app/*.c)
 file(GLOB BSP_SOURCES     src/drivers/bsp/*.c)
 file(GLOB PORT_SOURCES    src/port/${PORT}/*.c src/port/stm32_common/*.c)
@@ -181,6 +222,7 @@ set(STARTUP_ASM
 add_executable(${PROJECT_NAME}.elf
     ${CMSIS_SOURCES}
     ${HAL_SOURCES}
+    ${FREERTOS_SOURCES}
     ${APP_SOURCES}
     ${BSP_SOURCES}
     ${PORT_SOURCES}
