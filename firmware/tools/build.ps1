@@ -31,8 +31,10 @@ Ensure-ArmToolchain
 
 # Paths
 $ProjectRoot = Split-Path -Parent $ScriptDir
-# Default board keeps the historical "build" directory; other boards get build_<board>.
-$BuildDir    = if ($Board -eq "ma03_h743") { Join-Path $ProjectRoot "build" } else { Join-Path $ProjectRoot "build_$Board" }
+# All boards share firmware/build. A marker file identifies which board the
+# tree belongs to, so switching -Board (or branches) cleans it automatically.
+$BuildDir    = Join-Path $ProjectRoot "build"
+$BuildId     = $Board
 $BuildType   = if ($Release) { "Release" } else { "Debug" }
 
 Write-Host ("=" * 44) -ForegroundColor Blue
@@ -44,6 +46,29 @@ Write-Host "  Build   : $BuildDir"
 Write-Host "  Type    : $BuildType"
 Write-Host "  Jobs    : $Jobs"
 Write-Host ("=" * 44) -ForegroundColor Blue
+
+# Stale build guard: one build directory, but never mix two boards' objects.
+$Marker    = Join-Path $BuildDir ".build_board"
+$CacheFile = Join-Path $BuildDir "CMakeCache.txt"
+$stale     = $null
+if (Test-Path $Marker) {
+    $cachedId = (Get-Content -Path $Marker -Raw).Trim()
+    if ($cachedId -ne $BuildId) { $stale = "$cachedId -> $BuildId" }
+} elseif (Test-Path $CacheFile) {
+    $stale = "legacy build tree without .build_board"
+}
+if (-not $stale -and (Test-Path $CacheFile)) {
+    $m = Select-String -Path $CacheFile -Pattern '^BOARD:STRING=(.+)$' -ErrorAction SilentlyContinue |
+         Select-Object -First 1
+    if ($m) {
+        $cachedBoard = $m.Matches[0].Groups[1].Value.Trim()
+        if ($cachedBoard -ne $BuildId) { $stale = "CMakeCache BOARD $cachedBoard -> $BuildId" }
+    }
+}
+if ($stale) {
+    Write-Host ">> Build dir belongs to another board ($stale); cleaning..." -ForegroundColor Yellow
+    Remove-Item -Recurse -Force $BuildDir
+}
 
 # Check required tools
 Write-Host ">> Checking toolchain..." -ForegroundColor Yellow
@@ -69,6 +94,10 @@ if ($Clean -and (Test-Path $BuildDir)) {
     Remove-Item -Recurse -Force $BuildDir
     Write-Host "  + Clean done" -ForegroundColor Green
 }
+
+# Record which board owns this build tree (written after Clean so it survives).
+New-Item -ItemType Directory -Force -Path $BuildDir | Out-Null
+Set-Content -Path $Marker -Value $BuildId -Encoding ASCII
 
 # CMake configure
 Write-Host ">> CMake configure..." -ForegroundColor Yellow

@@ -37,7 +37,7 @@ $tools = Join-Path $root "firmware\tools"
 
 ```powershell
 & "$tools\build.ps1"                 # Debug，默认板型 ma03_h743，输出 firmware/build
-& "$tools\build.ps1" -Board ma02_f103 # 其他板型，输出 firmware/build_<board>
+& "$tools\build.ps1" -Board ma02_f103 # 其他板型，同样输出 firmware/build（切换板型自动清理旧构建）
 & "$tools\build.ps1" -Release        # Release
 & "$tools\build.ps1" -Clean          # 清理后重编（可与 -Release 组合）
 ```

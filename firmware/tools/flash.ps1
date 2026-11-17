@@ -46,8 +46,17 @@ if ($Help) {
 # Paths
 $ScriptDir   = Split-Path -Parent $PSCommandPath
 $ProjectRoot = Split-Path -Parent $ScriptDir
-# Default board keeps the historical "build" directory; other boards get build_<board>.
-$BuildDir    = if ($Board -eq "ma03_h743") { Join-Path $ProjectRoot "build" } else { Join-Path $ProjectRoot "build_$Board" }
+# All boards share firmware/build; refuse to flash a hex built for another board.
+$BuildDir = Join-Path $ProjectRoot "build"
+$Marker   = Join-Path $BuildDir ".build_board"
+if (Test-Path $Marker) {
+    $builtBoard = (Get-Content -Path $Marker -Raw).Trim()
+    if ($builtBoard -ne $Board) {
+        Write-Err "Build directory contains '$builtBoard' firmware, not '$Board'."
+        Write-Err "Run: .\tools\build.ps1 -Board $Board"
+        exit 1
+    }
+}
 
 # Per-board debugger targets (OpenOCD target script, J-Link device name)
 $OcdTarget   = @{ "ma03_h743" = "target/stm32h7x.cfg"; "ma01_l432" = "target/stm32l4x.cfg"; "ma02_f103" = "target/stm32f1x.cfg" }[$Board]

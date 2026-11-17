@@ -12,12 +12,12 @@
 网页测试：`node --test gui/web/tests/*.test.cjs`。
 
 固件按板型构建：`firmware/tools/build.ps1 -Board <ma01_l432|ma02_f103|ma03_h743>`，
-默认 `ma03_h743` 输出到 `firmware/build`，其他板型输出到 `firmware/build_<board>`。
+所有板型统一输出到 `firmware/build`；切换板型时脚本会清理旧构建目录。
 板型同时决定 MCU 与编入的传感器驱动（MA01=MLX90393，MA02=TMAG3001，MA03=AK09974C）。
 
 TMAG固件回归（MA02 / STM32F103）：先执行 `firmware/tools/build.ps1 -Board ma02_f103`，安装
 `python -m pip install unicorn`，再执行
-`set FIRMWARE_BUILD_DIR=firmware/build_ma02_f103` 与 `python tests/test_tmag_firmware.py`。
+`set FIRMWARE_BUILD_DIR=firmware/build` 与 `python tests/test_tmag_firmware.py`。
 需要 ARM GNU 工具链的 `arm-none-eabi-nm` 及 Node.js 在 PATH 中。
 
 测试运行实际ARM二进制，以外设模型替代I2C和时间，验证寄存器应用、完整回包、
@@ -36,9 +36,9 @@ Unicorn 的 Cortex-M7 模型不支持双精度 VFP 指令，H743 正式固件（
 （C 代码路径相同，double 由软件库实现），正式固件不得使用此选项：
 
 ```
-cmake -B firmware/build_emu -S firmware -G Ninja -DCMAKE_BUILD_TYPE=Debug -DFW_EMU_SP_FPU=ON
-cmake --build firmware/build_emu
-set FIRMWARE_BUILD_DIR=firmware/build_emu
+cmake -B firmware/build/emu -S firmware -G Ninja -DCMAKE_BUILD_TYPE=Debug -DFW_EMU_SP_FPU=ON
+cmake --build firmware/build/emu
+set FIRMWARE_BUILD_DIR=firmware/build/emu
 python tests/test_ak09974c_firmware.py
 python tests/test_legacy_golden.py
 ```

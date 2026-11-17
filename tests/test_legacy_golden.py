@@ -6,9 +6,9 @@ the build against the recorded file. The refactored `legacy` profile must later
 reproduce exactly these outputs (docs/REFACTOR_DESIGN.md §17.4, §17.9).
 
 Usage:
-  cmake -B firmware/build_emu -S firmware -G Ninja -DCMAKE_BUILD_TYPE=Debug -DFW_EMU_SP_FPU=ON
-  cmake --build firmware/build_emu
-  set FIRMWARE_BUILD_DIR=firmware/build_emu
+  cmake -B firmware/build/emu -S firmware -G Ninja -DCMAKE_BUILD_TYPE=Debug -DFW_EMU_SP_FPU=ON
+  cmake --build firmware/build/emu
+  set FIRMWARE_BUILD_DIR=firmware/build/emu
   python tests/test_legacy_golden.py            # check
   python tests/test_legacy_golden.py --record   # (re)record, only on the baseline commit
 
