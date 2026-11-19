@@ -24,10 +24,9 @@ The kernel source files are not committed to this repository. Each developer mus
 
 ### Configuration
 
-FreeRTOS configuration is board-specific:
+FreeRTOS is currently enabled for H7 only:
 - H7: `src/port/stm32h7/FreeRTOSConfig.h`
-- L4: `src/port/stm32l4/FreeRTOSConfig.h`
-- F1: `src/port/stm32f1/FreeRTOSConfig.h`
+- L4/F1: maintained bare-metal adapters; full RTOS integration is pending.
 
 ### Port Files
 

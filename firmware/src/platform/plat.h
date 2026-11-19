@@ -27,6 +27,7 @@ void plat_wdt_feed(void);
 /* ---- time -------------------------------------------------------------- */
 void     plat_time_init(void);
 uint32_t plat_tick_ms(void);
+uint32_t plat_time_us(void);                   /* monotonic modulo 2^32 */
 void     plat_delay_ms(uint32_t ms);
 void     plat_delay_us(uint32_t us);
 uint32_t plat_cycles(void);                   /* free-running CPU cycle counter */

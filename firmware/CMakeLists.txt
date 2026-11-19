@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.22)
 set(CMAKE_TOOLCHAIN_FILE ${CMAKE_CURRENT_SOURCE_DIR}/cmake/arm-none-eabi-gcc.cmake)
 
 project(single_channel_sensor
-    VERSION 1.1.0
+    VERSION 1.2.0
     LANGUAGES C ASM
 )
 
@@ -93,7 +93,6 @@ add_compile_definitions(
     USE_HAL_DRIVER
     ${MCU_DEFINES}
     FW_VERSION="${PROJECT_VERSION}"   # reported by ML VERSION
-    USE_FREERTOS                      # P3: Enable FreeRTOS integration
 )
 
 # ── Compile options ───────────────────────────────────────────────────────────
@@ -125,6 +124,9 @@ add_link_options(
     --specs=nosys.specs
     -u _printf_float      # enable %f in nano.specs
 )
+if(FW_EMU_SP_FPU)
+    add_link_options(-Wl,--undefined=data_process)
+endif()
 
 # ── Include directories ───────────────────────────────────────────────────────
 include_directories(
@@ -158,11 +160,21 @@ endforeach()
 # P3: FreeRTOS kernel source must be downloaded separately (see libs/README.md)
 set(FREERTOS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libs/FreeRTOS-Kernel)
 
-if(NOT EXISTS ${FREERTOS_DIR}/tasks.c)
-    message(WARNING "FreeRTOS-Kernel not found in libs/. Run: cd libs && curl -L https://github.com/FreeRTOS/FreeRTOS-Kernel/archive/refs/tags/V11.1.0.zip -o freertos.zip && unzip freertos.zip && mv FreeRTOS-Kernel-11.1.0 FreeRTOS-Kernel")
-    message(WARNING "Building without FreeRTOS (bare-metal mode)")
+# H7 is the RTOS target. Keep maintained L4/F1 boards on their bare-metal
+# adapter until their scheduler ports are implemented.
+if(PORT STREQUAL "stm32h7")
+    set(USE_BOARD_FREERTOS ON)
+else()
+    set(USE_BOARD_FREERTOS OFF)
+endif()
+if(USE_BOARD_FREERTOS AND NOT EXISTS ${FREERTOS_DIR}/tasks.c)
+    message(FATAL_ERROR "FreeRTOS V11.1.0 is required for H7; see libs/README.md")
+endif()
+if(NOT USE_BOARD_FREERTOS)
+    message(STATUS "Maintained L4/F1 adapter: bare-metal mode")
     set(FREERTOS_SOURCES)
 else()
+    add_compile_definitions(USE_FREERTOS)
     # Cortex-M port selection
     if(PORT STREQUAL "stm32h7")
         set(FREERTOS_PORT_DIR ${FREERTOS_DIR}/portable/GCC/ARM_CM7/r0p1)
@@ -195,6 +207,9 @@ endif()
 # ── Application sources ───────────────────────────────────────────────────────
 
 file(GLOB APP_SOURCES     src/app/*.c)
+if(NOT USE_BOARD_FREERTOS)
+    list(FILTER APP_SOURCES EXCLUDE REGEX "rtos_main\\.c$")
+endif()
 file(GLOB BSP_SOURCES     src/drivers/bsp/*.c)
 file(GLOB PORT_SOURCES    src/port/${PORT}/*.c src/port/stm32_common/*.c)
 set(SENSOR_SOURCES src/drivers/sensors/sensor_registry.c)

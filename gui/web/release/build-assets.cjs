@@ -44,6 +44,7 @@ async function build(){
   await fs.mkdir(out,{recursive:true});
   let html=await fs.readFile(path.join(root,'index.html'),'utf8');
   html=replaceOnce(html,/<button data-open="importDialog">[\s\S]*?<\/button>/g,'');
+  html=replaceOnce(html,/<a id="algorithmLink"[\s\S]*?<\/a>/g,'');
   html=replaceOnce(html,/<dialog id="importDialog"[\s\S]*?<\/dialog>/g,'');
   html=replaceOnce(html,/<button[^>]*id="exportSerialLog"[^>]*>[\s\S]*?<\/button>/g,'');
   html=replaceOnce(html,/<div><strong[^>]*id="serialLogCount"[\s\S]*?<\/div>/g,'');

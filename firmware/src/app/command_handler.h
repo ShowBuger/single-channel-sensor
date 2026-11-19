@@ -38,9 +38,9 @@ void CommandHandler_Init(void);
 void CommandHandler_SetResponseCallback(CommandHandler_ResponseCallback callback);
 
 /**
- * @brief Process pending serial commands (call from main loop)
+ * @brief Process pending commands: 0=none, 1=read-only, 2=configuration/control.
  */
-void CommandHandler_Process(void);
+uint8_t CommandHandler_Process(void);
 
 #ifdef __cplusplus
 }

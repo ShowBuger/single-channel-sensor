@@ -165,7 +165,7 @@ class Firmware:
         u.reg_write(UC_ARM_REG_FPEXC, 0x40000000)
         u.mem_map(0x08000000, 0x40000)
         u.mem_write(0x08000000, binary)
-        u.mem_map(0x20000000, 0x10000)
+        u.mem_map(0x20000000, 0x20000)
         u.mem_map(0x40000000, 0x30000)
         u.mem_map(0x48000000, 0x2000)
         u.mem_map(0xE0000000, 0x100000)
@@ -182,6 +182,7 @@ class Firmware:
         self.stub('Delay_us', lambda: setattr(b, 'now', b.now + self.reg(0) / 1000))
         self.stub('plat_delay_ms', lambda: setattr(b, 'now', b.now + self.reg(0)))
         self.stub('plat_tick_ms', lambda: int(b.now))
+        self.stub('plat_time_us', lambda: int(b.now * 1000) & 0xFFFFFFFF)
         self.stub('IIC_Start', lambda: b.start())
         self.stub('IIC_Stop', lambda: b.stop())
         self.stub('I2C_WriteByte', lambda: b.write_byte(self.reg(1)))
@@ -223,7 +224,7 @@ class Firmware:
         return self.call('JsonConfig_Parse', 0x20008000, self.sym['g_config'], 0x20009000)
 
     def config(self):
-        return bytes(self.u.mem_read(self.sym['g_config'], 56))
+        return bytes(self.u.mem_read(self.sym['g_config'], 96))
 
     def floats(self, addr, n):
         return struct.unpack(f'<{n}f', bytes(self.u.mem_read(addr, 4 * n)))

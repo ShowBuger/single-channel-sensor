@@ -4,6 +4,8 @@
 #include "../drivers/sensors/tca9548a/tca9548a.h"
 #include "../drivers/bsp/bsp_delay.h"
 #include <math.h>
+#include <string.h>
+#include <stdio.h>
 #include "../drivers/bsp/bsp_uart.h"
 #include "../drivers/bsp/log_manager.h"
 #include "config_manager.h"
@@ -49,19 +51,99 @@ SensorPair_Data processed_sensor_data[1] = {0};
 // 传感器标定值存储 - 1对传感器的标定值
 SensorPair_Calibration sensor_calibration[1] = {0};
 
-// 参考传感器历史数据存储 - 用于预测补偿
-SensorHistory reference_sensor_history[1] = {0};
+AlgoTiming_t sensor_timing;
+static AlgoTiming_t s_output_timing;
+static AlgoState_t s_algorithm;
+static AlgoOutput_t s_output;
+static AlgoParams_t s_previous_params;
+static AlgoChannelCfg_t s_previous_channel;
+static uint8_t s_previous_flags, s_initialized, s_format_v2, s_refout;
+static AlgoTrace_t s_trace;
+static uint16_t s_node_bypass;
+static uint8_t s_trace_enabled,s_trace_ready,s_trace_clock;
+static uint32_t s_trace_time;
+void Sensor_SetTrace(uint8_t enabled) { s_trace_enabled=enabled; s_trace_ready=0; s_trace_clock=0; }
+uint8_t Sensor_GetTrace(void) { return s_trace_enabled; }
+uint16_t Sensor_GetNodeBypass(void) { return s_node_bypass; }
+uint8_t Sensor_SetNode(uint8_t node,uint8_t enabled)
+{
+    static const uint8_t bits[10]={0,0,1,128,8,4,2,64,16,32};
+    if(node==0 || node>=10 || (g_algo.config.profile==0 && (node==1 || node==3))) return 1;
+    if(enabled) { s_node_bypass&=~(1U<<node); FLAG_RES|=bits[node]; }
+    else s_node_bypass|=1U<<node;
+    Sensor_ResetAlgorithm(); s_trace_ready=0;
+    return 0;
+}
+uint8_t Sensor_TakeTrace(AlgoTrace_t *trace)
+{
+    if(!s_trace_ready) return 0;
+    *trace=s_trace; s_trace_ready=0; return 1;
+}
+int Sensor_FormatTrace(const AlgoTrace_t *t,unsigned node,char *buf,size_t size)
+{
+    if(node>=10 || (t->valid && !(t->present&(1U<<node))) || (!t->valid && node!=0)) return 0;
+    const float *a=t->actual[node],*r=t->reference[node];
+    return snprintf(buf,size,"N seq=%lu t=%lu p=%u s=%u run=%u valid=%u err=%u x=%.7g y=%.7g z=%.7g rx=%.7g ry=%.7g rz=%.7g\r\n",
+        (unsigned long)t->seq,(unsigned long)t->timestamp_us,t->profile,node,
+        !!(t->executed&(1U<<node)),t->valid,t->error,
+        t->valid?a[0]:0.0,t->valid?a[1]:0.0,t->valid?a[2]:0.0,
+        t->valid?r[0]:0.0,t->valid?r[1]:0.0,t->valid?r[2]:0.0);
+}
+float X_MAPPING_VALUE=1.0f, Y_MAPPING_VALUE=1.0f, Z_MAPPING_VALUE=1.0f;
 
-// 滑动平均滤波器存储
-SlidingAverage actual_sensor_filter[1] = {0};
-SlidingAverage reference_sensor_filter[1] = {0};
-
-// 稳定性跟踪器存储
-StabilityTracker actual_sensor_stability[1] = {0};
-StabilityTracker reference_sensor_stability[1] = {0};
-
-// 尖峰滤波器存储
-SpikeFilter spike_filters[1] = {0};
+void Sensor_ResetAlgorithm(void)
+{
+    Algo_Reset(&s_algorithm);
+    s_initialized=0;
+    processed_sensor_data[0].valid=0;
+}
+const AlgoCounters_t *Sensor_AlgoCounters(void) { return &s_algorithm.counters; }
+uint8_t Sensor_SetFormat(uint8_t v2) { s_format_v2=v2; if(!v2) s_refout=0; return 0; }
+uint8_t Sensor_GetFormat(void) { return s_format_v2; }
+uint8_t Sensor_SetReferenceOutput(uint8_t enabled)
+{
+    if(enabled && !s_format_v2) return 1;
+    s_refout=enabled; return 0;
+}
+void Sensor_ProcessSample(const AlgoPair_t *sample,const AlgoTiming_t *timing)
+{
+    AlgoChannelCfg_t cc={0};
+    cc.calibration=sensor_calibration[0];
+    cc.mapping[0]=X_MAPPING_VALUE; cc.mapping[1]=Y_MAPPING_VALUE; cc.mapping[2]=Z_MAPPING_VALUE;
+    const int8_t actual_rotation[9]=BOARD_SENSOR_ROTATION_ACTUAL;
+    const int8_t reference_rotation[9]=BOARD_SENSOR_ROTATION_REFERENCE;
+    memcpy(cc.actual_rotation,actual_rotation,sizeof(actual_rotation));
+    memcpy(cc.reference_rotation,reference_rotation,sizeof(reference_rotation));
+    cc.legacy_settle_ms=drv() ? drv()->settle_ms : 3;
+    cc.quantum_uT=drv() ? drv()->quantum_uT : 1.1f;
+    if(drv() && drv()->quantum)
+        cc.quantum_uT=fmaxf(drv()->quantum(&actual_sensors[0]),drv()->quantum(&reference_sensors[0]));
+    AlgoParams_t params=g_algo;
+    /* Replay callers set only the historical first three fields. */
+    if(!params.config.window_ms) { AlgoParams_t defaults; Algo_DefaultParams(&defaults); params.config=defaults.config; }
+    if(!s_initialized || memcmp(&params,&s_previous_params,sizeof(params)) ||
+       memcmp(&cc,&s_previous_channel,sizeof(cc)) || s_previous_flags!=FLAG_RES) {
+        AlgoCounters_t counters=s_algorithm.counters;
+        Algo_Reset(&s_algorithm); s_algorithm.counters=counters;
+        s_previous_params=params; s_previous_channel=cc; s_previous_flags=FLAG_RES; s_initialized=1;
+    }
+    s_output_timing=*timing;
+    uint8_t trace_now=s_trace_enabled && (!s_trace_clock || (uint32_t)(timing->actual_us-s_trace_time)>=100000U);
+    bool valid=(trace_now || s_node_bypass) ?
+        Algo_ProcessTrace(sample,timing,&cc,&params,FLAG_RES,s_refout,&s_algorithm,&s_output,s_node_bypass,trace_now?&s_trace:NULL) :
+        Algo_Process(sample,timing,&cc,&params,FLAG_RES,s_refout,&s_algorithm,&s_output);
+    if(valid)
+        processed_sensor_data[0]=s_output.value;
+    else processed_sensor_data[0].valid=0;
+    s_output_timing.error=s_output.error;
+    if(trace_now) { s_trace_ready=1; s_trace_clock=1; s_trace_time=timing->actual_us; }
+}
+void data_process(void)
+{
+    /* Compatibility/replay entry: no fabricated high-resolution timing. */
+    const AlgoTiming_t untimed={.rate_hz=10};
+    Sensor_ProcessSample(&sensor_data[0],&untimed);
+}
 
 /* Global runtime config — loaded from Flash at boot, used by main.c for ML SET/GETCFG */
 Config_TypeDef g_config;
@@ -118,90 +200,7 @@ LOG_D("SCAN", "[scan] Init reference sensor (%s)...", drv()->name);
  * 返回: 无
  * 说明: 初始化自适应EMA滤波器、历史数据等，防止未初始化变量导致的问题
  */
-void init_data_structures(void)
-{
-    int i, j;
-
-    // 初始化滑动平均滤波器 - 仅1个传感器
-    i = 0;
-    {
-        // 实际传感器滤波器初始化
-        actual_sensor_filter[i].index = 0;
-        actual_sensor_filter[i].count = 0;
-        actual_sensor_filter[i].initialized = 0;
-        for(j = 0; j < SLIDING_WINDOW_SIZE; j++)
-        {
-            actual_sensor_filter[i].buffer_x[j] = 0.0f;
-            actual_sensor_filter[i].buffer_y[j] = 0.0f;
-            actual_sensor_filter[i].buffer_z[j] = 0.0f;
-        }
-
-        // 参考传感器滤波器初始化
-        reference_sensor_filter[i].index = 0;
-        reference_sensor_filter[i].count = 0;
-        reference_sensor_filter[i].initialized = 0;
-        for(j = 0; j < SLIDING_WINDOW_SIZE; j++)
-        {
-            reference_sensor_filter[i].buffer_x[j] = 0.0f;
-            reference_sensor_filter[i].buffer_y[j] = 0.0f;
-            reference_sensor_filter[i].buffer_z[j] = 0.0f;
-        }
-    }
-
-    // 初始化参考传感器历史数据 - 仅1个传感器
-    i = 0;
-    {
-        reference_sensor_history[i].historyIndex = 0;
-        reference_sensor_history[i].historyCount = 0;
-        for(j = 0; j < 3; j++)
-        {
-            reference_sensor_history[i].history[j].x = 0.0f;
-            reference_sensor_history[i].history[j].y = 0.0f;
-            reference_sensor_history[i].history[j].z = 0.0f;
-            reference_sensor_history[i].history[j].t = 0.0f;
-        }
-        reference_sensor_history[i].velocity.x = 0.0f;
-        reference_sensor_history[i].velocity.y = 0.0f;
-        reference_sensor_history[i].velocity.z = 0.0f;
-        reference_sensor_history[i].velocity.t = 0.0f;
-        reference_sensor_history[i].acceleration.x = 0.0f;
-        reference_sensor_history[i].acceleration.y = 0.0f;
-        reference_sensor_history[i].acceleration.z = 0.0f;
-        reference_sensor_history[i].acceleration.t = 0.0f;
-    }
-
-    // 初始化稳定性跟踪器 - 仅1个传感器
-    i = 0;
-    {
-        // 实际传感器稳定性跟踪器初始化
-        actual_sensor_stability[i].stable_count_x = 0;
-        actual_sensor_stability[i].stable_count_y = 0;
-        actual_sensor_stability[i].stable_count_z = 0;
-        actual_sensor_stability[i].transition_factor = 1.0f;
-        actual_sensor_stability[i].in_transition = 0;
-
-        // 参考传感器稳定性跟踪器初始化
-        reference_sensor_stability[i].stable_count_x = 0;
-        reference_sensor_stability[i].stable_count_y = 0;
-        reference_sensor_stability[i].stable_count_z = 0;
-        reference_sensor_stability[i].transition_factor = 1.0f;
-        reference_sensor_stability[i].in_transition = 0;
-    }
-
-    // 初始化尖峰滤波器 - 仅1个传感器
-    i = 0;
-    {
-        spike_filters[i].initialized = 0;
-        spike_filters[i].last_valid_actual.x = 0.0f;
-        spike_filters[i].last_valid_actual.y = 0.0f;
-        spike_filters[i].last_valid_actual.z = 0.0f;
-        spike_filters[i].last_valid_actual.t = 0.0f;
-        spike_filters[i].last_valid_reference.x = 0.0f;
-        spike_filters[i].last_valid_reference.y = 0.0f;
-        spike_filters[i].last_valid_reference.z = 0.0f;
-        spike_filters[i].last_valid_reference.t = 0.0f;
-    }
-}
+void init_data_structures(void) { Sensor_ResetAlgorithm(); }
 
 uint8_t sensor_start()
 {
@@ -257,12 +256,13 @@ static uint8_t wait_for_sensor_pair(void)
         /* Read both statuses (actual first) before judging, as the original
          * per-sensor loops did; a failed status read aborts immediately. */
         actual = drv()->ready(&actual_sensors[0]);
-        if (actual == SENSOR_READ_ERROR) return 1;
+        if (actual == SENSOR_READ_ERROR) { sensor_timing.error=1; return 1; }
         reference = drv()->ready(&reference_sensors[0]);
-        if (reference == SENSOR_READ_ERROR) return 1;
-        if (actual == SENSOR_FAULT || reference == SENSOR_FAULT) return 1;
+        if (reference == SENSOR_READ_ERROR) { sensor_timing.error=1; return 1; }
+        if (actual == SENSOR_FAULT || reference == SENSOR_FAULT) { sensor_timing.error=2; return 1; }
         if (actual == SENSOR_READY && reference == SENSOR_READY) return 0;
         if ((uint32_t)(plat_tick_ms() - start) >= 100U) {
+            sensor_timing.error=3;
             LOG_W("SCAN", "Conversion timeout: actual=%d ref=%d", actual, reference);
             return 1;
         }
@@ -282,7 +282,19 @@ uint8_t get_sensor_data()
    int i = 0;
    uint8_t status;
 
-    sensor_data[i].valid = 1;
+    static uint32_t sequence;
+    memset(&sensor_timing,0,sizeof(sensor_timing));
+    sensor_timing.seq=sequence++;
+#ifdef USE_FREERTOS
+    sensor_timing.rate_hz=(drv() && drv()->settle_ms>=20) ? 20 : 100;
+#else
+    sensor_timing.rate_hz=10; /* nominal rate of the maintained bare-metal loop */
+#endif
+    sensor_timing.timed=1;
+    sensor_timing.error=1;
+    sensor_timing.actual_us=plat_time_us();
+    sensor_timing.reference_us=sensor_timing.actual_us;
+    sensor_data[i].valid = 0;
     processed_sensor_data[i].valid = 0;
     if(SENSOR_Run[i] == 0)
     {
@@ -291,6 +303,9 @@ uint8_t get_sensor_data()
     }
 
     /*启动实际传感器单次测量*/
+    sensor_timing.triggered=!drv()->host_triggered ||
+        (drv()->host_triggered(&actual_sensors[i]) && drv()->host_triggered(&reference_sensors[i]));
+    sensor_timing.actual_us=plat_time_us();
     status = drv()->trigger(&actual_sensors[i], 0);
     if(status != 0)
     {
@@ -301,6 +316,7 @@ uint8_t get_sensor_data()
     LOG_D("SCAN", "[get] actual trigger OK");
 
     /*启动参考传感器单次测量*/
+    sensor_timing.reference_us=plat_time_us();
     status = drv()->trigger(&reference_sensors[i], 0);
     if(status != 0)
     {
@@ -313,12 +329,14 @@ uint8_t get_sensor_data()
     /*等待测量完成*/
     Delay_ms(drv()->settle_ms);
     IWDG_Feed();  /* 延时后立即喂狗，防止校准过程看门狗复位 */
+    sensor_timing.error=0;
     if (wait_for_sensor_pair()) {
         sensor_data[i].valid = 0;
         return 1;
     }
 
     /*读取实际传感器数据*/
+    sensor_timing.error=1;
     status = drv()->read(&actual_sensors[i], 0, &sensor_data[i].actual);
     if(status != 0)
     {
@@ -341,6 +359,13 @@ uint8_t get_sensor_data()
           sensor_data[i].reference.x, sensor_data[i].reference.y, sensor_data[i].reference.z);
 
     /*标记数据有效*/
+    sensor_timing.error=0;
+    int32_t skew=(int32_t)(sensor_timing.actual_us-sensor_timing.reference_us);
+    if(sensor_timing.triggered && (skew>5000 || skew < -5000)) {
+        sensor_timing.error=4;
+        sensor_data[i].valid=0;
+        return 1;
+    }
     sensor_data[i].valid = 1;
     /* P4: data_process() moved to T_PROC (algorithm task separation) */
     return 0;
@@ -348,719 +373,6 @@ uint8_t get_sensor_data()
 
 
 
-
-/**
- * 函数: update_reference_history
- * 功能: 更新参考传感器的历史数据,并计算速度和加速度
- * 参数: sensor_index - 传感器索引 (0-4)
- *       newData - 新的参考传感器数据
- * 返回: 无
- */
-static void update_reference_history(uint8_t sensor_index, SensorData newData)
-{
-    if(sensor_index >= 1) return;
-
-    SensorHistory* history = &reference_sensor_history[sensor_index];
-
-    // 存储新数据到历史记录
-    history->history[history->historyIndex] = newData;
-    history->historyIndex = (history->historyIndex + 1) % 3;
-
-    if(history->historyCount < 3) {
-        history->historyCount++;
-    }
-
-    // 如果有足够的历史数据,计算速度
-    if(history->historyCount >= 2) {
-        // 当前最新数据索引
-        uint8_t currentIndex = (history->historyIndex + 2) % 3;
-        // 前一个数据索引
-        uint8_t prevIndex = (history->historyIndex + 1) % 3;
-
-        history->velocity.x = history->history[currentIndex].x - history->history[prevIndex].x;
-        history->velocity.y = history->history[currentIndex].y - history->history[prevIndex].y;
-        history->velocity.z = history->history[currentIndex].z - history->history[prevIndex].z;
-    }
-
-    // 如果有3个历史数据,计算加速度
-    if(history->historyCount >= 3) {
-        uint8_t prevIndex = (history->historyIndex + 1) % 3;
-        uint8_t prevPrevIndex = history->historyIndex;
-
-        // 计算前一时刻的速度
-        float prevVelX = history->history[prevIndex].x - history->history[prevPrevIndex].x;
-        float prevVelY = history->history[prevIndex].y - history->history[prevPrevIndex].y;
-        float prevVelZ = history->history[prevIndex].z - history->history[prevPrevIndex].z;
-
-        // 计算加速度 = 当前速度 - 前一时刻速度
-        history->acceleration.x = history->velocity.x - prevVelX;
-        history->acceleration.y = history->velocity.y - prevVelY;
-        history->acceleration.z = history->velocity.z - prevVelZ;
-    }
-}
-
-/**
- * 函数: apply_predictive_compensation
- * 功能: 使用参考传感器的运动趋势预测并补偿实际传感器
- * 参数: sensor_index - 传感器索引 (0-4)
- * 返回: 无
- * 说明: 假设参考传感器与实际传感器之间有固定的时间延迟
- */
-static void apply_predictive_compensation(uint8_t sensor_index)
-{
-    if(sensor_index >= 1) return;
-
-    SensorHistory* refHistory = &reference_sensor_history[sensor_index];
-
-    // 至少需要2个历史数据点才能进行预测
-    if(refHistory->historyCount < 2) return;
-
-    // 时间间隔：沿用驱动的 settle_ms（legacy 行为，P5/P6 改为真实采样间隔），单位秒
-    float timeDelta = (float)drv()->settle_ms / 1000.0f;
-
-    // 预测参考传感器的当前值(使用线性预测)
-    SensorData predictedReference;
-    uint8_t currentIndex = (refHistory->historyIndex + 2) % 3;
-
-    predictedReference.x = refHistory->history[currentIndex].x + refHistory->velocity.x * timeDelta;
-    predictedReference.y = refHistory->history[currentIndex].y + refHistory->velocity.y * timeDelta;
-    predictedReference.z = refHistory->history[currentIndex].z + refHistory->velocity.z * timeDelta;
-
-    // 如果有加速度信息,使用二次预测
-    if(refHistory->historyCount >= 3) {
-        predictedReference.x += 0.5f * refHistory->acceleration.x * timeDelta * timeDelta;
-        predictedReference.y += 0.5f * refHistory->acceleration.y * timeDelta * timeDelta;
-        predictedReference.z += 0.5f * refHistory->acceleration.z * timeDelta * timeDelta;
-    }
-
-    // 计算预测的参考传感器变化量(相对于标定值)
-    SensorData predictedRefDelta;
-    predictedRefDelta.x = predictedReference.x - sensor_calibration[sensor_index].reference_offset.x;
-    predictedRefDelta.y = predictedReference.y - sensor_calibration[sensor_index].reference_offset.y;
-    predictedRefDelta.z = predictedReference.z - sensor_calibration[sensor_index].reference_offset.z;
-
-    // 用预测的参考变化量来补偿实际传感器
-    // 实际传感器的补偿值 = 实际传感器当前值 - 预测的参考变化量
-    processed_sensor_data[sensor_index].actual.x -= predictedRefDelta.x;
-    processed_sensor_data[sensor_index].actual.y += predictedRefDelta.y;
-    processed_sensor_data[sensor_index].actual.z += predictedRefDelta.z;
-}
-
-/**
- * 函数: apply_dead_band_filter
- * 功能: 死区滤波 - 对小于2倍标准差的数据置零
- * 参数: sensor_index - 传感器索引 (0-4)
- * 返回: 无
- * 说明: 死区阈值 = 2 × 标准差
- */
-void apply_dead_band_filter(uint8_t sensor_index)
-{
-    if(sensor_index >= 1) return;
-    if(sensor_calibration[sensor_index].calibrated == 0) return;
-
-    float threshold_x, threshold_y, threshold_z;
-
-    // 实际传感器死区滤波
-    threshold_x = g_algo.dead_value * sensor_calibration[sensor_index].actual_std.x;
-    threshold_y = g_algo.dead_value * sensor_calibration[sensor_index].actual_std.y;
-    threshold_z = g_algo.dead_value * sensor_calibration[sensor_index].actual_std.z;
-
-    if(fabsf(processed_sensor_data[sensor_index].actual.x) < threshold_x)
-        processed_sensor_data[sensor_index].actual.x = 0.0f;
-    if(fabsf(processed_sensor_data[sensor_index].actual.y) < threshold_y)
-        processed_sensor_data[sensor_index].actual.y = 0.0f;
-    if(fabsf(processed_sensor_data[sensor_index].actual.z) < threshold_z)
-        processed_sensor_data[sensor_index].actual.z = 0.0f;
-
-    // 参考传感器死区滤波
-    threshold_x = g_algo.dead_value * sensor_calibration[sensor_index].reference_std.x;
-    threshold_y = g_algo.dead_value * sensor_calibration[sensor_index].reference_std.y;
-    threshold_z = g_algo.dead_value * sensor_calibration[sensor_index].reference_std.z;
-
-    if(fabsf(processed_sensor_data[sensor_index].reference.x) < threshold_x)
-        processed_sensor_data[sensor_index].reference.x = 0.0f;
-    if(fabsf(processed_sensor_data[sensor_index].reference.y) < threshold_y)
-        processed_sensor_data[sensor_index].reference.y = 0.0f;
-    if(fabsf(processed_sensor_data[sensor_index].reference.z) < threshold_z)
-        processed_sensor_data[sensor_index].reference.z = 0.0f;
-}
-
-/**
- * 函数: apply_z_positive_filter
- * 功能: Z轴正值过滤 - 将正值的z轴数据改为0
- * 参数: sensor_index - 传感器索引 (0-4)
- * 返回: 无
- * 说明: 自动过滤掉值为正的z轴数据，将其置为0
- */
-void apply_z_positive_filter(uint8_t sensor_index)
-{
-    if(sensor_index >= 1) return;
-
-    // 实际传感器Z轴正值过滤
-    if(processed_sensor_data[sensor_index].actual.z > 0.0f)
-    {
-        processed_sensor_data[sensor_index].actual.z = 0.0f;
-    }
-
-    // 参考传感器Z轴正值过滤
-    if(processed_sensor_data[sensor_index].reference.z > 0.0f)
-    {
-        processed_sensor_data[sensor_index].reference.z = 0.0f;
-    }
-}
-
-/**
- * 函数: apply_spike_filter
- * 功能: 尖峰滤波 - 检测并过滤偶发的突变数据
- * 参数: sensor_index - 传感器索引 (0-4)
- * 返回: 无
- * 说明: 通过对比当前数据与上一次有效数据，检测是否存在尖峰
- *       如果变化量超过阈值（10倍标准差），则认为是尖峰，用上一次有效值替代
- */
-void apply_spike_filter(uint8_t sensor_index)
-{
-    if(sensor_index >= 1) return;
-    if(sensor_calibration[sensor_index].calibrated == 0) return;
-
-    SpikeFilter *filter = &spike_filters[sensor_index];
-
-    // 如果是第一次运行，初始化为当前值
-    if(filter->initialized == 0)
-    {
-        filter->last_valid_actual = processed_sensor_data[sensor_index].actual;
-        filter->last_valid_reference = processed_sensor_data[sensor_index].reference;
-        filter->initialized = 1;
-        return;
-    }
-
-    // 计算尖峰检测阈值（10倍标准差）
-    float threshold_x_actual = g_algo.spike_multiplier * sensor_calibration[sensor_index].actual_std.x;
-    float threshold_y_actual = g_algo.spike_multiplier * sensor_calibration[sensor_index].actual_std.y;
-    float threshold_z_actual = g_algo.spike_multiplier * sensor_calibration[sensor_index].actual_std.z;
-
-    float threshold_x_ref = g_algo.spike_multiplier * sensor_calibration[sensor_index].reference_std.x;
-    float threshold_y_ref = g_algo.spike_multiplier * sensor_calibration[sensor_index].reference_std.y;
-    float threshold_z_ref = g_algo.spike_multiplier * sensor_calibration[sensor_index].reference_std.z;
-
-    // ========== 处理实际传感器 ==========
-    float delta_x = fabsf(processed_sensor_data[sensor_index].actual.x - filter->last_valid_actual.x);
-    float delta_y = fabsf(processed_sensor_data[sensor_index].actual.y - filter->last_valid_actual.y);
-    float delta_z = fabsf(processed_sensor_data[sensor_index].actual.z - filter->last_valid_actual.z);
-
-    uint8_t spike_detected_actual = 0;
-
-    // 检测X轴尖峰
-    if(delta_x > threshold_x_actual && threshold_x_actual > 0.01f)
-    {
-        processed_sensor_data[sensor_index].actual.x = filter->last_valid_actual.x;
-        spike_detected_actual = 1;
-    }
-
-    // 检测Y轴尖峰
-    if(delta_y > threshold_y_actual && threshold_y_actual > 0.01f)
-    {
-        processed_sensor_data[sensor_index].actual.y = filter->last_valid_actual.y;
-        spike_detected_actual = 1;
-    }
-
-    // 检测Z轴尖峰
-    if(delta_z > threshold_z_actual && threshold_z_actual > 0.01f)
-    {
-        processed_sensor_data[sensor_index].actual.z = filter->last_valid_actual.z;
-        spike_detected_actual = 1;
-    }
-
-    // 如果没有检测到尖峰，更新上一次有效值
-    if(spike_detected_actual == 0)
-    {
-        filter->last_valid_actual = processed_sensor_data[sensor_index].actual;
-    }
-
-    // ========== 处理参考传感器 ==========
-    delta_x = fabsf(processed_sensor_data[sensor_index].reference.x - filter->last_valid_reference.x);
-    delta_y = fabsf(processed_sensor_data[sensor_index].reference.y - filter->last_valid_reference.y);
-    delta_z = fabsf(processed_sensor_data[sensor_index].reference.z - filter->last_valid_reference.z);
-
-    uint8_t spike_detected_ref = 0;
-
-    // 检测X轴尖峰
-    if(delta_x > threshold_x_ref && threshold_x_ref > 0.01f)
-    {
-        processed_sensor_data[sensor_index].reference.x = filter->last_valid_reference.x;
-        spike_detected_ref = 1;
-    }
-
-    // 检测Y轴尖峰
-    if(delta_y > threshold_y_ref && threshold_y_ref > 0.01f)
-    {
-        processed_sensor_data[sensor_index].reference.y = filter->last_valid_reference.y;
-        spike_detected_ref = 1;
-    }
-
-    // 检测Z轴尖峰
-    if(delta_z > threshold_z_ref && threshold_z_ref > 0.01f)
-    {
-        processed_sensor_data[sensor_index].reference.z = filter->last_valid_reference.z;
-        spike_detected_ref = 1;
-    }
-
-    // 如果没有检测到尖峰，更新上一次有效值
-    if(spike_detected_ref == 0)
-    {
-        filter->last_valid_reference = processed_sensor_data[sensor_index].reference;
-    }
-}
-
-
-/**
- * 函数: is_valid_float
- * 功能: 检查浮点数是否有效(非NaN、非Inf、在合理范围内)
- */
-static inline uint8_t is_valid_float(float x)
-{
-    // 检查是否为NaN或Inf
-    if(x != x) return 0;  // NaN检测
-    if(x > 1e10f || x < -1e10f) return 0;  // 溢出检测
-    return 1;
-}
-
-/**
- * 函数: apply_sliding_average_filter
- * 功能: 滑动平均滤波 - 对最近N个数据求平均
- * 参数: sensor_index - 传感器索引 (0-4)
- * 返回: 无
- * 说明: 使用固定窗口大小的滑动平均滤波,简单稳定
- */
-void apply_sliding_average_filter(uint8_t sensor_index)
-{
-    if(sensor_index >= 1) return;
-
-    SlidingAverage *actual_filter = &actual_sensor_filter[sensor_index];
-    SlidingAverage *reference_filter = &reference_sensor_filter[sensor_index];
-    int i;
-
-    // ========== 处理实际传感器数据 ==========
-    float x = processed_sensor_data[sensor_index].actual.x;
-    float y = processed_sensor_data[sensor_index].actual.y;
-    float z = processed_sensor_data[sensor_index].actual.z;
-
-    // 检查输入数据有效性
-    if(!is_valid_float(x)) x = 0.0f;
-    if(!is_valid_float(y)) y = 0.0f;
-    if(!is_valid_float(z)) z = 0.0f;
-
-    // 将新数据写入缓冲区
-    actual_filter->buffer_x[actual_filter->index] = x;
-    actual_filter->buffer_y[actual_filter->index] = y;
-    actual_filter->buffer_z[actual_filter->index] = z;
-
-    // 更新索引和计数
-    actual_filter->index = (actual_filter->index + 1) % SLIDING_WINDOW_SIZE;
-    if(actual_filter->count < SLIDING_WINDOW_SIZE) {
-        actual_filter->count++;
-    }
-
-    // 计算滑动平均 - 遍历整个缓冲区累加所有有效数据
-    float sum_x = 0.0f, sum_y = 0.0f, sum_z = 0.0f;
-    uint8_t valid_count = (actual_filter->count < SLIDING_WINDOW_SIZE) ? actual_filter->count : SLIDING_WINDOW_SIZE;
-
-    for(i = 0; i < valid_count; i++)
-    {
-        sum_x += actual_filter->buffer_x[i];
-        sum_y += actual_filter->buffer_y[i];
-        sum_z += actual_filter->buffer_z[i];
-    }
-
-    // 输出平均值
-    if(valid_count > 0)
-    {
-        processed_sensor_data[sensor_index].actual.x = sum_x / valid_count;
-        processed_sensor_data[sensor_index].actual.y = sum_y / valid_count;
-        processed_sensor_data[sensor_index].actual.z = sum_z / valid_count;
-    }
-
-    actual_filter->initialized = 1;
-
-    // ========== 处理参考传感器数据 ==========
-    x = processed_sensor_data[sensor_index].reference.x;
-    y = processed_sensor_data[sensor_index].reference.y;
-    z = processed_sensor_data[sensor_index].reference.z;
-
-    // 检查输入数据有效性
-    if(!is_valid_float(x)) x = 0.0f;
-    if(!is_valid_float(y)) y = 0.0f;
-    if(!is_valid_float(z)) z = 0.0f;
-
-    // 将新数据写入缓冲区
-    reference_filter->buffer_x[reference_filter->index] = x;
-    reference_filter->buffer_y[reference_filter->index] = y;
-    reference_filter->buffer_z[reference_filter->index] = z;
-
-    // 更新索引和计数
-    reference_filter->index = (reference_filter->index + 1) % SLIDING_WINDOW_SIZE;
-    if(reference_filter->count < SLIDING_WINDOW_SIZE) {
-        reference_filter->count++;
-    }
-
-    // 计算滑动平均 - 遍历整个缓冲区累加所有有效数据
-    sum_x = 0.0f;
-    sum_y = 0.0f;
-    sum_z = 0.0f;
-    valid_count = (reference_filter->count < SLIDING_WINDOW_SIZE) ? reference_filter->count : SLIDING_WINDOW_SIZE;
-
-    for(i = 0; i < valid_count; i++)
-    {
-        sum_x += reference_filter->buffer_x[i];
-        sum_y += reference_filter->buffer_y[i];
-        sum_z += reference_filter->buffer_z[i];
-    }
-
-    // 输出平均值
-    if(valid_count > 0)
-    {
-        processed_sensor_data[sensor_index].reference.x = sum_x / valid_count;
-        processed_sensor_data[sensor_index].reference.y = sum_y / valid_count;
-        processed_sensor_data[sensor_index].reference.z = sum_z / valid_count;
-    }
-
-    reference_filter->initialized = 1;
-}
-float X_MAPPING_VALUE = 1.0f;
-float Y_MAPPING_VALUE = 1.0f;
-float Z_MAPPING_VALUE = 1.0f;
-void apply_mapping(uint8_t sensor_index)
-{
-		if(sensor_index >= 1) return;
-    if(sensor_calibration[sensor_index].calibrated == 0) return;
-    processed_sensor_data[sensor_index].actual.x = processed_sensor_data[sensor_index].actual.x * X_MAPPING_VALUE;
-    processed_sensor_data[sensor_index].actual.y = processed_sensor_data[sensor_index].actual.y * Y_MAPPING_VALUE;
-    processed_sensor_data[sensor_index].actual.z = fabsf(processed_sensor_data[sensor_index].actual.z) * Z_MAPPING_VALUE;
-}
-
-/**
- * 函数: apply_stability_and_transition
- * 功能: 检测传感器数据稳定性，并在满足条件时平滑过渡到0
- * 参数: sensor_index - 传感器索引 (0-4)
- * 返回: 无
- * 说明:
- *   1. 检测数据是否在3倍标准差内且小于阈值
- *   2. 若连续STABILITY_CHECK_SAMPLES次满足条件，则启动平滑过渡
- *   3. 使用指数衰减实现平滑过渡到0
- */
-void apply_stability_and_transition(uint8_t sensor_index)
-{
-    if(sensor_index >= 1) return;
-    if(sensor_calibration[sensor_index].calibrated == 0) return;
-
-    StabilityTracker *actual_tracker = &actual_sensor_stability[sensor_index];
-    StabilityTracker *ref_tracker = &reference_sensor_stability[sensor_index];
-
-    // 获取3倍标准差阈值
-    float threshold_x_actual = 3.0f * sensor_calibration[sensor_index].actual_std.x;
-    float threshold_y_actual = 3.0f * sensor_calibration[sensor_index].actual_std.y;
-    float threshold_z_actual = 3.0f * sensor_calibration[sensor_index].actual_std.z;
-
-    // ========== 处理实际传感器 ==========
-    float abs_x = fabsf(processed_sensor_data[sensor_index].actual.x);
-    float abs_y = fabsf(processed_sensor_data[sensor_index].actual.y);
-    float abs_z = fabsf(processed_sensor_data[sensor_index].actual.z);
-
-    // X轴稳定性检测
-    if(abs_x < threshold_x_actual && abs_x < g_algo.stability_threshold)
-    {
-        if(actual_tracker->stable_count_x < STABILITY_CHECK_SAMPLES)
-        {
-            actual_tracker->stable_count_x++;
-        }
-    }
-    else
-    {
-        actual_tracker->stable_count_x = 0;
-        actual_tracker->in_transition = 0;
-        actual_tracker->transition_factor = 1.0f;
-    }
-
-    // Y轴稳定性检测
-    if(abs_y < threshold_y_actual && abs_y < g_algo.stability_threshold)
-    {
-        if(actual_tracker->stable_count_y < STABILITY_CHECK_SAMPLES)
-        {
-            actual_tracker->stable_count_y++;
-        }
-    }
-    else
-    {
-        actual_tracker->stable_count_y = 0;
-        actual_tracker->in_transition = 0;
-        actual_tracker->transition_factor = 1.0f;
-    }
-
-    // Z轴稳定性检测
-    if(abs_z < threshold_z_actual && abs_z < g_algo.stability_threshold)
-    {
-        if(actual_tracker->stable_count_z < STABILITY_CHECK_SAMPLES)
-        {
-            actual_tracker->stable_count_z++;
-        }
-    }
-    else
-    {
-        actual_tracker->stable_count_z = 0;
-        actual_tracker->in_transition = 0;
-        actual_tracker->transition_factor = 1.0f;
-    }
-
-    // 如果所有轴都稳定，启动平滑过渡
-    if(actual_tracker->stable_count_x >= STABILITY_CHECK_SAMPLES &&
-       actual_tracker->stable_count_y >= STABILITY_CHECK_SAMPLES &&
-       actual_tracker->stable_count_z >= STABILITY_CHECK_SAMPLES)
-    {
-        actual_tracker->in_transition = 1;
-
-        // 指数衰减: 每次乘以0.9，实现平滑过渡
-        actual_tracker->transition_factor *= 0.9f;
-
-        // 当过渡系数小于0.01时，直接归零
-        if(actual_tracker->transition_factor < 0.01f)
-        {
-            actual_tracker->transition_factor = 0.0f;
-        }
-
-        // 应用过渡系数
-        processed_sensor_data[sensor_index].actual.x *= actual_tracker->transition_factor;
-        processed_sensor_data[sensor_index].actual.y *= actual_tracker->transition_factor;
-        processed_sensor_data[sensor_index].actual.z *= actual_tracker->transition_factor;
-    }
-
-    // ========== 处理参考传感器 (类似逻辑) ==========
-    float threshold_x_ref = 3.0f * sensor_calibration[sensor_index].reference_std.x;
-    float threshold_y_ref = 3.0f * sensor_calibration[sensor_index].reference_std.y;
-    float threshold_z_ref = 3.0f * sensor_calibration[sensor_index].reference_std.z;
-
-    abs_x = fabsf(processed_sensor_data[sensor_index].reference.x);
-    abs_y = fabsf(processed_sensor_data[sensor_index].reference.y);
-    abs_z = fabsf(processed_sensor_data[sensor_index].reference.z);
-
-    // X轴稳定性检测
-    if(abs_x < threshold_x_ref && abs_x < g_algo.stability_threshold)
-    {
-        if(ref_tracker->stable_count_x < STABILITY_CHECK_SAMPLES)
-            ref_tracker->stable_count_x++;
-    }
-    else
-    {
-        ref_tracker->stable_count_x = 0;
-        ref_tracker->in_transition = 0;
-        ref_tracker->transition_factor = 1.0f;
-    }
-
-    // Y轴稳定性检测
-    if(abs_y < threshold_y_ref && abs_y < g_algo.stability_threshold)
-    {
-        if(ref_tracker->stable_count_y < STABILITY_CHECK_SAMPLES)
-            ref_tracker->stable_count_y++;
-    }
-    else
-    {
-        ref_tracker->stable_count_y = 0;
-        ref_tracker->in_transition = 0;
-        ref_tracker->transition_factor = 1.0f;
-    }
-
-    // Z轴稳定性检测
-    if(abs_z < threshold_z_ref && abs_z < g_algo.stability_threshold)
-    {
-        if(ref_tracker->stable_count_z < STABILITY_CHECK_SAMPLES)
-            ref_tracker->stable_count_z++;
-    }
-    else
-    {
-        ref_tracker->stable_count_z = 0;
-        ref_tracker->in_transition = 0;
-        ref_tracker->transition_factor = 1.0f;
-    }
-
-    // 如果所有轴都稳定，启动平滑过渡
-    if(ref_tracker->stable_count_x >= STABILITY_CHECK_SAMPLES &&
-       ref_tracker->stable_count_y >= STABILITY_CHECK_SAMPLES &&
-       ref_tracker->stable_count_z >= STABILITY_CHECK_SAMPLES)
-    {
-        ref_tracker->in_transition = 1;
-
-        // 指数衰减
-        ref_tracker->transition_factor *= 0.9f;
-
-        // 当过渡系数小于0.01时，直接归零
-        if(ref_tracker->transition_factor < 0.01f)
-        {
-            ref_tracker->transition_factor = 0.0f;
-        }
-
-        // 应用过渡系数
-        processed_sensor_data[sensor_index].reference.x *= ref_tracker->transition_factor;
-        processed_sensor_data[sensor_index].reference.y *= ref_tracker->transition_factor;
-        processed_sensor_data[sensor_index].reference.z *= ref_tracker->transition_factor;
-    }
-}
-
-/**
- * 函数: data_process
- * 功能: 处理传感器数据(标定值补偿、参考传感器校准、过零检测、滤波等)
- * 参数: 无
- * 返回: 无
- * 说明: 对获取的数据进行后处理,不修改原始sensor_data,处理结果存储在processed_sensor_data中
- */
-void data_process()
-{
-    int i = 0;
-
-    // 对每个传感器进行处理
-    // 先检查数据是否有效
-    if(sensor_data[i].valid == 0)
-    {
-        processed_sensor_data[i].valid = 0;  // 标记处理后数据无效
-        return;
-    }
-    // 拷贝有效数据到processed_sensor_data
-    processed_sensor_data[i] = sensor_data[i];
-
-    LOG_D("ALGO", "=== Algorithm Pipeline Start ===");
-    LOG_D("ALGO", "[0] Raw: X=%.2f Y=%.2f Z=%.2f",
-            sensor_data[i].actual.x, sensor_data[i].actual.y, sensor_data[i].actual.z);
-
-    if(sensor_calibration[i].calibrated == 1)
-    {
-        // 更新参考传感器历史数据(用于预测补偿)
-        update_reference_history(i, sensor_data[i].reference);
-    }
-
-    // 标定值补偿
-    if(FLAG_RES & FLAG_CALIBRATION_ENABLE)
-    {
-        // 检查该传感器是否已经标定过
-        if(sensor_calibration[i].calibrated == 1)
-        {
-            // 实际传感器: 原始数据减去标定值,保留变化量
-            processed_sensor_data[i].actual.x -= sensor_calibration[i].actual_offset.x;
-            processed_sensor_data[i].actual.y -= sensor_calibration[i].actual_offset.y;
-            processed_sensor_data[i].actual.z -= sensor_calibration[i].actual_offset.z;
-
-            // 参考传感器: 原始数据减去标定值,保留变化量
-            processed_sensor_data[i].reference.x -= sensor_calibration[i].reference_offset.x;
-            processed_sensor_data[i].reference.y -= sensor_calibration[i].reference_offset.y;
-            processed_sensor_data[i].reference.z -= sensor_calibration[i].reference_offset.z;
-
-            LOG_D("ALGO", "[1] Calibration: X=%.2f Y=%.2f Z=%.2f (offset: %.2f,%.2f,%.2f)",
-                    processed_sensor_data[i].actual.x, processed_sensor_data[i].actual.y, processed_sensor_data[i].actual.z,
-                    sensor_calibration[i].actual_offset.x, sensor_calibration[i].actual_offset.y, sensor_calibration[i].actual_offset.z);
-        }
-    }
-    else
-    {
-        LOG_D("ALGO", "[1] Calibration: DISABLED");
-    }
-
-    // 预测补偿 - 使用参考传感器预测并补偿实际传感器
-    if(FLAG_RES & FLAG_PREDICTIVE_COMPENSATION)
-    {
-        if(sensor_calibration[i].calibrated == 1)
-        {
-            SensorData before = processed_sensor_data[i].actual;
-            apply_predictive_compensation(i);
-            LOG_D("ALGO", "[2] Predictive: X=%.2f Y=%.2f Z=%.2f (delta: %.2f,%.2f,%.2f)",
-                    processed_sensor_data[i].actual.x, processed_sensor_data[i].actual.y, processed_sensor_data[i].actual.z,
-                    processed_sensor_data[i].actual.x - before.x,
-                    processed_sensor_data[i].actual.y - before.y,
-                    processed_sensor_data[i].actual.z - before.z);
-        }
-    }
-    else
-    {
-        LOG_D("ALGO", "[2] Predictive: DISABLED");
-    }
-
-    // 死区滤波
-    if(FLAG_RES & FLAG_DEAD_BAND_ENABLE)
-    {
-        if(sensor_calibration[i].calibrated == 1)
-        {
-            SensorData before = processed_sensor_data[i].actual;
-            apply_dead_band_filter(i);
-            LOG_D("ALGO", "[3] DeadBand: X=%.2f Y=%.2f Z=%.2f (before: %.2f,%.2f,%.2f)",
-                    processed_sensor_data[i].actual.x, processed_sensor_data[i].actual.y, processed_sensor_data[i].actual.z,
-                    before.x, before.y, before.z);
-        }
-    }
-    else
-    {
-        LOG_D("ALGO", "[3] DeadBand: DISABLED");
-    }
-
-    // Z轴正值过滤 - 在死区滤波后执行
-    if(FLAG_RES & FLAG_Z_POSITIVE_FILTER)
-    {
-        float before_z = processed_sensor_data[i].actual.z;
-        apply_z_positive_filter(i);
-        LOG_D("ALGO", "[4] Z-Filter: Z=%.2f (before: %.2f)", processed_sensor_data[i].actual.z, before_z);
-    }
-    else
-    {
-        LOG_D("ALGO", "[4] Z-Filter: DISABLED");
-    }
-
-    // 滑动平均滤波
-    if(FLAG_RES & FLAG_SLIDING_WINDOW_FILTER)
-    {
-        if(sensor_calibration[i].calibrated == 1)
-        {
-            SensorData before = processed_sensor_data[i].actual;
-            apply_sliding_average_filter(i);
-            LOG_D("ALGO", "[5] SlidingAvg: X=%.2f Y=%.2f Z=%.2f (before: %.2f,%.2f,%.2f)",
-                    processed_sensor_data[i].actual.x, processed_sensor_data[i].actual.y, processed_sensor_data[i].actual.z,
-                    before.x, before.y, before.z);
-        }
-    }
-    else
-    {
-        LOG_D("ALGO", "[5] SlidingAvg: DISABLED");
-    }
-
-    // 映射
-    if(FLAG_RES & FLAG_MAPPING_ENABLE)
-    {
-        if(sensor_calibration[i].calibrated == 1)
-        {
-            apply_mapping(i);
-            LOG_D("ALGO", "[6] Mapping: X=%.2f Y=%.2f Z=%.2f (coeff: %.3f,%.3f,%.3f)",
-                    processed_sensor_data[i].actual.x, processed_sensor_data[i].actual.y, processed_sensor_data[i].actual.z,
-                    X_MAPPING_VALUE, Y_MAPPING_VALUE, Z_MAPPING_VALUE);
-        }
-    }
-    else
-    {
-        LOG_D("ALGO", "[6] Mapping: DISABLED");
-    }
-
-    // 稳定性检测和平滑过渡
-    if(FLAG_RES & FLAG_SMOOTH_TRANSITION_ENABLE)
-    {
-        if(sensor_calibration[i].calibrated == 1)
-        {
-            SensorData before = processed_sensor_data[i].actual;
-            apply_stability_and_transition(i);
-            LOG_D("ALGO", "[7] Smooth: X=%.2f Y=%.2f Z=%.2f (before: %.2f,%.2f,%.2f)",
-                    processed_sensor_data[i].actual.x, processed_sensor_data[i].actual.y, processed_sensor_data[i].actual.z,
-                    before.x, before.y, before.z);
-        }
-    }
-    else
-    {
-        LOG_D("ALGO", "[7] Smooth: DISABLED");
-    }
-
-    LOG_D("ALGO", "=== Final Output: X=%.2f Y=%.2f Z=%.2f ===",
-            processed_sensor_data[i].actual.x, processed_sensor_data[i].actual.y, processed_sensor_data[i].actual.z);
-}
 
 /**
  * 函数: print_calibration_data
@@ -1122,215 +434,196 @@ void print_sensor_data(uint8_t sensor_index)
  */
 int format_processed_sensor_data(uint8_t sensor_index, char *buf, size_t bufsize)
 {
-    if (processed_sensor_data[sensor_index].valid == 0) {
-        return 0;  /* 数据无效，不输出 */
+    if(sensor_index!=0 || !buf || !bufsize) return 0;
+    const AlgoPair_t *p=&processed_sensor_data[0];
+    int n;
+    if(!s_format_v2) {
+        if(!p->valid) return 0;
+        n=snprintf(buf,bufsize,"sensor0:%.2f,%.2f,%.2f\r\n",p->actual.x,p->actual.y,p->actual.z);
+    } else {
+        n=snprintf(buf,bufsize,
+            "S ch=0 seq=%lu t=%lu rate=%u valid=%u x=%.6g y=%.6g z=%.6g tr=%lu skew=%ld timing=%s err=%u",
+            (unsigned long)s_output_timing.seq,(unsigned long)s_output_timing.actual_us,
+            s_output_timing.rate_hz,p->valid,
+            (double)(p->valid?p->actual.x:0.0f),(double)(p->valid?p->actual.y:0.0f),
+            (double)(p->valid?p->actual.z:0.0f),(unsigned long)s_output_timing.reference_us,
+            (long)s_output.pair_skew_us,s_output_timing.triggered?"trigger":"observed",s_output_timing.error);
+        if(n<0 || (size_t)n>=bufsize) return 0;
+        if(drv()->has_temperature && p->valid && isfinite(p->actual.t)) {
+            int extra=snprintf(buf+n,bufsize-n," T=%.3f",(double)p->actual.t);
+            if(extra<0 || (size_t)extra>=bufsize-n) return 0;
+            n+=extra;
+        }
+        if(s_refout && p->valid) {
+            int extra=snprintf(buf+n,bufsize-n," rx=%.6g ry=%.6g rz=%.6g rrx=%.6g rry=%.6g rrz=%.6g",
+                (double)s_output.value.reference.x,(double)s_output.value.reference.y,(double)s_output.value.reference.z,
+                (double)s_output.reference_zero.x,(double)s_output.reference_zero.y,(double)s_output.reference_zero.z);
+            if(extra<0 || (size_t)extra>=bufsize-n) return 0;
+            n+=extra;
+        }
+        if(n+2>=(int)bufsize) return 0;
+        buf[n++]='\r'; buf[n++]='\n'; buf[n]=0;
     }
-
-    /* 格式化实际传感器处理后数据 */
-    int len = snprintf(buf, bufsize, "sensor%d:%.2f,%.2f,%.2f\r\n",
-                       sensor_index,
-                       processed_sensor_data[sensor_index].actual.x,
-                       processed_sensor_data[sensor_index].actual.y,
-                       processed_sensor_data[sensor_index].actual.z);
-
-    /* 检查截断：snprintf 返回值 >= bufsize 表示输出被截断 */
-    if (len < 0 || (size_t)len >= bufsize) {
-        return 0;  /* 格式化失败或缓冲区太小 */
-    }
-
-    return len;
+    return n<0 || (size_t)n>=bufsize ? 0 : n;
 }
 
 void print_processed_sensor_data(uint8_t sensor_index)
 {
-    if(processed_sensor_data[sensor_index].valid == 0) return;
-
-    // 打印实际传感器处理后数据（数据流，不加日志前缀）
-    Serial_Printf("sensor%d:%.2f,%.2f,%.2f\r\n",
-            sensor_index,
-            processed_sensor_data[sensor_index].actual.x,
-            processed_sensor_data[sensor_index].actual.y,
-            processed_sensor_data[sensor_index].actual.z);
-//    // 打印参考传感器处理后数据
-//    Serial_Printf("sensor%d:%.2f, %.2f, %.2f\r\n",
-//            sensor_index+5,
-//            processed_sensor_data[sensor_index].reference.x,
-//            processed_sensor_data[sensor_index].reference.y,
-//            processed_sensor_data[sensor_index].reference.z);
+    char line[384];
+    if(format_processed_sensor_data(sensor_index,line,sizeof(line))>0) Serial_SendString(line);
 }
 
 /**
  * 函数: perform_sensor_calibration
- * 功能: 传感器标定 - 连续读取10次所有传感器数据并计算均值和标准差作为标定值
+ * 功能: legacy 标定，收集 300 个有效样本，在线计算均值和样本标准差
  * 参数: 无
  * 返回: 0-标定成功, 1-标定失败
  * 说明:
- *   1. 对所有运行中的传感器(5对,共10个)进行标定
- *   2. 连续读取10次数据,计算每个轴的均值和标准差
+ *   1. 对单通道实际/参考传感器对进行标定
+ *   2. 仅有效样本计入 300 点，连续读取失败超过 20 次则中止
  *   3. 将均值保存为标定偏移量,标准差用于评估传感器稳定性
- *   4. 标定前需确保传感器已启动突发模式
+ *   4. 标定前需确保传感器已启动，并保持无载静止
  */
-uint8_t perform_sensor_calibration(void)
+static uint8_t perform_legacy_calibration(void)
 {
-    int i = 0;
-    int j, k;
-    uint8_t calibration_samples = 10;  // 标定采样次数
-
-    // 数据缓冲区 - 存储所有采样数据用于计算标准差 - 仅1个传感器
-    SensorData actual_samples[1][10];    // 实际传感器采样数据
-    SensorData reference_samples[1][10]; // 参考传感器采样数据
-    uint8_t sample_valid[1][10] = {0};      // 采样有效标志
-
-    // 临时累加器 - 用于存储累加和 - 仅1个传感器
-    struct {
-        float actual_x, actual_y, actual_z, actual_t;
-        float reference_x, reference_y, reference_z, reference_t;
-        uint8_t sample_count;  // 有效采样计数
-    } accumulator[1] = {0};
-
-    // 清空标定数据
-    sensor_calibration[i].calibrated = 0;
-
-    /* 传感器未启动则直接报错，避免后续死循环 */
-    if(SENSOR_Run[i] == 0)
-    {
+    enum { CALIBRATION_SAMPLES = 300 };
+    uint16_t count=0;
+    uint8_t retry_count=0;
+    float mean[2][3]={{0}},m2[2][3]={{0}};
+    sensor_calibration[0].calibrated=0;
+    if(!SENSOR_Run[0]) {
         LOG_W("CALIB", "Calibration skipped: sensor not running");
         return 1;
     }
-
-    LOG_I("CALIB", "Calibrating sensors (10 samples)...");
-
-    // 连续读取10次数据
-    uint8_t retry_count = 0;
-    for(j = 0; j < calibration_samples; j++)
-    {
+    LOG_I("CALIB", "Calibrating sensors (300 samples)...");
+    while(count<CALIBRATION_SAMPLES) {
+        uint32_t started=plat_tick_ms();
         IWDG_Feed();
-        // 读取所有传感器数据
-        if(get_sensor_data() != 0)
-        {
-            if(++retry_count > 20)  // 最多允许20次连续失败，防止死循环
-            {
+        if(!SENSOR_Run[0]) return 1;
+        if(get_sensor_data()!=0 || !sensor_data[0].valid) {
+            if(++retry_count>20) {
                 LOG_W("CALIB", "Calibration aborted: sensor read failed repeatedly");
                 return 1;
             }
-            j--;
-            continue;  // 读取失败,重试本次采样
+            continue;
         }
-        retry_count = 0;  // 读取成功则重置重试计数器
-
-        // 保存数据并累加有效数据
-        if(SENSOR_Run[i] == 0) continue;  // 传感器未运行,跳过
-
-        // 保存本次采样数据
-        actual_samples[i][j] = sensor_data[i].actual;
-        reference_samples[i][j] = sensor_data[i].reference;
-        sample_valid[i][j] = 1;
-
-        // 累加实际传感器数据
-        accumulator[i].actual_x += sensor_data[i].actual.x;
-        accumulator[i].actual_y += sensor_data[i].actual.y;
-        accumulator[i].actual_z += sensor_data[i].actual.z;
-
-        // 累加参考传感器数据
-        accumulator[i].reference_x += sensor_data[i].reference.x;
-        accumulator[i].reference_y += sensor_data[i].reference.y;
-        accumulator[i].reference_z += sensor_data[i].reference.z;
-
-        // 增加有效采样计数
-        accumulator[i].sample_count++;
+        const AlgoVector_t *values[2]={&sensor_data[0].actual,&sensor_data[0].reference};
+        bool finite=true;
+        for(unsigned channel=0;channel<2;channel++) {
+            const AlgoVector_t *v=values[channel];
+            if(!isfinite(v->x) || !isfinite(v->y) || !isfinite(v->z)) finite=false;
+        }
+        if(!finite) {
+            if(++retry_count>20) return 1;
+            continue;
+        }
+        retry_count=0;
+        count++;
+        for(unsigned channel=0;channel<2;channel++) {
+            const AlgoVector_t *v=values[channel];
+            const float xyz[3]={v->x,v->y,v->z};
+            for(unsigned axis=0;axis<3;axis++) {
+                float delta=xyz[axis]-mean[channel][axis];
+                mean[channel][axis]+=delta/count;
+                m2[channel][axis]+=delta*(xyz[axis]-mean[channel][axis]);
+            }
+        }
+#ifdef USE_FREERTOS
+        /* Match the 100 Hz acquisition cadence when reads complete sooner. */
+        uint32_t elapsed=plat_tick_ms()-started;
+        if(count<CALIBRATION_SAMPLES && elapsed<10U) Delay_ms(10U-elapsed);
+#else
+        (void)started;
+#endif
     }
+    SensorPair_Calibration result={0};
+    result.actual_offset=(AlgoVector_t){mean[0][0],mean[0][1],mean[0][2],0};
+    result.reference_offset=(AlgoVector_t){mean[1][0],mean[1][1],mean[1][2],0};
+    result.actual_std=(AlgoVector_t){sqrtf(fmaxf(0,m2[0][0])/(count-1)),
+        sqrtf(fmaxf(0,m2[0][1])/(count-1)),sqrtf(fmaxf(0,m2[0][2])/(count-1)),0};
+    result.reference_std=(AlgoVector_t){sqrtf(fmaxf(0,m2[1][0])/(count-1)),
+        sqrtf(fmaxf(0,m2[1][1])/(count-1)),sqrtf(fmaxf(0,m2[1][2])/(count-1)),0};
+    result.calibrated=1;
+    sensor_calibration[0]=result;
+    LOG_I("CALIB", "Calibration complete! Sensor calibrated.");
+    return 0;
+}
 
-    // 计算均值、标准差并保存为标定值
-    if(SENSOR_Run[i] == 0)
-    {
-        LOG_W("CALIB", "please start sensor!");
-        return 1;  // 传感器未运行,跳过
-    }
+SensorCalibrationMetadata sensor_calibration_metadata;
+static SensorCalibrationExecutor s_calibration_executor;
+void Sensor_SetCalibrationExecutor(SensorCalibrationExecutor executor) { s_calibration_executor=executor; }
 
-    // 检查是否有足够的有效采样(至少5次)
-    if(accumulator[i].sample_count < 5)
-    {
-        sensor_calibration[i].calibrated = 0;  // 标定失败
-        LOG_W("CALIB", "sensor calibrate failed!");
-        return 1;
-    }
-
-    // 计算实际传感器的均值
-    sensor_calibration[i].actual_offset.x = accumulator[i].actual_x / accumulator[i].sample_count;
-    sensor_calibration[i].actual_offset.y = accumulator[i].actual_y / accumulator[i].sample_count;
-    sensor_calibration[i].actual_offset.z = accumulator[i].actual_z / accumulator[i].sample_count;
-
-    // 计算参考传感器的均值
-    sensor_calibration[i].reference_offset.x = accumulator[i].reference_x / accumulator[i].sample_count;
-    sensor_calibration[i].reference_offset.y = accumulator[i].reference_y / accumulator[i].sample_count;
-    sensor_calibration[i].reference_offset.z = accumulator[i].reference_z / accumulator[i].sample_count;
-
-    // 计算标准差 - 实际传感器
-    float variance_actual_x = 0, variance_actual_y = 0, variance_actual_z = 0;
-    float variance_ref_x = 0, variance_ref_y = 0, variance_ref_z = 0;
-
-    for(k = 0; k < calibration_samples; k++)
-    {
-        if(sample_valid[i][k] == 0) continue;
-
-        // 实际传感器方差累加
-        float diff_x = actual_samples[i][k].x - sensor_calibration[i].actual_offset.x;
-        float diff_y = actual_samples[i][k].y - sensor_calibration[i].actual_offset.y;
-        float diff_z = actual_samples[i][k].z - sensor_calibration[i].actual_offset.z;
-
-        variance_actual_x += diff_x * diff_x;
-        variance_actual_y += diff_y * diff_y;
-        variance_actual_z += diff_z * diff_z;
-
-        // 参考传感器方差累加
-        diff_x = reference_samples[i][k].x - sensor_calibration[i].reference_offset.x;
-        diff_y = reference_samples[i][k].y - sensor_calibration[i].reference_offset.y;
-        diff_z = reference_samples[i][k].z - sensor_calibration[i].reference_offset.z;
-
-        variance_ref_x += diff_x * diff_x;
-        variance_ref_y += diff_y * diff_y;
-        variance_ref_z += diff_z * diff_z;
-    }
-
-    // 计算标准差(使用样本标准差公式,除以 n-1)
-    uint8_t n = accumulator[i].sample_count;
-    if(n > 1)
-    {
-        // 需要包含 math.h 来使用 sqrtf
-        sensor_calibration[i].actual_std.x = sqrtf(variance_actual_x / (n - 1));
-        sensor_calibration[i].actual_std.y = sqrtf(variance_actual_y / (n - 1));
-        sensor_calibration[i].actual_std.z = sqrtf(variance_actual_z / (n - 1));
-
-        sensor_calibration[i].reference_std.x = sqrtf(variance_ref_x / (n - 1));
-        sensor_calibration[i].reference_std.y = sqrtf(variance_ref_y / (n - 1));
-        sensor_calibration[i].reference_std.z = sqrtf(variance_ref_z / (n - 1));
-    }
-    else
-    {
-        // 只有一个样本,标准差为0
-        sensor_calibration[i].actual_std.x = 0;
-        sensor_calibration[i].actual_std.y = 0;
-        sensor_calibration[i].actual_std.z = 0;
-
-        sensor_calibration[i].reference_std.x = 0;
-        sensor_calibration[i].reference_std.y = 0;
-        sensor_calibration[i].reference_std.z = 0;
-    }
-
-    // 标记标定完成
-    sensor_calibration[i].calibrated = 1;
-
-    // 检查传感器是否标定成功 - 仅1个传感器
-    if(sensor_calibration[i].calibrated == 1)
-    {
-        LOG_I("CALIB", "Calibration complete! Sensor calibrated.");
-        return 0;  // 标定成功
-    }
-    else
-    {
-        LOG_W("CALIB", "Calibration failed! Sensor not calibrated.");
-        return 1;  // 标定失败
-    }
+static uint8_t perform_timed_calibration(void)
+{
+    sensor_calibration_metadata.version=1;
+    if(!SENSOR_Run[0]) { sensor_calibration_metadata.failure=1; return 1; }
+    /* Welford: bounded memory and stable variance, no large sample arrays. */
+    float means[2][4]={{0}}, m2[2][4]={{0}};
+    uint16_t n=0, attempts=0;
+    uint32_t start=plat_tick_ms(), started_us=plat_time_us();
+    uint16_t duration=g_algo.config.calib_ms;
+    uint32_t period=drv()->settle_ms>=20 ? 50U : 10U;
+    sensor_calibration[0].calibrated=0;
+    do {
+        uint32_t tick=plat_tick_ms();
+        attempts++;
+        if(!get_sensor_data() && sensor_data[0].valid) {
+            const AlgoVector_t *a=&sensor_data[0].actual,*r=&sensor_data[0].reference;
+            float v[2][4]={{a->x,a->y,a->z,a->t},{r->x,r->y,r->z,r->t}};
+            uint8_t valid=1;
+            for(unsigned i=0;i<2;i++) for(unsigned j=0;j<4;j++) if(!isfinite(v[i][j])) valid=0;
+            if(valid) {
+                n++;
+                for(unsigned i=0;i<2;i++) for(unsigned j=0;j<4;j++) {
+                    float d=v[i][j]-means[i][j]; means[i][j]+=d/n;
+                    m2[i][j]+=d*(v[i][j]-means[i][j]);
+                }
+            }
+        }
+        IWDG_Feed();
+        uint32_t elapsed=plat_tick_ms()-tick;
+        if(elapsed<period) Delay_ms(period-elapsed);
+    } while((uint32_t)(plat_tick_ms()-start)<duration);
+    sensor_calibration_metadata.samples=n; sensor_calibration_metadata.attempts=attempts;
+    sensor_calibration_metadata.timestamp_us=started_us;
+    sensor_calibration_metadata.duration_us=(plat_tick_ms()-start)*1000U;
+    if(n<2) { sensor_calibration_metadata.failure=2; return 1; }
+    if((uint32_t)n*10U<(uint32_t)attempts*9U) { sensor_calibration_metadata.failure=3; return 1; }
+    SensorPair_Calibration result={0};
+    result.actual_offset=(AlgoVector_t){means[0][0],means[0][1],means[0][2],means[0][3]};
+    result.reference_offset=(AlgoVector_t){means[1][0],means[1][1],means[1][2],means[1][3]};
+    result.actual_std=(AlgoVector_t){sqrtf(m2[0][0]/(n-1)),sqrtf(m2[0][1]/(n-1)),sqrtf(m2[0][2]/(n-1)),0};
+    result.reference_std=(AlgoVector_t){sqrtf(m2[1][0]/(n-1)),sqrtf(m2[1][1]/(n-1)),sqrtf(m2[1][2]/(n-1)),0};
+    result.calibrated=1;
+    sensor_calibration[0]=result;
+    memset(&sensor_calibration_metadata,0,sizeof(sensor_calibration_metadata));
+    sensor_calibration_metadata.version=1;
+    sensor_calibration_metadata.samples=n; sensor_calibration_metadata.attempts=attempts;
+    sensor_calibration_metadata.timestamp_us=started_us;
+    sensor_calibration_metadata.duration_us=(plat_tick_ms()-start)*1000U;
+    sensor_calibration_metadata.rate_hz=(float)attempts*1000000.0f/sensor_calibration_metadata.duration_us;
+    sensor_calibration_metadata.actual_temperature=means[0][3];
+    sensor_calibration_metadata.reference_temperature=means[1][3];
+    sensor_calibration_metadata.temperature_valid=drv()->has_temperature;
+    /* FNV-1a over the complete result + metadata prefix. Not a Flash schema. */
+    uint32_t hash=2166136261U;
+    const uint8_t *bytes=(const uint8_t *)&result;
+    for(unsigned i=0;i<sizeof(result);i++) hash=(hash^bytes[i])*16777619U;
+    bytes=(const uint8_t *)&sensor_calibration_metadata;
+    for(unsigned i=0;i<offsetof(SensorCalibrationMetadata,checksum);i++) hash=(hash^bytes[i])*16777619U;
+    sensor_calibration_metadata.checksum=hash;
+    return 0;
+}
+uint8_t Sensor_CalibrateOwned(void)
+{
+    memset(&sensor_calibration_metadata,0,sizeof(sensor_calibration_metadata));
+    uint8_t failed=g_algo.config.profile==ALGO_PROFILE_V2 ? perform_timed_calibration() : perform_legacy_calibration();
+    Sensor_ResetAlgorithm();
+    return failed;
+}
+uint8_t perform_sensor_calibration(void)
+{
+    return s_calibration_executor ? s_calibration_executor() : Sensor_CalibrateOwned();
 }
 
 /**
@@ -1377,6 +670,7 @@ void Config_Init_All(void)
 uint8_t Config_Save_All(void)
 {
     /* Sync runtime vars back to g_config before saving */
+    g_config.algo                = g_algo.config;
     g_config.FLAG_RES            = FLAG_RES;
     g_config.X_MAPPING_VALUE     = X_MAPPING_VALUE;
     g_config.Y_MAPPING_VALUE     = Y_MAPPING_VALUE;

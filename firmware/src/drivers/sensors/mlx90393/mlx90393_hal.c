@@ -59,6 +59,8 @@ const SensorDriver_t g_drv_mlx90393 = {
     .type               = SENSOR_TYPE_MLX90393,
     .ctx_size           = sizeof(MLX90393_Handle),
     .settle_ms          = 20,     /* OSR=2 (x4), 3 axes ~15 ms, with margin; no status polling */
+    .has_temperature    = 1,
+    .quantum_uT         = 0.242f, /* largest step in existing convertRaw() */
     .probe              = mlx_probe,
     .configure          = mlx_configure,
     .sampling_supported = NULL,

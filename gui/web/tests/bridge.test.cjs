@@ -7,6 +7,10 @@ test('Windows backend serves offline UI, lists ports, rejects unauthorized and i
   try{
     const origin=await new Promise((resolve,reject)=>{server.stdout.on('data',chunk=>{const m=chunk.toString().match(/http:\/\/127\.0\.0\.1:\d+/);if(m)resolve(m[0]);});server.on('error',reject);server.on('exit',code=>reject(new Error('Server exited '+code)));});
     const page=await fetch(origin);assert.equal(page.status,200);assert.match(await page.text(),/FIELD/);assert.match(page.headers.get('content-security-policy'),/connect-src 'self'/);
+    for(const file of ['algorithm.html','algorithm.js','algorithm-model.js','algorithm.css']){
+      const asset=await fetch(origin+'/'+file);assert.equal(asset.status,200);
+      assert.match(asset.headers.get('content-type'),file.endsWith('.css')?/text\/css/:file.endsWith('.js')?/text\/javascript/:/text\/html/);
+    }
     const session=await(await fetch(origin+'/api/session')).json();assert.equal(session.transport,'windows-serial');const headers={'X-Field-Key':session.token,'Content-Type':'application/json'};
     const ports=await(await fetch(origin+'/api/ports',{headers})).json();assert(Array.isArray(ports.ports));assert(ports.ports.every(p=>/^COM\d+$/.test(p)));
     assert.equal((await fetch(origin+'/api/ports')).status,403);
@@ -14,10 +18,10 @@ test('Windows backend serves offline UI, lists ports, rejects unauthorized and i
     assert.equal((await fetch(origin+'/bridge/Server.cs')).status,404);
     const invalid=await fetch(origin+'/api/connect',{method:'POST',headers,body:JSON.stringify({port:'COM999999',baudRate:115200})});assert.equal(invalid.status,400);assert.match((await invalid.json()).error,/端口/);
     const injection=await fetch(origin+'/api/write',{method:'POST',headers,body:JSON.stringify({command:'ML STOP\nML START'})});assert.equal(injection.status,400);assert.match((await injection.json()).error,/命令/);
-    for(const command of ['ML IMPORT_START 250','ML IMPORT_DATA '+ 'a'.repeat(47),'ML IMPORT_END','ML IMPORT_CANCEL','ML LOGLEVEL','ML VERSION']){
+    for(const command of ['ML IMPORT_START 250','ML IMPORT_DATA '+ 'a'.repeat(47),'ML IMPORT_END','ML IMPORT_CANCEL','ML LOGLEVEL','ML VERSION','ML NODES','ML TRACE 1','ML NODE 4 0']){
       const result=await fetch(origin+'/api/write',{method:'POST',headers,body:JSON.stringify({command})});assert.equal(result.status,400);assert.match((await result.json()).error,/会话/);
     }
-    for(const command of ['ML IMPORT_START 1024','ML IMPORT_DATA '+ 'a'.repeat(48),'ML IMPORT_END\n']){
+    for(const command of ['ML IMPORT_START 1024','ML IMPORT_DATA '+ 'a'.repeat(48),'ML IMPORT_END\n','ML TRACE 2','ML NODE 0 0','ML NODE 4 2']){
       const result=await fetch(origin+'/api/write',{method:'POST',headers,body:JSON.stringify({command})});assert.equal(result.status,400);assert.match((await result.json()).error,/命令/);
     }
     const read=await fetch(origin+'/api/read',{headers});assert.equal(read.status,400);

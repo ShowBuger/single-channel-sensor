@@ -71,7 +71,7 @@ static int8_t ak_ready(void *ctx)
     /* Reading ST(10h) alone does not clear DRDY; DRDY=1 means an unread sample set. */
     if (AK09974C_ReadStatus((AK09974C_Handle_t *)ctx, &st)) return SENSOR_READ_ERROR;
     if (!(st & AK09974C_ST_DRDY)) return SENSOR_NOT_READY;
-    if (st & AK09974C_ST_ERR) LOG_D("SCAN", "Magnetic overflow: status=0x%02X", st);
+    if (st & AK09974C_ST_ERR) return SENSOR_FAULT;
     return SENSOR_READY;
 }
 
@@ -88,11 +88,19 @@ static uint8_t ak_read(void *ctx, uint8_t bus, SensorData_t *out)
     return 0;
 }
 
+static uint8_t ak_host_triggered(const void *ctx)
+{
+    return !((const AK09974C_Handle_t *)ctx)->running;
+}
+static float ak_quantum(const void *ctx) { return AK09974C_GetSensitivity(ctx); }
 const SensorDriver_t g_drv_ak09974c = {
     .name               = "AK09974C",
     .type               = SENSOR_TYPE_AK09974C,
     .ctx_size           = sizeof(AK09974C_Handle_t),
     .settle_ms          = 3,      /* low-noise drive single measurement ~2.9 ms */
+    .quantum_uT         = 1.1f,
+    .quantum            = ak_quantum,
+    .host_triggered     = ak_host_triggered,
     .probe              = ak_probe,
     .configure          = ak_configure,
     .sampling_supported = NULL,

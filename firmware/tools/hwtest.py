@@ -292,7 +292,7 @@ class Suite:
 
     # T5 -----------------------------------------------------------------------
     def t_stream(self):
-        r = self.d.request("ML START", r"^(Sensor started|Failed to start)$", 5)
+        r = self.d.request("ML START", r"^(Sensor started(?: successfully)?|Failed to start)$", 15)
         if not r["ok"] or r["line"].startswith("Failed"):
             self.record("start", "FAIL", line=r.get("line"))
             return
@@ -377,7 +377,7 @@ class Suite:
     # ------------------------------------------------------------------------
     def finish(self):
         if self.a.leave_running:
-            r = self.d.request("ML START", r"^(Sensor started|Failed to start)$", 5)
+            r = self.d.request("ML START", r"^(Sensor started(?: successfully)?|Failed to start)$", 15)
         else:
             r = self.d.request("ML STOP", r"^(Stopped|Stop failed)$", 3)
         failed = [x for x in self.results if x["status"] == "FAIL"]

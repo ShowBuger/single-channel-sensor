@@ -173,6 +173,7 @@ uint8_t TMAG3001_ReadMagneticData(TMAG3001_Handle_t *dev, TMAG3001_Result_t *res
 // 扩展测量范围的辅助函数
 uint8_t TMAG3001_ReadMagneticDataWithOversampling(TMAG3001_Handle_t *dev, TMAG3001_Result_t *result, uint8_t oversample_count);
 float TMAG3001_ApplyDigitalGain(float raw_value, float digital_gain);
+float TMAG3001_Quantum_uT(const TMAG3001_Handle_t *dev);
 
 // Force compilation check - gain support added
 #endif // __TMAG3001_H

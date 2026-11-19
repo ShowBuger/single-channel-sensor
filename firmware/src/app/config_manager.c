@@ -6,7 +6,7 @@
 #include "config_parser.h"
 
 
-#define CONFIG_MAGIC_NUMBER    0x52454C57U   /* "RELW" - version 6: CONTINUOUS mode + 16x OSR */
+#define CONFIG_MAGIC_NUMBER    0x52454C57U   /* stable across schema 5/6; version is stored separately */
 
 extern void IWDG_Feed(void);
 
@@ -41,6 +41,9 @@ uint8_t Config_SetDefaultsForProduct(Config_TypeDef *cfg, const char *product)
     SensorType_t type = Config_SensorTypeForProduct(product);
     if (!cfg || type == SENSOR_TYPE_INVALID) return 1;
     memset(cfg, 0, sizeof(*cfg));
+    AlgoParams_t defaults;
+    Algo_DefaultParams(&defaults);
+    cfg->algo = defaults.config;
     cfg->schema_ver          = CONFIG_SCHEMA_VERSION;
     cfg->sensor_type         = type;
     cfg->FLAG_RES            = CONFIG_DEFAULT_FLAG_RES;
@@ -133,19 +136,24 @@ uint8_t Config_Load(Config_TypeDef *cfg)
     const StoredConfig_TypeDef *sc =
         (const StoredConfig_TypeDef *)plat_cfgstore_ptr();
 
-    if (sc->magic != CONFIG_MAGIC_NUMBER ||
-        sc->config.schema_ver != CONFIG_SCHEMA_VERSION ||
-        calculate_checksum(&sc->config) != sc->config.checksum)
-    {
+    if (sc->magic == CONFIG_MAGIC_NUMBER && sc->config.schema_ver == 5U) {
+        /* Validate the 56-byte schema-5 record before reading any extension. */
+        const uint8_t *old=(const uint8_t *)&sc->config;
+        uint32_t sum=0,checksum;
+        for (unsigned i=0;i<52;i++) sum+=old[i];
+        memcpy(&checksum,old+52,4);
+        if (sum!=checksum) goto invalid;
         Config_SetDefaults(cfg);
-        LOG_W("CFG", "Config invalid, using defaults");
-        return 1; /* 1 = defaults applied */
+        memcpy(cfg,old,52);
+        cfg->schema_ver=CONFIG_SCHEMA_VERSION;
+        cfg->checksum=calculate_checksum(cfg);
+        LOG_I("CFG", "Migrated schema 5 to 6 (legacy profile)");
+    } else {
+        if (sc->magic != CONFIG_MAGIC_NUMBER ||
+            sc->config.schema_ver != CONFIG_SCHEMA_VERSION ||
+            calculate_checksum(&sc->config) != sc->config.checksum) goto invalid;
+        memcpy(cfg, &sc->config, sizeof(Config_TypeDef));
     }
-
-    memcpy(cfg, &sc->config, sizeof(Config_TypeDef));
-    /* 旧版TMAG模板曾写成MA01/type=1。仅迁移已通过Flash校验的旧记录，
-     * 保留用户的传感器和算法参数；新导入的冲突配置仍由校验拒绝。
-     */
     if (cfg->sensor_type == SENSOR_TYPE_TMAG3001 &&
         memchr(cfg->product_model, '\0', sizeof(cfg->product_model)) &&
         strcmp(cfg->product_model, "MA01") == 0) {
@@ -160,6 +168,10 @@ uint8_t Config_Load(Config_TypeDef *cfg)
     }
     LOG_I("CFG", "Config loaded from Flash");
     return 0;
+invalid:
+    Config_SetDefaults(cfg);
+    LOG_W("CFG", "Config invalid, using defaults");
+    return 1;
 }
 
 void Config_RestoreDefault(void)

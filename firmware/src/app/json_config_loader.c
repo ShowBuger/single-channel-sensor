@@ -94,7 +94,7 @@ uint8_t JsonConfig_Parse(char *json, Config_TypeDef *cfg, JsonParseResult_t *res
                     strcat(field, ".");
                     strcat(field, subkey);
                     uint8_t string_ok = !strcmp(field, "sensor.type") || !strcmp(field, "sensor.sensor_type") ||
-                        !strcmp(field, "algo.flag") || !strcmp(field, "algo.FLAG_RES") || !strcmp(field, "algo.flag_res");
+                        !strcmp(field, "algo.profile") || !strcmp(field, "algo.flag") || !strcmp(field, "algo.FLAG_RES") || !strcmp(field, "algo.flag_res");
                     p = parse_value(p, value, sizeof(value), string_ok);
                     if (!p) goto value_err;
                     if (pass && Config_ParseSingleKV(cfg, field, value)) {

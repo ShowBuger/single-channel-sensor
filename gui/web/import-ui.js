@@ -5,6 +5,7 @@ const localize=(zh,en)=>globalThis.FieldI18n?FieldI18n.t(zh,en):zh;
 const $=id=>document.getElementById(id),C=FieldCore;
 function previewValue(config,group,key){
   const value=config[group][key];
+  if(group==='algo'&&key==='profile')return value===1?'v2':'legacy';
   if(group==='algo'&&key==='flag')return '0x'+value.toString(16).toUpperCase().padStart(2,'0');
   if(group==='log')return `${[localize('关闭','Off'),localize('错误','Error'),localize('警告','Warning'),localize('信息','Info'),localize('调试','Debug')][value]}（${value}）`;
   if(group==='sensor'){
@@ -54,7 +55,7 @@ class ImportPanel {
     const {config,missing}=this.prepared;
     const groups=[[localize('产品信息','Product information'),[[localize('产品型号','Product model'),config.product,'product']]]];
     for(const[group,title]of [['sensor',localize('传感器寄存器参数','Sensor register parameters')],['algo',localize('算法参数','Algorithm parameters')],['log',localize('系统日志','System log')]]){
-      const rows=Object.entries(C.IMPORT_FIELDS[group]).map(([key,rule])=>{
+      const rows=Object.entries(C.IMPORT_FIELDS[group]).filter(([key])=>Object.hasOwn(config[group],key)).map(([key,rule])=>{
         const value=previewValue(config,group,key);
         return[rule[0],value,group+'.'+key];
       });
@@ -74,6 +75,8 @@ class ImportPanel {
       section.append(table);$('jsonPreview').append(section);
     }
     $('importNotes').textContent=localize(`${config.product} 使用 ${C.SENSOR_NAMES[config.sensor.type]}；全部参数统一存储，未生效字段仍会保存和读回。 `,`${config.product} uses ${C.SENSOR_NAMES[config.sensor.type]}; all parameters are stored, including inactive fields, and can be read back. `)+(missing.length?localize(`缺少的 ${missing.length} 个字段使用该产品默认值。 `,`Missing ${missing.length} fields use the product defaults. `):localize('这是完整配置。 ','Configuration is complete. '))+localize('应用可能重新标定，请保持传感器静止。','Applying may recalibrate the sensor. Keep it still.');
+    if(config.algo.profile===1 && (config.algo.flag&16) && !(config.algo.flag&64))
+      $('importNotes').textContent+=localize(' v2 中映射不再隐含对 Z 取绝对值；当前组合会保留 Z 的正负号。',' In v2, mapping no longer takes the absolute value of Z; this flag combination preserves its sign.');
   }
   download(value,name){const url=URL.createObjectURL(new Blob([JSON.stringify(value,null,2)+'\n'],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
   async apply(){if(!this.prepared||!this.device.connected||this.busy)return;const prepared=this.prepared;this.controller=new AbortController();this.busy=true;$('importProgress').hidden=false;$('importProgressBar').value=0;this.sync();await this.operation(async()=>{try{

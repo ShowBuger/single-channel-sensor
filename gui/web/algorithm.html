@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>FIELD · 算法工作台</title><link rel="stylesheet" href="algorithm.css"></head>
+<body>
+<header class="topbar"><a class="brand" href="index.html"><span class="brand-icon">≋</span>FIELD<span class="brand-sub">工程工作台</span></a><nav aria-label="主导航"><a href="index.html">实时监测</a><a href="algorithm.html" aria-current="page">算法节点</a></nav><span class="header-note">SENSOR / SIGNAL LAB</span></header>
+<main>
+  <section class="heading"><div><div class="eyebrow">ALGORITHM EXPLORER</div><h1>让每一步信号，清晰可见<span>。</span></h1><p>沿处理链查看实际与参考数据，观察每个节点如何改变信号。</p></div><span class="source-badge" id="sourceBadge">● 离线</span></section>
+  <section class="toolbar" aria-label="设备控制"><div class="port-field"><span class="status-dot" id="connectionDot"></span><label for="port">串口</label><select id="port"><option value="">检测端口中…</option></select><button id="refresh" class="icon-button" aria-label="刷新串口">↻</button></div><button class="primary" id="connect">连接设备</button><span class="divider"></span><button id="start" disabled>开始采集</button><button id="stop" disabled>停止</button><button id="sync" disabled>读取状态</button><div class="toolbar-end"><button class="quiet" id="demo">体验演示</button><button id="export" disabled>导出 CSV ↗</button></div></section>
+  <div class="notice" id="notice" role="status">连接设备以读取真实节点数据，或体验演示。请先断开其他页面的串口连接。</div>
+  <section class="workspace">
+    <aside class="panel pipeline"><div class="panel-heading"><div><span class="eyebrow">PROCESSING CHAIN</span><h2>算法处理链</h2></div><select class="pill" id="profile" aria-label="算法配置档" disabled><option value="0">legacy</option><option value="1">v2</option></select></div><div class="chain-summary"><span id="enabledCount">等待设备状态</span><span>按实际执行顺序</span></div><div id="nodes" class="nodes" aria-label="算法节点"></div><div class="chain-foot"><span class="tiny-dot"></span>开关即时作用于 RAM，未写入 Flash。<br>切换节点会清空滤波历史与当前曲线。</div></aside>
+    <section class="details">
+      <div class="panel chart-panel"><div class="detail-heading"><div><div class="eyebrow" id="stageCode">STAGE 04</div><h2 id="stageTitle">背景补偿</h2><p id="stageDescription">时间对齐与带符号增益</p></div><div class="chart-actions"><label class="sr-only" for="axis">显示轴</label><select id="axis"><option value="0">X 轴</option><option value="1">Y 轴</option><option value="2">Z 轴</option></select><button id="freeze" aria-pressed="false">暂停显示</button></div></div>
+      <div class="chart-meta"><div class="legend"><span><i class="actual"></i>实际通道</span><span><i class="reference"></i>参考通道</span></div><span id="stageState">等待数据</span></div>
+      <div class="plot"><canvas id="chart" aria-label="所选节点实际与参考通道的时间曲线" role="img"></canvas><div id="chartEmpty">等待第一帧节点数据<span>选中左侧节点，比较处理前后的变化</span></div></div><div class="chart-foot"><span>最近 30 秒 · 节点遥测最高 10 Hz</span><span id="sequence">SEQ —</span></div></div>
+      <div class="readouts" id="readouts"></div>
+      <div class="panel observation"><div><span class="eyebrow">OBSERVATION</span><h3>同一帧，看见处理前后</h3><p id="observation">选择节点后，这里会显示该节点与上一执行节点的差值。</p></div><div class="metrics"><div><span>节点帧率</span><strong id="rate">—<small> Hz</small></strong></div><div><span>无效 / 不完整帧</span><strong id="lost">0 / 0</strong></div></div></div>
+    </section>
+  </section>
+  <footer><span>FIELD <span class="footer-slash">/</span> 单通道磁传感系统</span><span id="deviceInfo">尚未连接设备</span></footer>
+</main><script src="core.js"></script><script src="bridge-client.js"></script><script src="algorithm-model.js"></script><script src="algorithm.js"></script>
+</body></html>

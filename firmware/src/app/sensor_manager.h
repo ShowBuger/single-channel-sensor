@@ -9,66 +9,36 @@
 typedef SensorData_t SensorData;
 
 // 传感器数据结构 - 包含实际传感器和参考传感器的数据
+typedef AlgoPair_t SensorPair_Data;
+typedef AlgoCalibration_t SensorPair_Calibration;
+
+extern uint8_t SENSOR_List[1], SENSOR_Run[1];
+extern SensorPair_Data sensor_data[1], processed_sensor_data[1];
+extern SensorPair_Calibration sensor_calibration[1];
+extern AlgoTiming_t sensor_timing;
+void Sensor_ProcessSample(const AlgoPair_t *sample, const AlgoTiming_t *timing);
+void Sensor_ResetAlgorithm(void);
+const AlgoCounters_t *Sensor_AlgoCounters(void);
+typedef uint8_t (*SensorCalibrationExecutor)(void);
+void Sensor_SetCalibrationExecutor(SensorCalibrationExecutor executor);
+uint8_t Sensor_CalibrateOwned(void);
 typedef struct {
-    SensorData actual;      // 实际传感器数据
-    SensorData reference;   // 参考传感器数据
-    uint8_t valid;             // 数据有效标志 (0-无效, 1-有效)
-} SensorPair_Data;
-
-// 传感器标定值结构 - 存储每对传感器的标定值
-typedef struct {
-    SensorData actual_offset;      // 实际传感器标定偏移量（均值）
-    SensorData reference_offset;   // 参考传感器标定偏移量（均值）
-    SensorData actual_std;         // 实际传感器标准差
-    SensorData reference_std;      // 参考传感器标准差
-    uint8_t calibrated;               // 标定完成标志 (0-未标定, 1-已标定)
-} SensorPair_Calibration;
-
-// 传感器历史数据结构 - 用于预测补偿
-typedef struct {
-    SensorData history[3];    // 历史数据缓冲区（3个数据点）
-    SensorData velocity;      // 速度（变化率）
-    SensorData acceleration;  // 加速度
-    uint8_t historyIndex;        // 当前写入索引
-    uint8_t historyCount;        // 已存储的历史数据数量
-} SensorHistory;
-
-// 滑动平均滤波结构
-/* SLIDING_WINDOW_SIZE and STABILITY_CHECK_SAMPLES are defined in algo_params.h */
-typedef struct {
-    float buffer_x[SLIDING_WINDOW_SIZE];  // X轴数据缓冲区
-    float buffer_y[SLIDING_WINDOW_SIZE];  // Y轴数据缓冲区
-    float buffer_z[SLIDING_WINDOW_SIZE];  // Z轴数据缓冲区
-    uint8_t index;                         // 当前写入索引
-    uint8_t count;                         // 已存储的数据数量
-    uint8_t initialized;                   // 初始化标志
-} SlidingAverage;
-
-// 稳定性检测和平滑过渡结构
-/* STABILITY_CHECK_SAMPLES and stability_threshold are in algo_params.h / g_algo */
-typedef struct {
-    uint8_t stable_count_x;         // X轴稳定计数
-    uint8_t stable_count_y;         // Y轴稳定计数
-    uint8_t stable_count_z;         // Z轴稳定计数
-    float transition_factor;        // 过渡系数 (0.0 - 1.0)，1.0表示不衰减，0.0表示完全归零
-    uint8_t in_transition;          // 是否正在过渡中
-} StabilityTracker;
-
-
-// 尖峰滤波结构
-/* SPIKE_FILTER_THRESHOLD_MULTIPLIER moved to g_algo.spike_multiplier (algo_params.h) */
-typedef struct {
-    SensorData last_valid_actual;      // 上一次有效的实际传感器数据
-    SensorData last_valid_reference;   // 上一次有效的参考传感器数据
-    uint8_t initialized;                   // 初始化标志
-} SpikeFilter;
-
-// 全局变量声明
-extern uint8_t SENSOR_List[1];  // 传感器状态列表
-extern uint8_t SENSOR_Run[1];   // 传感器运行状态
-extern SensorPair_Data sensor_data[1];  // 1对传感器的数据
-extern SensorPair_Data processed_sensor_data[1];  // 1对传感器的处理后数据
-extern SensorPair_Calibration sensor_calibration[1];  // 1对传感器的标定值
+    uint16_t version, samples, attempts;
+    uint8_t temperature_valid, failure; /* 1=stopped, 2=too few, 3=valid ratio */
+    uint32_t timestamp_us, duration_us;
+    float rate_hz, actual_temperature, reference_temperature;
+    uint32_t checksum;
+} SensorCalibrationMetadata;
+extern SensorCalibrationMetadata sensor_calibration_metadata;
+uint8_t Sensor_SetFormat(uint8_t v2);
+uint8_t Sensor_SetReferenceOutput(uint8_t enabled);
+uint8_t Sensor_GetFormat(void);
+void Sensor_SetTrace(uint8_t enabled);
+uint8_t Sensor_GetTrace(void);
+uint16_t Sensor_GetNodeBypass(void);
+uint8_t Sensor_SetNode(uint8_t node,uint8_t enabled);
+uint8_t Sensor_TakeTrace(AlgoTrace_t *trace);
+int Sensor_FormatTrace(const AlgoTrace_t *trace,unsigned node,char *buf,size_t size);
 
 // FLAG_RES 标志位定义 (每一位代表一个使能标志)
 extern uint8_t FLAG_RES;
@@ -81,22 +51,7 @@ extern uint8_t FLAG_RES;
 #define FLAG_MAPPING_ENABLE             (1 << 4)  // Bit 4: 映射使能标志
 #define FLAG_SMOOTH_TRANSITION_ENABLE   (1 << 5)  // Bit 5: 平滑过渡使能标志
 #define FLAG_Z_POSITIVE_FILTER          (1 << 6)  // Bit 6: Z轴正值过滤使能标志
-
-// 参考传感器历史数据（用于预测补偿）
-extern SensorHistory reference_sensor_history[1];
-
-// 实际传感器滑动平均滤波器
-extern SlidingAverage actual_sensor_filter[1];
-// 参考传感器滑动平均滤波器
-extern SlidingAverage reference_sensor_filter[1];
-
-// 实际传感器稳定性跟踪器
-extern StabilityTracker actual_sensor_stability[1];
-// 参考传感器稳定性跟踪器
-extern StabilityTracker reference_sensor_stability[1];
-
-// 尖峰滤波器
-extern SpikeFilter spike_filters[1];
+#define FLAG_SPIKE_FILTER               (1 << 7)  // v2 robust spike rejection (default off)
 
 // 映射系数
 extern float X_MAPPING_VALUE;

@@ -15,11 +15,8 @@
 #define SLIDING_WINDOW_SIZE        5   /* compile-time array dimension, not tunable */
 #define STABILITY_CHECK_SAMPLES   10   /* compile-time loop bound */
 
-typedef struct {
-    float dead_value;             /* dead-band multiplier (x-sigma)            */
-    float spike_multiplier;       /* spike filter multiplier (x-sigma)         */
-    float stability_threshold;    /* stability threshold uT               */
-} AlgoParams_t;
+#include "algo_pipeline.h"
+
 
 /* Global instance -- initialised in sensor_manager via Config_Init_All */
 extern AlgoParams_t g_algo;

@@ -12,7 +12,9 @@
  * 配置存储在Flash中，支持字段缺省和默认值填充
  */
 
-#define CONFIG_SCHEMA_VERSION  5U   /* bump when layout changes */
+#include "algo_pipeline.h"
+
+#define CONFIG_SCHEMA_VERSION  6U   /* bump when layout changes */
 
 /* 类型也用于预处理判断，必须是数值宏。 */
 #define SENSOR_TYPE_MLX90393 0U
@@ -87,14 +89,19 @@ typedef struct {
                                       * 1-255, 周期 = mcyc × 0.5ms，
                                       * 不得小于驱动模式的最小周期；其他型号为0 */
 
+    /* Schema 6: retain the first 52 bytes of schema 5 for safe migration. */
+    AlgoConfig_t algo;
+
     /* -- Integrity ------------------------------------- */
     uint32_t checksum;
-} Config_TypeDef;                   /* 56 bytes, same layout for all products */
-_Static_assert(sizeof(Config_TypeDef) == 56, "Config layout changed");
+} Config_TypeDef;                   /* schema 6; legacy prefix unchanged */
+_Static_assert(offsetof(Config_TypeDef, algo) == 52, "Legacy prefix changed");
+_Static_assert(sizeof(AlgoConfig_t) == 40, "Algorithm configuration layout changed");
+_Static_assert(sizeof(Config_TypeDef) == 96, "Schema 6 layout changed");
 _Static_assert(offsetof(Config_TypeDef, range) == 10, "Config range offset changed");
 _Static_assert(offsetof(Config_TypeDef, product_model) == 40, "Config product offset changed");
 _Static_assert(offsetof(Config_TypeDef, mcyc) == 48, "Config mcyc offset changed");
-_Static_assert(offsetof(Config_TypeDef, checksum) == 52, "Config checksum offset changed");
+_Static_assert(offsetof(Config_TypeDef, checksum) + 4 == sizeof(Config_TypeDef), "Checksum must be last");
 
 /* Default values - 通用 */
 #define CONFIG_DEFAULT_SENSOR_TYPE      BOARD_SENSOR_TYPE

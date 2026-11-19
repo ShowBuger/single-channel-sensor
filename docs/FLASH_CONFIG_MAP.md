@@ -1,8 +1,8 @@
 # Flash 配置映射
 
-配置保持统一的56字节结构，MA01、MA02与MA03的同名字段位置相同。
-固件编入的传感器驱动由 `config_manager.h` 的 `CURRENT_SENSOR_TYPE` 决定（当前为
-MA03/AK09974C），只接受 `sensor.type` 与之一致的配置（`config_parser.c` 返回 3 表示型号不符）。
+配置升级为统一的 Schema 6、96 字节结构，MA01、MA02与MA03的同名字段位置相同。
+固件编入的传感器驱动由 CMake board 清单和 `board.h` 决定，
+只接受 `sensor.type` 与板型一致的配置（`config_parser.c` 返回 3 表示型号不符）。
 其他型号的配置可在网页预览、导出，但应由对应型号的固件应用；型号与类型冲突会被拒绝。
 
 ## 固定存储布局
@@ -12,9 +12,10 @@ MA03/AK09974C），只接受 `sensor.type` 与之一致的配置（`config_parse
   记录结构：偏移 0 为魔数（4 字节），偏移 4 起为下表的配置结构。地址由
   `firmware/src/board/<board>/board_pins.h` 定义，经 `plat_cfgstore_*` 访问。
 - 魔数：0x52454C57，占页偏移0–3。
-- Schema：5；本次没有修改版本、魔数或字段布局。
-- Config_TypeDef为56字节，StoredConfig_TypeDef为60字节。
-- checksum为配置偏移0–51的字节和；头文件静态断言检查关键偏移。
+- Schema：6；魔数不变，保留旧字段偏移 0–51；算法扩展从偏移 52 开始。
+- Config_TypeDef为96字节，StoredConfig_TypeDef为100字节。
+- checksum为配置偏移0–91的字节和；头文件静态断言检查布局。
+- 加载 Schema 5 时，先按旧位置 52 验证旧校验和，再补入 legacy 默认扩展参数；迁移只在 RAM 中发生，显式保存时写 Schema 6。损坏记录回退默认值。
 - 全部字段保存和完整读回，MLX特有字段在MA02中仅存储、不写入传感器。
 - 旧Flash若通过魔数、版本和校验和检查，且曾被错误标为MA01/type=1，
   加载时仅将型号迁移为MA02，保留用户参数。新导入的冲突配置仍报错。
@@ -46,7 +47,21 @@ MA03/AK09974C），只接受 `sensor.type` 与之一致的配置（`config_parse
 | 40 | 0x081E002C | product_model / product | 8 |
 | 48 | 0x081E0034 | mcyc / sensor.mcyc（仅MA03使用，原填充字节；MA01/MA02为0） | 1 |
 | 49–51 | 0x081E0035 | 编译器对齐填充 | 3 |
-| 52 | 0x081E0038 | checksum | 4 |
+| 52 | 0x081E0038 | algo.profile（0=legacy，1=v2） | 1 |
+| 53 | 0x081E0039 | 对齐填充 | 1 |
+| 54 | 0x081E003A | algo.window_ms | 2 |
+| 56 | 0x081E003C | algo.stable_ms | 2 |
+| 58 | 0x081E003E | algo.tau_ms | 2 |
+| 60 | 0x081E0040 | algo.tau_lp_ms | 2 |
+| 62 | 0x081E0042 | algo.calib_ms | 2 |
+| 64 | 0x081E0044 | algo.spike_med_ms | 2 |
+| 66 | 0x081E0046 | algo.spike_mad_ms | 2 |
+| 68 | 0x081E0048 | algo.spike_confirm_ms | 2 |
+| 70 | 0x081E004A | algo.spike_hold_ms | 2 |
+| 72 | 0x081E004C | algo.spike_k | 4 |
+| 76 | 0x081E0050 | algo.stab_k | 4 |
+| 80 / 84 / 88 | 0x081E0054 / 0x081E0058 / 0x081E005C | algo.kx / ky / kz | 4 × 3 |
+| 92 | 0x081E0060 | checksum | 4 |
 
 
 ## 默认配置
@@ -61,7 +76,7 @@ magch=7（XYZ），version=0，日志4，算法flag=0，XYZ映射系数均为1�
 
 ## MA03（AK09974C）字段复用
 
-MA03沿用同一布局，不改Schema版本：`osr`存驱动模式DRI（0–3），`range`存WIDE位（0/1），
+MA03与其他板型共用 Schema 6：`osr`存驱动模式DRI（0–3），`range`存WIDE位（0/1），
 `op_mode`为0=单次触发/1=连续测量，`mcyc`使用原`_pad`字节。`gain`必须为0。
 `ML GETCFG`仅在MA03时额外输出`sensor.mcyc`，MA01/MA02回包字段不变。
 

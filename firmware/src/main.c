@@ -65,7 +65,14 @@ int main(void)
         if (SENSOR_Run[0] == 1)
         {
             get_sensor_data();
+            Sensor_ProcessSample(&sensor_data[0],&sensor_timing);
             print_processed_sensor_data(0);
+            AlgoTrace_t trace;
+            if(Sensor_TakeTrace(&trace)) {
+                char line[256];
+                for(unsigned i=0;i<ALGO_STAGE_COUNT;i++)
+                    if(Sensor_FormatTrace(&trace,i,line,sizeof(line))>0) Serial_SendString(line);
+            }
             plat_delay_ms(100);  /* 100ms 间隔 = 10 Hz 采集频率 */
         }
     }

@@ -15,7 +15,8 @@
 #include "config_manager.h"   /* Config_TypeDef, SENSOR_TYPE_* */
 
 /* Generic 3-axis float data (µT) plus temperature (°C) — sensor-agnostic output */
-typedef struct { float x, y, z, t; } SensorData_t;
+#include "algo_pipeline.h"
+typedef AlgoVector_t SensorData_t;
 
 typedef enum {
     SENSOR_ROLE_ACTUAL    = 0,   /* measuring sensor  */
@@ -36,6 +37,10 @@ typedef struct SensorDriver {
      * compensation also uses it as its time step; keep it unchanged until the
      * algorithm is converted to real timestamps (P5/P6). */
     uint16_t    settle_ms;
+    uint8_t     has_temperature;
+    float       quantum_uT;     /* conservative quantisation floor for S3 */
+    float (*quantum)(const void *ctx); /* optional range-dependent override */
+    uint8_t (*host_triggered)(const void *ctx);
 
     /* Find the device for this role on the bus, verify its ID, reset it. */
     uint8_t (*probe)(void *ctx, uint8_t bus, SensorRole_t role);

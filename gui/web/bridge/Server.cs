@@ -114,6 +114,9 @@ internal static class FieldBridge {
         return Regex.IsMatch(command,@"^ML (START|STOP|CALIB|RESET|VERSION)$");
 #else
         if(Regex.IsMatch(command,@"^ML (START|STOP|CALIB|RESET|FLAG|MAPPING|MERSURE|LOGLEVEL|GETCFG|VERSION|IMPORT_END|IMPORT_CANCEL|CHFLAG (0x[0-9A-Fa-f]{1,2}|[0-9]{1,3})|SETMAP [XYZ] [+-]?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?)$"))return true;
+        if(Regex.IsMatch(command,@"^ML (PROF|STATUS|FORMAT (legacy|v2)|REFOUT [01]|SAVECFG|APPLYCFG)$"))return true;
+        if(Regex.IsMatch(command,@"^ML (NODES|TRACE [01]|NODE [1-9] [01])$"))return true;
+        if(Regex.IsMatch(command,@"^ML SET (algo\.[a-z_]+|log\.level) ([A-Za-z0-9.+-]+)$"))return true;
         var start=Regex.Match(command,@"^ML IMPORT_START ([0-9]{1,4})$");
         if(start.Success){int n=int.Parse(start.Groups[1].Value);return n>0&&n<=1023;}
         return Regex.IsMatch(command,"^ML IMPORT_DATA [A-Za-z0-9_{}\":,.+ -]{1,47}$");
@@ -155,8 +158,8 @@ internal static class FieldBridge {
                 }
                 if(method!="GET") { Reply(stream,405,new{error="Method not allowed"});return; }
                 string file=path=="/"?"index.html":path.TrimStart('/');
-                if(!new[]{"index.html","app.js","core.js","bridge-client.js","import-ui.js","i18n.js"}.Contains(file)) { Reply(stream,404,new{error="File not found"});return; }
-                var bytes=File.ReadAllBytes(Path.Combine(Root,file));Respond(stream,200,file.EndsWith(".js")?"text/javascript; charset=utf-8":"text/html; charset=utf-8",bytes);
+                if(!new[]{"index.html","app.js","core.js","bridge-client.js","import-ui.js","i18n.js","algorithm.html","algorithm.js","algorithm-model.js","algorithm.css"}.Contains(file)) { Reply(stream,404,new{error="File not found"});return; }
+                var bytes=File.ReadAllBytes(Path.Combine(Root,file));Respond(stream,200,file.EndsWith(".js")?"text/javascript; charset=utf-8":file.EndsWith(".css")?"text/css; charset=utf-8":"text/html; charset=utf-8",bytes);
             } } catch { /* A closed browser socket must not stop the listener. */ }
         }
     }

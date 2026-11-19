@@ -87,7 +87,7 @@ class Firmware:
         return self.call('Config_SetDefaultsForProduct', self.symbols['g_config'], 0x20002000)
 
     def config(self):
-        return bytes(self.u.mem_read(self.symbols['g_config'], 56))
+        return bytes(self.u.mem_read(self.symbols['g_config'], 96))
 
     def validate(self):
         return self.call('Config_Validate', self.symbols['g_config'])
@@ -127,6 +127,7 @@ class TmagBus:
         f.stub('TMAG3001_ReadRegs', self.read_regs)
         f.stub('I2C_DevicePresent', lambda: 0)
         f.stub('plat_tick_ms', lambda: self.now)
+        f.stub('plat_time_us', lambda: self.now * 1000)
         f.stub('Delay_ms', self.delay)
         f.stub('IWDG_Feed', lambda: self.feeds.append(self.now))
         f.stub('IIC_Start', lambda: self.tx.clear())
@@ -321,6 +322,7 @@ class TmagTests(unittest.TestCase):
         self.assertEqual(f.parse({'product':'MA02','sensor':{'gain':9},'algo':{'xmap':1.25}}),0)
         self.assertEqual(f.call('Config_Save',f.symbols['g_config']),0)
         base = 0x0800fc04
+        f.u.mem_write(base,b'\x05')  # genuinely old schema, old checksum location
         f.u.mem_write(base+40,b'MA01\0')
         raw = bytes(f.u.mem_read(base,52))
         f.u.mem_write(base+52,struct.pack('<I',sum(raw)))

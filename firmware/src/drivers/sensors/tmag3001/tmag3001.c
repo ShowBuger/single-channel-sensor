@@ -185,7 +185,7 @@ static uint8_t TMAG3001_ReadRegs(TMAG3001_Handle_t *dev, uint8_t reg_addr, uint8
  * @param dev 设备句柄
  * @return 灵敏度(LSB/mT)
  */
-static float TMAG3001_GetSensitivity(TMAG3001_Handle_t *dev)
+static float TMAG3001_GetSensitivity(const TMAG3001_Handle_t *dev)
 {
     float base_sensitivity;
 
@@ -201,6 +201,10 @@ static float TMAG3001_GetSensitivity(TMAG3001_Handle_t *dev)
 
     // 返回调整后的灵敏度 (增益越大，灵敏度越高，LSB/mT值越小)
     return base_sensitivity / gain_factor;
+}
+float TMAG3001_Quantum_uT(const TMAG3001_Handle_t *dev)
+{
+    return 1000.0f / TMAG3001_GetSensitivity(dev);
 }
 
 /**

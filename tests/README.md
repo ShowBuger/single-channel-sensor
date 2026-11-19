@@ -49,3 +49,32 @@ python tests/test_legacy_golden.py
 保持逐位一致（见 `docs/REFACTOR_DESIGN.md` 第 17.4、17.9 节）。只有在基线提交上才允许
 用 `--record` 重新录制。预测补偿依赖 `MEASURE_INTERVAL`，因此黄金样本按传感器型号区分，
 当前只录制了 AK09974C。
+
+## 算法阶段化与 v2 精度软件测试
+
+使用上面的 H743 单精度模拟构建，设置 `FIRMWARE_BUILD_DIR` 后运行：
+
+```powershell
+$env:FIRMWARE_BUILD_DIR = 'firmware/build/emu'
+python tests/test_legacy_golden.py
+python tests/test_algo_pipeline.py
+python tests/test_ak09974c_firmware.py
+python tests/compare_algo_profiles.py
+node --test gui/web/tests/*.test.cjs
+```
+
+新增算法测试直接执行 ARM 固件中的便携流水线接口，覆盖 S0 无效值、方向矩阵及零偏/噪声变换、
+真实时间差与回绕、连续模式禁止伪时间对齐、K 增益、IIR 多速率一致性、回差死区、Z 开关、
+参考调试不影响实际输出、尖峰/阶跃/超时解锁、legacy 时间窗口和静止归零。
+集成测试覆盖 Schema 5 迁移、Schema 6 保存与校验、配置边界、参考协议、标定有效比例与元数据校验。
+
+`compare_algo_profiles.py` 更新 `docs/ALGORITHM_COMPARISON.md`，使用确定性合成数据。
+它不修改黄金文件，也不作为硬件精度或执行性能验收。细节和硬件待验项见 `docs/ALGORITHM_PIPELINE.md`。
+
+节点遥测覆盖在 `test_algo_pipeline.py` 和 `gui/web/tests/algorithm-model.test.cjs` 中。
+可选的完整浏览器验证：安装 `python -m pip install playwright`，本机需有 Edge，然后执行
+`python tests/test_algorithm_ui.py`。测试启动独立本地服务，以模拟串口验证节点开关及收帧，
+不连接实际板卡；截图在 `tests/hw_reports/algorithm-desktop.png`、`algorithm-mobile.png`。
+
+维护板型仍需编译 `ma01_l432`、`ma02_f103`、`ma03_h743`；H743 使用 FreeRTOS，
+L4/F1 目前使用裸机适配。TMAG 回归仍按本文件前述方式运行。

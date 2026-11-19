@@ -23,4 +23,8 @@
 #define BOARD_AK09974C_ACTUAL_ADDR  AK09974C_I2C_ADDR_CASE1
 #define BOARD_AK09974C_REF_ADDR     AK09974C_I2C_ADDR_CASE2
 
+/* Identity until the sensor mounting directions are measured. */
+#define BOARD_SENSOR_ROTATION_ACTUAL    {1,0,0, 0,1,0, 0,0,1}
+#define BOARD_SENSOR_ROTATION_REFERENCE {1,0,0, 0,1,0, 0,0,1}
+
 #endif /* BOARD_H */

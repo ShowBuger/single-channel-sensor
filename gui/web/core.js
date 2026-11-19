@@ -8,7 +8,22 @@ const axisRE=new RegExp('^([XYZ]):\\s*('+NUMBER+')$');
 const mapRE=new RegExp('^Mapping:\\s*X=('+NUMBER+'),\\s*Y=('+NUMBER+'),\\s*Z=('+NUMBER+')$');
 function parseLine(text){
   const raw=text.trim(), line=raw.replace(/^\[[EWID]\]\[[^\]\r\n]+\]\s*/, '');let m=sampleRE.exec(line);
+  if(/^N\s/.test(line))return{kind:'trace',line};
   if(m){const values=m.slice(2).map(Number);return values.every(Number.isFinite)?{kind:'sample',channel:Number(m[1]),values,line}:{kind:'invalid',line};}
+  if(/^S\s/.test(line)){
+    const fields={};
+    for(const token of line.split(/\s+/).slice(1)){
+      const kv=/^([A-Za-z_]+)=(\S+)$/.exec(token);
+      if(!kv||Object.hasOwn(fields,kv[1]))return{kind:'invalid',line};
+      fields[kv[1]]=kv[2];
+    }
+    const uint=k=>/^\d+$/.test(fields[k]||'')&&Number(fields[k])<=0xFFFFFFFF;
+    const values=['x','y','z'].map(k=>Number(fields[k]));
+    if(!['ch','seq','t','rate'].every(uint)||Number(fields.rate)<1||!['0','1'].includes(fields.valid)||
+       !['x','y','z'].every(k=>new RegExp('^'+NUMBER+'$').test(fields[k]||''))||!values.every(Number.isFinite))return{kind:'invalid',line};
+    return{kind:'sample',channel:Number(fields.ch),values,valid:fields.valid==='1',
+      seq:Number(fields.seq),timestampUs:Number(fields.t),rate:Number(fields.rate),fields,line};
+  }
   if(/^sensor\d*\s*:/.test(line))return{kind:'invalid',line};
   if((m=/^FLAG_RES:\s*0x([\da-f]{1,2})$/i.exec(line)))return{kind:'flag',value:parseInt(m[1],16),line};
   if((m=axisRE.exec(line)))return{kind:'axis',axis:m[1],value:Number(m[2]),line};
@@ -43,7 +58,7 @@ class SerialLog{
     if(!this.sessions)return;
     // 排除传感器数据行（sensor0:... 格式）
     const msgStr = String(message);
-    if(type === 'RX' && /^sensor\d+\s*:/.test(msgStr.trim())) return;
+    if(type === 'RX' && /^(?:sensor\d+\s*:|S\s|N\s)/.test(msgStr.trim())) return;
     const prefix=`[${new Date(time).toISOString()}] [${type}] `;
     this.tail.push(prefix+msgStr.replace(/\r\n|\r|\n/g,'\r\n'+prefix)+'\r\n');this.count++;
     if(this.tail.length>=256){this.parts.push(this.tail.join(''));this.tail=[];}
@@ -115,7 +130,7 @@ class SerialClient{
     this.closing=(async()=>{try{await this.reader?.cancel();}catch{}await this.readTask;try{await this.writer?.abort(reason);}catch{}try{await this.writeTask;}catch{}try{await this.port?.close();}catch(error){this.emit('warning',localize('关闭串口：','Closing serial port: ')+error.message);}this.port=null;this.reader=null;this.readTask=null;this.setState('disconnected',reason);})();
     try{await this.closing;}finally{this.closing=null;}
   }
-  handleLine(line){if(this.settling)return;const event=parseLine(line);event.raw=line;this.emit('line',event);if(event.kind==='sample'){if(event.channel===0)this.emit('sample',event.values);}else if(event.kind==='invalid')this.emit('warning',localize('丢弃格式无效的采样行：','Discarded malformed sample: ')+event.line);if(event.line==='System_Reset'&&this.pending){this.pending.reject(new Error(localize('设备在命令执行期间重启，请重新连接。','Device restarted during a command. Please reconnect.')));void this.disconnect(localize('设备已重启','Device restarted'));return;}this.pending?.accept(event);}
+  handleLine(line){if(this.settling)return;const event=parseLine(line);event.raw=line;this.emit('line',event);if(event.kind==='sample'){if(event.channel===0&&event.valid!==false)this.emit('sample',event.values);if(event.valid===false)this.emit('sample-invalid',event);}else if(event.kind==='invalid')this.emit('warning',localize('丢弃格式无效的采样行：','Discarded malformed sample: ')+event.line);if(event.line==='System_Reset'&&this.pending){this.pending.reject(new Error(localize('设备在命令执行期间重启，请重新连接。','Device restarted during a command. Please reconnect.')));void this.disconnect(localize('设备已重启','Device restarted'));return;}this.pending?.accept(event);}
   transaction(fn){const generation=this.generation;const result=this.queue.then(()=>{if(!this.connected||this.generation!==generation)throw new Error(localize('串口未连接或连接已改变。','Serial port is not connected or the session changed.'));return fn();});this.queue=result.catch(()=>{});return result;}
   async request(command,match,timeout=this.timeout){
     if(!this.connected)throw new Error(localize('串口未连接。','Serial port is not connected.'));if(command.length>62||/[\r\n]/.test(command))throw new Error(localize('无效的串口命令。','Invalid serial command.'));
@@ -145,7 +160,7 @@ class SerialClient{
         if(prepared.missing.length)throw new Error(localize('设备返回的配置缺少字段：','Device configuration is missing fields: ')+prepared.missing.join(', '));
         return prepared.config;
       }
-      if(e.kind==='sample'||/^\s*\[[EWID]\]/.test(e.raw||''))return;
+      if(e.kind==='sample'||e.kind==='trace'||/^\s*\[[EWID]\]/.test(e.raw||''))return;
       if(begun){payload+=e.line;if(payload.length>1023)throw new Error(localize('设备配置回包过长。','Device configuration response is too long.'));}
       else if(e.line.startsWith('{'))throw new Error(localize('设备使用旧版配置回包，请更新固件后读取完整配置。','Device uses an older configuration response. Update the firmware for full readback.'));
     });}catch(error){throw new Error(localize('完整配置读取失败：','Full configuration read failed: ')+error.message);}
@@ -204,7 +219,7 @@ class SerialClient{
         onProgress({stage:'verifying',sent,total:prepared.bytes});
         const actual=await this.readFullConfigDirect(),expected=prepared.config;
         if(actual.product!==expected.product)throw new Error(localize('配置读回不一致：product。','Configuration readback mismatch: product.'));
-        for(const [group,fields]of Object.entries(IMPORT_FIELDS))for(const key of Object.keys(fields))if(Math.fround(actual[group][key])!==Math.fround(expected[group][key]))throw new Error(localize(`配置读回不一致：${group}.${key}。`,`Configuration readback mismatch: ${group}.${key}.`));
+        for(const [group,fields]of Object.entries(IMPORT_FIELDS))for(const key of Object.keys(fields))if(Object.hasOwn(expected[group],key)&&Math.fround(actual[group][key])!==Math.fround(expected[group][key]))throw new Error(localize(`配置读回不一致：${group}.${key}。`,`Configuration readback mismatch: ${group}.${key}.`));
         const runtime={flags:actual.algo.flag,maps:[actual.algo.xmap,actual.algo.ymap,actual.algo.zmap]};
         onProgress({stage:'done',sent,total:prepared.bytes});return{config:actual,runtime,logLevel:actual.log.level,verification:'full-config',started:startAfter};
       }catch(error){
@@ -234,6 +249,25 @@ function sensorFieldActive(product,key){
   return(product==='MA01'?['filt','resx','resy','resz','tcmp']:['range','opmode','magch','version']).includes(key);
 }
 const IMPORT_FIELDS={sensor:{type:[localize('传感器类型','Sensor type'),0,2],gain:[localize('增益档位','Gain setting'),0,15],osr:[localize('过采样档位','Oversampling setting'),0,5],filt:[localize('数字滤波等级','Digital filter level'),0,7],resx:[localize('X 轴分辨率','X axis resolution'),0,3],resy:[localize('Y 轴分辨率','Y axis resolution'),0,3],resz:[localize('Z 轴分辨率','Z axis resolution'),0,3],tcmp:[localize('温度补偿','Temperature compensation'),0,1],range:[localize('磁场量程','Magnetic field range'),0,1],opmode:[localize('工作模式','Operating mode'),0,3],magch:[localize('磁场测量通道','Magnetic measurement channels'),0,7],version:[localize('传感器版本','Sensor version'),0,1],mcyc:[localize('连续测量周期','Continuous measurement cycle'),0,255]},algo:{flag:[localize('算法功能标志','Algorithm flags'),0,255],xmap:[localize('X 轴映射系数','X axis mapping factor')],ymap:[localize('Y 轴映射系数','Y axis mapping factor')],zmap:[localize('Z 轴映射系数','Z axis mapping factor')],dead:[localize('死区倍数','Dead-zone multiplier')],spike:[localize('尖峰过滤倍数','Spike filter multiplier')],stab:[localize('稳定性阈值','Stability threshold')]},log:{level:[localize('日志等级','Log level'),0,4]}};
+// Optional schema-6 fields: do not inject them into files for older firmware.
+const ALGO_OPTIONAL={
+  profile:[localize('算法配置档（0=legacy，1=v2）','Profile (0=legacy, 1=v2)'),0,1],
+  window_ms:[localize('平均窗口（ms）','Window (ms)'),1,500],
+  stable_ms:[localize('稳定持续时间（ms）','Stable time (ms)'),1,60000],
+  tau_ms:[localize('归零衰减时间（ms）','Decay time (ms)'),1,60000],
+  tau_lp_ms:[localize('低通时间常数（ms）','Low-pass time (ms)'),1,60000],
+  calib_ms:[localize('标定时长（ms）','Calibration time (ms)'),100,10000],
+  spike_med_ms:[localize('尖峰中值窗口（ms）','Spike median (ms)'),1,50],
+  spike_mad_ms:[localize('尖峰噪声窗口（ms）','Spike noise window (ms)'),1,500],
+  spike_confirm_ms:[localize('阶跃确认时间（ms）','Step confirmation (ms)'),1,60000],
+  spike_hold_ms:[localize('尖峰解锁时间（ms）','Spike timeout (ms)'),1,60000],
+  spike_k:[localize('鲁棒尖峰阈值倍数','Robust spike multiplier')],
+  stab_k:[localize('稳定噪声阈值倍数','Stability noise multiplier')],
+  kx:[localize('X 背景补偿增益','Compensation X')],
+  ky:[localize('Y 背景补偿增益','Compensation Y')],
+  kz:[localize('Z 背景补偿增益','Compensation Z')]
+};
+Object.assign(IMPORT_FIELDS.algo,ALGO_OPTIONAL);
 const ALIASES={sensor:{sensor_type:'type',gain_sel:'gain',dig_filt:'filt',res_x:'resx',res_y:'resy',res_z:'resz',tcmp_en:'tcmp',op_mode:'opmode',mode:'opmode',mag_ch:'magch',channel:'magch',sensor_version:'version',cycle:'mcyc',drive:'osr'},algo:{FLAG_RES:'flag',flag_res:'flag',X_MAPPING_VALUE:'xmap',Y_MAPPING_VALUE:'ymap',Z_MAPPING_VALUE:'zmap',x_map:'xmap',y_map:'ymap',z_map:'zmap',dead_value:'dead',spike_multiplier:'spike',stability_threshold:'stab',stability:'stab'},log:{}};
 function normalizeSensorType(value){
   if(typeof value==='string'){
@@ -266,6 +300,7 @@ function prepareImport(input){
       if(seen.has(field))throw new Error(localize('同一字段使用了重复别名：','Duplicate aliases for the same field: ')+field);seen.add(field);
       let n=field==='algo.flag'&&typeof raw==='string'&&/^0x[\da-f]{1,2}$/i.test(raw)?parseInt(raw,16):raw;
       if(field==='sensor.type')n=normalizeSensorType(n);
+      if(field==='algo.profile'&&typeof n==='string')n={legacy:0,v2:1}[n];
       const rule=IMPORT_FIELDS[section][name];
       if(typeof n!=='number'||!Number.isFinite(n)||!Number.isFinite(Math.fround(n)))throw new Error(field+localize(' 必须是有限 float32 数值。',' must be a finite float32 value.'));
       if(rule.length===3&&(!Number.isInteger(n)||n<rule[1]||n>rule[2]))throw new Error(localize(`${field} 必须是 ${rule[1]}–${rule[2]} 的整数。`,`${field} must be an integer in ${rule[1]}–${rule[2]}.`));
@@ -285,7 +320,13 @@ function prepareImport(input){
     config.sensor.mcyc=0;seen.add('sensor.mcyc');
   }
   if(config.product==='MA01'&&(config.sensor.gain>7||config.sensor.osr>3))throw new Error(localize('MA01 的 sensor.gain 必须为 0–7，sensor.osr 必须为 0–3。','MA01 sensor.gain must be 0–7, sensor.osr must be 0–3.'));
-  const missing=seen.has('product')?[]:['product'];for(const[group,fields]of Object.entries(IMPORT_FIELDS))for(const key of Object.keys(fields))if(!seen.has(group+'.'+key))missing.push(group+'.'+key);
+  const missing=seen.has('product')?[]:['product'];for(const[group,fields]of Object.entries(IMPORT_FIELDS))for(const key of Object.keys(fields))if(!(group==='algo'&&Object.hasOwn(ALGO_OPTIONAL,key))&&!seen.has(group+'.'+key))missing.push(group+'.'+key);
+  const a=config.algo;
+  for(const k of ['dead','spike','stab','stab_k'])if(a[k]!==undefined&&a[k]<0)throw new Error('algo.'+k+' must be nonnegative');
+  if(a.spike_k!==undefined&&(a.spike_k<=0||a.spike_k>100))throw new Error('algo.spike_k must be in (0, 100]');
+  if(a.stab_k!==undefined&&a.stab_k>100)throw new Error('algo.stab_k must be <= 100');
+  for(const k of ['kx','ky','kz'])if(a[k]!==undefined&&Math.abs(a[k])>100)throw new Error('algo.'+k+' must be in [-100, 100]');
+  if((a.spike_hold_ms??300)<(a.spike_confirm_ms??30))throw new Error('Spike timeout must be >= step confirmation time');
   const wireSensor={...config.sensor};if(config.product!=='MA03')delete wireSensor.mcyc;
   const wire=JSON.stringify({...config,sensor:wireSensor,algo:{...config.algo,flag:'0x'+config.algo.flag.toString(16).toUpperCase().padStart(2,'0')}}),bytes=new TextEncoder().encode(wire).length;
   if(bytes>1023)throw new Error(localize('规范化配置超过 1023 字节，无法导入。','Normalized configuration exceeds 1023 bytes; import unavailable.'));

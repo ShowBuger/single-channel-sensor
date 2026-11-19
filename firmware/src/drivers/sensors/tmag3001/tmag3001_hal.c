@@ -101,11 +101,18 @@ static uint8_t tmag_read(void *ctx, uint8_t bus, SensorData_t *out)
     return 0;
 }
 
+static uint8_t tmag_host_triggered(const void *ctx)
+{
+    return ((const TMAG3001_Handle_t *)ctx)->op_mode==TMAG3001_MODE_STANDBY;
+}
+static float tmag_quantum(const void *ctx) { return TMAG3001_Quantum_uT(ctx); }
 const SensorDriver_t g_drv_tmag3001 = {
     .name               = "TMAG3001",
     .type               = SENSOR_TYPE_TMAG3001,
     .ctx_size           = sizeof(TMAG3001_Handle_t),
     .settle_ms          = 2,      /* typical conversion ~2 ms */
+    .quantum            = tmag_quantum,
+    .host_triggered     = tmag_host_triggered,
     .probe              = tmag_probe,
     .configure          = tmag_configure,
     .sampling_supported = tmag_sampling_supported,

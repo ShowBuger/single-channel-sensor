@@ -20,3 +20,15 @@ void plat_delay_us(uint32_t us)
     uint32_t ticks = us * (HAL_RCC_GetHCLKFreq() / 1000000U);
     while ((DWT->CYCCNT - start) < ticks) {}
 }
+
+uint32_t plat_time_us(void)
+{
+    uint32_t irq=__get_PRIMASK();
+    __disable_irq();
+    uint32_t ms=HAL_GetTick(), before=SysTick->VAL;
+    uint32_t pending=SCB->ICSR & SCB_ICSR_PENDSTSET_Msk, count=SysTick->VAL;
+    if(pending || count>before) ms++;
+    uint32_t fraction=(SysTick->LOAD-count)/(SystemCoreClock/1000000U);
+    __set_PRIMASK(irq);
+    return ms*1000U+fraction;
+}

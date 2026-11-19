@@ -14,4 +14,8 @@
 #define BOARD_SENSOR_TYPE           SENSOR_TYPE_MLX90393
 #define BOARD_PRODUCT_MODEL         "MA01"
 
+/* Identity until the sensor mounting directions are measured. */
+#define BOARD_SENSOR_ROTATION_ACTUAL    {1,0,0, 0,1,0, 0,0,1}
+#define BOARD_SENSOR_ROTATION_REFERENCE {1,0,0, 0,1,0, 0,0,1}
+
 #endif /* BOARD_H */

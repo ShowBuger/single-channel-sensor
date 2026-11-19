@@ -151,6 +151,33 @@ uint8_t Config_ParseSingleKV(Config_TypeDef *cfg, const char *key, const char *v
         return 2;
     }
 
+    if (!strcmp(key,"algo.profile")) {
+        if (!strcmp(value,"legacy")) cfg->algo.profile=ALGO_PROFILE_LEGACY;
+        else if (!strcmp(value,"v2")) cfg->algo.profile=ALGO_PROFILE_V2;
+        else if (parse_uint8(value,&tmp_u8) && tmp_u8<=1) cfg->algo.profile=tmp_u8;
+        else return 2;
+        return 0;
+    }
+    struct { const char *key; uint16_t *field; } times[]={
+        {"algo.window_ms",&cfg->algo.window_ms},{"algo.stable_ms",&cfg->algo.stable_ms},
+        {"algo.tau_ms",&cfg->algo.tau_ms},{"algo.tau_lp_ms",&cfg->algo.tau_lp_ms},
+        {"algo.calib_ms",&cfg->algo.calib_ms},{"algo.spike_med_ms",&cfg->algo.spike_med_ms},
+        {"algo.spike_mad_ms",&cfg->algo.spike_mad_ms},{"algo.spike_confirm_ms",&cfg->algo.spike_confirm_ms},
+        {"algo.spike_hold_ms",&cfg->algo.spike_hold_ms}
+    };
+    for (unsigned i=0;i<sizeof(times)/sizeof(times[0]);i++) if (!strcmp(key,times[i].key)) {
+        if (!parse_float(value,&tmp_float) || tmp_float<1 || tmp_float>60000 || tmp_float!=(uint16_t)tmp_float) return 2;
+        *times[i].field=(uint16_t)tmp_float; return 0;
+    }
+    struct { const char *key; float *field; } scalars[]={
+        {"algo.spike_k",&cfg->algo.spike_k},{"algo.stab_k",&cfg->algo.stab_k},
+        {"algo.kx",&cfg->algo.gain[0]},{"algo.ky",&cfg->algo.gain[1]},{"algo.kz",&cfg->algo.gain[2]}
+    };
+    for (unsigned i=0;i<sizeof(scalars)/sizeof(scalars[0]);i++) if (!strcmp(key,scalars[i].key)) {
+        if (!parse_float(value,&tmp_float)) return 2;
+        *scalars[i].field=tmp_float; return 0;
+    }
+
     /* -- 系统配置 -- */
     if (strcmp(key, "log.level") == 0) {
         if (parse_uint8(value, &tmp_u8)) { cfg->log_level = tmp_u8; return 0; }
@@ -240,6 +267,18 @@ uint8_t Config_Validate(const Config_TypeDef *cfg)
     if (cfg->log_level > 4) return 30;
     if (!isfinite(cfg->X_MAPPING_VALUE) || !isfinite(cfg->Y_MAPPING_VALUE) || !isfinite(cfg->Z_MAPPING_VALUE) ||
         !isfinite(cfg->dead_value) || !isfinite(cfg->spike_multiplier) || !isfinite(cfg->stability_threshold)) return 31;
+
+    const AlgoConfig_t *a=&cfg->algo;
+    if(a->profile>ALGO_PROFILE_V2 || !a->window_ms || a->window_ms>500 ||
+       !a->stable_ms || a->stable_ms>60000 || !a->tau_ms || a->tau_ms>60000 ||
+       !a->tau_lp_ms || a->tau_lp_ms>60000 || a->calib_ms<100 || a->calib_ms>10000 ||
+       !a->spike_med_ms || a->spike_med_ms>50 || !a->spike_mad_ms || a->spike_mad_ms>500 ||
+       !a->spike_confirm_ms || a->spike_confirm_ms>60000 || !a->spike_hold_ms ||
+       a->spike_hold_ms>60000 || a->spike_hold_ms<a->spike_confirm_ms) return 50;
+    if(!isfinite(a->spike_k) || a->spike_k<=0 || a->spike_k>100 ||
+       !isfinite(a->stab_k) || a->stab_k<0 || a->stab_k>100) return 51;
+    for(unsigned i=0;i<3;i++) if(!isfinite(a->gain[i]) || fabsf(a->gain[i])>100) return 51;
+    if(cfg->dead_value<0 || cfg->spike_multiplier<0 || cfg->stability_threshold<0) return 51;
 
     return 0;  /* 验证通过 */
 }

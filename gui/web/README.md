@@ -78,3 +78,9 @@ node --test gui/web/tests/core.test.cjs gui/web/tests/import.test.cjs gui/web/te
 ```
 
 自动测试覆盖解析分包、样例兼容、参数校验、命令排队、ACK 一致性、取消、设备重启、Flash 失败、启动失败、读回不一致及本地 HTTP 命令限制。协议测试使用模拟固件；实际传感器寄存器及 Flash 写入仍需实机验证。
+# 算法节点工作台
+
+开发版主页面的“算法节点”进入 `algorithm.html`，也可在本地服务地址后加 `/algorithm.html?demo=1` 体验演示。
+支持各节点实际/参考数据、开关、legacy/v2 切换、曲线暂停和 CSV 导出；真实节点需要支持 `nodes,trace` 的新固件。
+先断开其他页面的串口，再连接本页。开关仅改 RAM，切换配置档后需重新开始采集标定。
+详见 [硬件报告与协议说明](../../docs/HARDWARE_TEST_2026-11-19.md)。

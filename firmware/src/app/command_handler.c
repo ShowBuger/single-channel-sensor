@@ -54,7 +54,7 @@ static void SendResponse(const char *response)
  */
 static void SendResponsef(const char *fmt, ...)
 {
-    char buf[128];  /* Same size as Serial_Printf's internal buffer */
+    char buf[256];  /* Same size as Serial_Printf's internal buffer */
     va_list args;
     va_start(args, fmt);
     vsnprintf(buf, sizeof(buf), fmt, args);
@@ -82,6 +82,14 @@ static void Handle_LogLevelQuery(const char *cmd);
 static void Handle_Reset(const char *cmd);
 static void Handle_Restore(const char *cmd);
 static void Handle_Version(const char *cmd);
+
+static void Handle_Format(const char *cmd);
+static void Handle_RefOut(const char *cmd);
+static void Handle_Prof(const char *cmd);
+static void Handle_Status(const char *cmd);
+static void Handle_Nodes(const char *cmd);
+static void Handle_Node(const char *cmd);
+static void Handle_Trace(const char *cmd);
 
 /* -----------------------------------------------------------------------
  * Command table - ADD NEW COMMANDS HERE
@@ -111,6 +119,13 @@ static const CommandEntry_t g_command_table[] = {
 
     /* System */
     {"ML VERSION",      Handle_Version},
+    {"ML FORMAT ",      Handle_Format},
+    {"ML REFOUT ",      Handle_RefOut},
+    {"ML PROF",         Handle_Prof},
+    {"ML STATUS",       Handle_Status},
+    {"ML NODES",        Handle_Nodes},
+    {"ML NODE ",        Handle_Node},
+    {"ML TRACE ",       Handle_Trace},
     {"ML RESET",        Handle_Reset},
     {"ML RESTORE",      Handle_Restore},
 };
@@ -131,9 +146,9 @@ void CommandHandler_SetResponseCallback(CommandHandler_ResponseCallback callback
     s_response_callback = callback;
 }
 
-void CommandHandler_Process(void)
+uint8_t CommandHandler_Process(void)
 {
-    if (!Serial_GetCommandFlag()) return;
+    if (!Serial_GetCommandFlag()) return 0;
 
     char *cmd = Serial_GetCommandBuffer();
 
@@ -141,14 +156,14 @@ void CommandHandler_Process(void)
     if (ConfigImport_GetState() != IMPORT_STATE_IDLE)
     {
         ConfigImport_ProcessCommand(cmd);
-        return;
+        return strcmp(cmd,"ML IMPORT_END")==0 ? 2 : 1;
     }
 
     /* Priority 2: Handle import start commands */
     if (strncmp(cmd, "ML IMPORT_", 10) == 0)
     {
         ConfigImport_ProcessCommand(cmd);
-        return;
+        return 1;
     }
 
     /* Priority 3: Dispatch to command table */
@@ -157,13 +172,17 @@ void CommandHandler_Process(void)
         size_t cmd_len = strlen(g_command_table[i].cmd_name);
         if (strncmp(cmd, g_command_table[i].cmd_name, cmd_len) == 0)
         {
-            g_command_table[i].handler(cmd);
-            return;
+            CommandHandler_Func fn=g_command_table[i].handler;
+            uint8_t read_only=fn==Handle_GetCfg || fn==Handle_Version || fn==Handle_Status ||
+                fn==Handle_Prof || fn==Handle_Flag || fn==Handle_Mapping || fn==Handle_LogLevelQuery || fn==Handle_Nodes;
+            fn(cmd);
+            return read_only ? 1 : 2;
         }
     }
 
     /* No match found */
     SendResponsef("Unknown: %s\r\n", cmd);
+    return 1;
 }
 
 /* -----------------------------------------------------------------------
@@ -195,7 +214,9 @@ static void Handle_Measure(const char *cmd)
     if (sensor_start() == 0)
     {
         get_sensor_data();
-        if (SENSOR_Run[0]) print_processed_sensor_data(0);
+        Sensor_ProcessSample(&sensor_data[0],&sensor_timing);
+        char line[384];
+        if(format_processed_sensor_data(0,line,sizeof(line))>0) SendResponse(line);
         sensor_stop();
     }
     else
@@ -207,8 +228,11 @@ static void Handle_Measure(const char *cmd)
 static void Handle_Calib(const char *cmd)
 {
     (void)cmd;
-    SendResponse(perform_sensor_calibration() == 0
-           ? "Calibration OK\r\n" : "Calibration FAIL\r\n");
+    uint8_t failed=perform_sensor_calibration();
+    if(failed && sensor_calibration_metadata.version)
+        SendResponsef("CALIB failure=%u samples=%u attempts=%u\r\n",sensor_calibration_metadata.failure,
+                      sensor_calibration_metadata.samples,sensor_calibration_metadata.attempts);
+    SendResponse(failed ? "Calibration FAIL\r\n" : "Calibration OK\r\n");
 }
 
 static void Handle_ChFlag(const char *cmd)
@@ -353,9 +377,14 @@ static void Handle_GetCfg(const char *cmd)
                   FLAG_RES, (double)X_MAPPING_VALUE);
     SendResponsef("\"ymap\":%.9g,\"zmap\":%.9g,",
                   (double)Y_MAPPING_VALUE, (double)Z_MAPPING_VALUE);
-    SendResponsef("\"dead\":%.9g,\"spike\":%.9g,\"stab\":%.9g},",
+    SendResponsef("\"dead\":%.9g,\"spike\":%.9g,\"stab\":%.9g,",
                   (double)g_algo.dead_value, (double)g_algo.spike_multiplier,
                   (double)g_algo.stability_threshold);
+    const AlgoConfig_t *a=&g_algo.config;
+    SendResponsef("\"profile\":%u,\"window_ms\":%u,\"stable_ms\":%u,\"tau_ms\":%u,",a->profile,a->window_ms,a->stable_ms,a->tau_ms);
+    SendResponsef("\"tau_lp_ms\":%u,\"calib_ms\":%u,\"spike_med_ms\":%u,\"spike_mad_ms\":%u,",a->tau_lp_ms,a->calib_ms,a->spike_med_ms,a->spike_mad_ms);
+    SendResponsef("\"spike_confirm_ms\":%u,\"spike_hold_ms\":%u,\"spike_k\":%.9g,",a->spike_confirm_ms,a->spike_hold_ms,(double)a->spike_k);
+    SendResponsef("\"stab_k\":%.9g,\"kx\":%.9g,\"ky\":%.9g,\"kz\":%.9g},",(double)a->stab_k,(double)a->gain[0],(double)a->gain[1],(double)a->gain[2]);
     SendResponsef("\"log\":{\"level\":%u}}\r\nCFG_END\r\n", (unsigned)Log_GetLevel());
 }
 
@@ -406,6 +435,69 @@ static void Handle_Restore(const char *cmd)
 static void Handle_Version(const char *cmd)
 {
     (void)cmd;
-    SendResponsef("VERSION proto=2 fw=%s board=%s mcu=%s sensors=%s channels=1 features=\r\n",
+    SendResponsef("VERSION proto=2 fw=%s board=%s mcu=%s sensors=%s channels=1 features=algo_v2,prof,status,fmt_v2,refout,nodes,trace\r\n",
                   FW_VERSION, BOARD_NAME, plat_mcu_name(), Sensor_GetName());
+}
+
+static void Handle_Format(const char *cmd)
+{
+    if(!strcmp(cmd+10,"legacy")) { Sensor_SetFormat(0); SendResponse("FORMAT legacy\r\n"); }
+    else if(!strcmp(cmd+10,"v2")) { Sensor_SetFormat(1); SendResponse("FORMAT v2\r\n"); }
+    else SendResponse("Usage: ML FORMAT legacy|v2\r\n");
+}
+static void Handle_RefOut(const char *cmd)
+{
+    if(strcmp(cmd+10,"0") && strcmp(cmd+10,"1")) { SendResponse("Usage: ML REFOUT 0|1\r\n"); return; }
+    uint8_t enabled=(uint8_t)(cmd[10]-'0');
+    if(Sensor_SetReferenceOutput(enabled)) SendResponse("Error: ML FORMAT v2 required\r\n");
+    else SendResponsef("REFOUT %u\r\n",enabled);
+}
+static void Handle_Prof(const char *cmd)
+{
+    (void)cmd;
+    const AlgoCounters_t c=*Sensor_AlgoCounters();
+    SendResponsef("PROF received=%lu accepted=%lu invalid=%lu spikes=%lu steps=%lu forced=%lu\r\n",
+        (unsigned long)c.received,(unsigned long)c.accepted,(unsigned long)c.invalid,
+        (unsigned long)c.spikes,(unsigned long)c.steps,(unsigned long)c.forced_accepts);
+    for(unsigned i=0;i<ALGO_STAGE_COUNT;i++) SendResponsef("PROF stage=%u runs=%lu\r\n",i,(unsigned long)c.stage_runs[i]);
+}
+static void Handle_Status(const char *cmd)
+{
+    (void)cmd;
+    const AlgoCounters_t c=*Sensor_AlgoCounters();
+    SendResponsef("STATUS running=%u calibrated=%u profile=%s bus=%lu faults=%lu timeouts=%lu skewed=%lu\r\n",
+        SENSOR_Run[0],sensor_calibration[0].calibrated,g_algo.config.profile==ALGO_PROFILE_V2?"v2":"legacy",
+        (unsigned long)c.bus_errors,(unsigned long)c.faults,(unsigned long)c.timeouts,(unsigned long)c.skewed);
+    const SensorCalibrationMetadata *m=&sensor_calibration_metadata;
+    SendResponsef("CALIB version=%u samples=%u attempts=%u t=%lu duration=%lu rate=%.3f temp_valid=%u failure=%u checksum=%08lX\r\n",
+        m->version,m->samples,m->attempts,(unsigned long)m->timestamp_us,(unsigned long)m->duration_us,
+        (double)m->rate_hz,m->temperature_valid,m->failure,(unsigned long)m->checksum);
+#ifdef USE_FREERTOS
+    extern void rtos_get_drop_counts(uint32_t *,uint32_t *);
+    uint32_t samples,output;
+    rtos_get_drop_counts(&samples,&output);
+    SendResponsef("STATUS sample_drops=%lu output_drops=%lu\r\n",(unsigned long)samples,(unsigned long)output);
+#endif
+}
+static void Handle_Nodes(const char *cmd)
+{
+    (void)cmd;
+    SendResponsef("NODES profile=%u flags=%u bypass=%u calibrated=%u trace=%u running=%u\r\n",
+        g_algo.config.profile,FLAG_RES,Sensor_GetNodeBypass(),sensor_calibration[0].calibrated,
+        Sensor_GetTrace(),SENSOR_Run[0]);
+}
+static void Handle_Node(const char *cmd)
+{
+    unsigned node,enabled; char extra;
+    if(sscanf(cmd,"ML NODE %u %u %c",&node,&enabled,&extra)!=2 || node>9 || enabled>1 ||
+       Sensor_SetNode((uint8_t)node,(uint8_t)enabled)) {
+        SendResponse("Error: NODE requires an available stage 1..9 and 0|1; S0 is mandatory\r\n"); return;
+    }
+    SendResponsef("NODE s=%u enabled=%u\r\n",node,enabled);
+}
+static void Handle_Trace(const char *cmd)
+{
+    if(strcmp(cmd+9,"0") && strcmp(cmd+9,"1")) { SendResponse("Error: ML TRACE 0|1\r\n"); return; }
+    Sensor_SetTrace((uint8_t)(cmd[9]-'0'));
+    SendResponsef("TRACE %u\r\n",Sensor_GetTrace());
 }
