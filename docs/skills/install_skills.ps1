@@ -22,15 +22,34 @@ if ($skills.Count -eq 0) {
     exit 0
 }
 
+# Source documents have Chinese filenames; frontmatter name is the stable ID.
+# Validate all IDs before copying anything to avoid a partially installed set.
+$skillEntries = @()
+$skillIds = @{}
+foreach ($skill in $skills) {
+    $skillContent = Get-Content -LiteralPath $skill.FullName -Raw -Encoding UTF8
+    if ($skillContent -notmatch '(?ms)\A---\r?\n(?<metadata>.*?)\r?\n---(?:\r?\n|\z)') {
+        throw "Missing skill frontmatter: $($skill.Name)"
+    }
+    $skillMetadata = $Matches['metadata']
+    if ($skillMetadata -notmatch '(?m)^name:\s*([a-z][a-z0-9_-]*)\s*$') {
+        throw "Invalid or missing frontmatter name: $($skill.Name)"
+    }
+    $skillId = $Matches[1]
+    if ($skillIds.ContainsKey($skillId)) { throw "Duplicate skill name: $skillId" }
+    $skillIds[$skillId] = $true
+    $skillEntries += [PSCustomObject]@{ File = $skill; Id = $skillId }
+}
+
 # ── Claude Code: .claude/agents/ ─────────────────────────────────────────────
 $claudeDir = Join-Path $RepoRoot ".claude\agents"
 Write-Host "  Claude Code  ->  $claudeDir" -ForegroundColor White
 if (-not (Test-Path $claudeDir)) {
     New-Item -ItemType Directory -Force -Path $claudeDir | Out-Null
 }
-foreach ($skill in $skills) {
-    Copy-Item -Path $skill.FullName -Destination (Join-Path $claudeDir $skill.Name) -Force
-    Write-Host "    + /$($skill.BaseName)" -ForegroundColor Green
+foreach ($skillEntry in $skillEntries) {
+    Copy-Item -LiteralPath $skillEntry.File.FullName -Destination (Join-Path $claudeDir ($skillEntry.Id + ".md")) -Force
+    Write-Host "    + /$($skillEntry.Id)" -ForegroundColor Green
 }
 
 # ── Codex CLI: .agents/skills/<skill-name>/SKILL.md ──────────────────────────
@@ -39,13 +58,13 @@ foreach ($skill in $skills) {
 $codexBase = Join-Path $RepoRoot ".agents\skills"
 Write-Host ""
 Write-Host "  Codex CLI    ->  $codexBase" -ForegroundColor White
-foreach ($skill in $skills) {
-    $skillSubDir = Join-Path $codexBase $skill.BaseName
+foreach ($skillEntry in $skillEntries) {
+    $skillSubDir = Join-Path $codexBase $skillEntry.Id
     if (-not (Test-Path $skillSubDir)) {
         New-Item -ItemType Directory -Force -Path $skillSubDir | Out-Null
     }
-    Copy-Item -Path $skill.FullName -Destination (Join-Path $skillSubDir "SKILL.md") -Force
-    Write-Host "    + /$($skill.BaseName)" -ForegroundColor Green
+    Copy-Item -LiteralPath $skillEntry.File.FullName -Destination (Join-Path $skillSubDir "SKILL.md") -Force
+    Write-Host "    + /$($skillEntry.Id)" -ForegroundColor Green
 }
 
 Write-Sep

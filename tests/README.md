@@ -3,7 +3,7 @@
 MA03 自 1.3.0 起仅编入 v2。算法测试自动跳过两个已移除的 legacy 窗口用例，
 黄金回放明确跳过；原黄金文件保留为历史档案。双档合成比较需使用历史提交 `2597b35`，
 当前构建会拒绝生成比较报告。MA03 新增覆盖默认 v2、旧配置迁移、拒绝 legacy 命令/导入、
-底层强制 v2、300 个有效样本标定及 GUI 锁定配置档。详见 `docs/MA03_V2_ONLY.md`。
+底层强制 v2、300 个有效样本标定及 GUI 锁定配置档。详见 `docs/MA03仅使用v2算法说明.md`。
 
 本目录包含项目的测试代码。
 
@@ -51,7 +51,7 @@ python tests/test_legacy_golden.py
 `test_legacy_golden.py` 在模拟器中运行现有 `data_process()`，用 7 组确定性激励
 （静态噪声、阶跃、斜坡、尖峰、共模干扰、Z 符号变化、无效样本）× 10 组开关/标定组合，
 与 `tests/golden/legacy_pipeline_ak09974c.json` 逐位比较。重构后的 legacy 配置档必须
-保持逐位一致（见 `docs/REFACTOR_DESIGN.md` 第 17.4、17.9 节）。只有在基线提交上才允许
+保持逐位一致（见 `docs/固件重构设计方案.md` 第 17.4、17.9 节）。只有在基线提交上才允许
 用 `--record` 重新录制。预测补偿依赖 `MEASURE_INTERVAL`，因此黄金样本按传感器型号区分，
 当前只录制了 AK09974C。
 
@@ -73,8 +73,8 @@ node --test gui/web/tests/*.test.cjs
 参考调试不影响实际输出、尖峰/阶跃/超时解锁、legacy 时间窗口和静止归零。
 集成测试覆盖 Schema 5 迁移、Schema 6 保存与校验、配置边界、参考协议、标定有效比例与元数据校验。
 
-`compare_algo_profiles.py` 更新 `docs/ALGORITHM_COMPARISON.md`，使用确定性合成数据。
-它不修改黄金文件，也不作为硬件精度或执行性能验收。细节和硬件待验项见 `docs/ALGORITHM_PIPELINE.md`。
+`compare_algo_profiles.py` 更新 `docs/算法合成对比报告.md`，使用确定性合成数据。
+它不修改黄金文件，也不作为硬件精度或执行性能验收。细节和硬件待验项见 `docs/算法阶段化与精度改造说明.md`。
 
 节点遥测覆盖在 `test_algo_pipeline.py` 和 `gui/web/tests/algorithm-model.test.cjs` 中。
 可选的完整浏览器验证：安装 `python -m pip install playwright`，本机需有 Edge，然后执行

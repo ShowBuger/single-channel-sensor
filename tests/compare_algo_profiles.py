@@ -1,7 +1,7 @@
 """Reproducible synthetic comparison; this is NOT a hardware accuracy report.
 
 Run against the H7 Unicorn build, with FIRMWARE_BUILD_DIR set as in tests/README.
-Writes docs/ALGORITHM_COMPARISON.md; never updates the legacy golden artifact.
+Writes docs/算法合成对比报告.md; never updates the legacy golden artifact.
 """
 import math
 import random
@@ -75,7 +75,7 @@ stream with timestamps, replay both profiles and measure noise, step response,
 spike false positives, pairing skew and temperature drift. Calibrate dead-band
 parameters again; v2 uses combined and smoothed noise rather than sigma_actual.
 '''
-    target=Path(__file__).resolve().parents[1]/'docs/ALGORITHM_COMPARISON.md'
+    target=Path(__file__).resolve().parents[1]/'docs/算法合成对比报告.md'
     target.write_text(text,encoding='utf-8')
     print(target)
     for name,a,b in rows: print(f'{name}: legacy={a:.6g}, v2={b:.6g}')

@@ -1,6 +1,6 @@
 # FIELD · 本地 Web 上位机
 
-MA03 新固件（1.3.0）仅支持 v2，算法工作台自动锁定配置档；MA03 导入文件省略 profile 时补入 1，显式 legacy 会被拒绝。标定固定 300 个有效样本。MA01/MA02 保留档位选择，详见 [MA03 说明](../../docs/MA03_V2_ONLY.md)。
+MA03 新固件（1.3.0）仅支持 v2，算法工作台自动锁定配置档；MA03 导入文件省略 profile 时补入 1，显式 legacy 会被拒绝。标定固定 300 个有效样本。MA01/MA02 保留档位选择，详见 [MA03 说明](../../docs/MA03仅使用v2算法说明.md)。
 
 双击 `启动上位机.cmd`（或 `FIELD.exe`）。本地服务自动打开 HTML 界面，串口窗口自动扫描 Windows COM 端口，只需选择端口号与波特率。无需安装 Python、Node.js、npm 或网络依赖；通信程序使用 Windows .NET Framework。
 
@@ -85,4 +85,4 @@ node --test gui/web/tests/core.test.cjs gui/web/tests/import.test.cjs gui/web/te
 开发版主页面的“算法节点”进入 `algorithm.html`，也可在本地服务地址后加 `/algorithm.html?demo=1` 体验演示。
 支持各节点实际/参考数据、开关、legacy/v2 切换、曲线暂停和 CSV 导出；真实节点需要支持 `nodes,trace` 的新固件。
 先断开其他页面的串口，再连接本页。开关仅改 RAM，切换配置档后需重新开始采集标定。
-详见 [硬件报告与协议说明](../../docs/HARDWARE_TEST_2026-11-19.md)。
+详见 [硬件报告与协议说明](../../docs/硬件实测与算法工具交付_2026-11-19.md)。

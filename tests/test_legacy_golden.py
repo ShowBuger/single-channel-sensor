@@ -3,7 +3,7 @@
 Runs the *current* firmware `data_process()` inside Unicorn over deterministic
 input vectors and either records the bit-exact outputs (`--record`) or checks
 the build against the recorded file. The refactored `legacy` profile must later
-reproduce exactly these outputs (docs/REFACTOR_DESIGN.md §17.4, §17.9).
+reproduce exactly these outputs (docs/固件重构设计方案.md §17.4, §17.9).
 
 Usage:
   cmake -B firmware/build/emu -S firmware -G Ninja -DCMAKE_BUILD_TYPE=Debug -DFW_EMU_SP_FPU=ON

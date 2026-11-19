@@ -72,7 +72,7 @@ single_channel_system/
 │   ├── CMakeLists.txt          # CMake 构建配置
 │   └── STM32H743ZITx_FLASH.ld  # 链接脚本（2MB Flash / DTCM RAM）
 ├── docs/
-│   └── COMMIT_CONVENTION.md   # Git 提交规范
+│   └── 提交规范.md   # Git 提交规范
 ├── .vscode/
 │   ├── tasks.json              # VS Code 构建任务（Ctrl+Shift+B）
 │   ├── launch.json             # Cortex-Debug 调试配置（F5）
@@ -327,7 +327,7 @@ AK09974C 的 VIO 电平和地址在 `src/board_config.h`（`BOARD_AK09974C_*`）
 
 ## 提交规范
 
-本项目使用规范化提交信息，详见 [docs/COMMIT_CONVENTION.md](docs/COMMIT_CONVENTION.md)。
+本项目使用规范化提交信息，详见 [docs/提交规范.md](docs/提交规范.md)。
 
 如果安装了 Claude Code，可以使用 `/commit` skill 自动分析暂存内容并生成规范的 commit message：
 

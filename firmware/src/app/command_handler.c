@@ -428,7 +428,7 @@ static void Handle_Restore(const char *cmd)
     plat_sys_reset();
 }
 
-/* ML VERSION — capability line for host negotiation (REFACTOR_DESIGN 11.3).
+/* ML VERSION — capability line for host negotiation (固件重构设计方案 11.3).
  * proto 2 = this command exists; sample lines are still the legacy format,
  * so no optional features are announced yet. Older firmware answers
  * "Unknown: ML VERSION", which hosts treat as proto 1. */
