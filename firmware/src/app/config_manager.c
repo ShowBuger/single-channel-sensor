@@ -44,6 +44,7 @@ uint8_t Config_SetDefaultsForProduct(Config_TypeDef *cfg, const char *product)
     AlgoParams_t defaults;
     Algo_DefaultParams(&defaults);
     cfg->algo = defaults.config;
+    cfg->algo.profile=type==SENSOR_TYPE_AK09974C ? ALGO_PROFILE_V2 : ALGO_PROFILE_LEGACY;
     cfg->schema_ver          = CONFIG_SCHEMA_VERSION;
     cfg->sensor_type         = type;
     cfg->FLAG_RES            = CONFIG_DEFAULT_FLAG_RES;
@@ -147,12 +148,19 @@ uint8_t Config_Load(Config_TypeDef *cfg)
         memcpy(cfg,old,52);
         cfg->schema_ver=CONFIG_SCHEMA_VERSION;
         cfg->checksum=calculate_checksum(cfg);
-        LOG_I("CFG", "Migrated schema 5 to 6 (legacy profile)");
+        LOG_I("CFG", "Migrated schema 5 to 6");
     } else {
         if (sc->magic != CONFIG_MAGIC_NUMBER ||
             sc->config.schema_ver != CONFIG_SCHEMA_VERSION ||
             calculate_checksum(&sc->config) != sc->config.checksum) goto invalid;
         memcpy(cfg, &sc->config, sizeof(Config_TypeDef));
+    }
+    /* Only after verifying the stored checksum, migrate the old MA03 profile
+     * in RAM; preserve sensor settings, gains and flags. No implicit Flash write. */
+    if(cfg->sensor_type==SENSOR_TYPE_AK09974C && cfg->algo.profile==ALGO_PROFILE_LEGACY) {
+        cfg->algo.profile=ALGO_PROFILE_V2;
+        cfg->checksum=calculate_checksum(cfg);
+        LOG_I("CFG", "Migrated MA03 algorithm to v2");
     }
     if (cfg->sensor_type == SENSOR_TYPE_TMAG3001 &&
         memchr(cfg->product_model, '\0', sizeof(cfg->product_model)) &&

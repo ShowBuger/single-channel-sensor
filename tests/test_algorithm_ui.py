@@ -63,7 +63,7 @@ class AlgorithmUI(unittest.TestCase):
     def test_device_protocol_and_ram_node_switch(self):
         page=self.browser.new_page(viewport={'width':1280,'height':1000})
         page.on('pageerror',lambda error:print('Browser error:',error))
-        pending=[];sent=[];state={'profile':1,'flags':255,'bypass':0,'calibrated':1,'trace':0,'running':1}
+        pending=[];sent=[];state={'profile':1,'flags':255,'bypass':0,'calibrated':1,'trace':0,'running':1,'v2_only':1}
         seq=0
         def endpoint(route):
             nonlocal seq
@@ -102,6 +102,8 @@ class AlgorithmUI(unittest.TestCase):
         page.locator('#connect').click()
         page.wait_for_function("() => document.getElementById('actual0').firstChild.textContent === '14.000'")
         page.wait_for_function("() => !document.getElementById('sync').disabled")
+        self.assertTrue(page.locator('#profile').is_disabled())
+        self.assertTrue(page.locator('#profile option[value="0"]').evaluate('(e) => e.hidden && e.disabled'))
         page.get_by_role('switch',name='启用 S4 背景补偿',exact=True).uncheck()
         try:
             page.wait_for_function("() => document.getElementById('stageState').textContent === '节点已旁路'",timeout=6000)

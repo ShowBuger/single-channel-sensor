@@ -35,3 +35,9 @@ test('shared serial layer classifies telemetry separately from samples and archi
   const C=require('../core.js'),log=new C.SerialLog();log.begin('COM1',921600);const before=log.count;
   assert.equal(C.parseLine(line()).kind,'trace');log.append('RX',line());assert.equal(log.count,before);
 });
+test('MA03 reports its v2-only policy while older node responses remain supported',()=>{
+  const base='NODES profile=1 flags=59 bypass=0 calibrated=1 trace=1 running=1';
+  assert.equal(M.parse(base+' v2_only=1').v2_only,1);
+  assert.equal(M.parse(base).profile,1);
+  assert.equal(M.parse(base+' v2_only=2'),null);
+});

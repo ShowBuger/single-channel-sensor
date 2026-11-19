@@ -14,11 +14,12 @@ function parse(line){
   if(!/^(?:N |NODES )/.test(line))return null;
   const fields={};
   for(const token of line.split(/\s+/).slice(1)){
-    const m=/^([a-z_]+)=(\S+)$/.exec(token);
+    const m=/^([a-z][a-z0-9_]*)=(\S+)$/.exec(token);
     if(!m||Object.hasOwn(fields,m[1]))return null;fields[m[1]]=m[2];
   }
   const check=(k,max)=>integer(fields[k],max);
   if(line.startsWith('NODES ')){
+    if(fields.v2_only!==undefined&&!check('v2_only',1))return null;
     if(!check('profile',1)||!check('flags',255)||!check('bypass',1022)||
        !['calibrated','trace','running'].every(k=>check(k,1)))return null;
     return{kind:'state',...Object.fromEntries(Object.entries(fields).map(([k,v])=>[k,Number(v)]))};

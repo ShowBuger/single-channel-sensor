@@ -16,6 +16,7 @@
     "mcyc": 10
   },
   "algo": {
+    "profile": 1,
     "flag": "0x00",
     "xmap": 1,
     "ymap": 1,

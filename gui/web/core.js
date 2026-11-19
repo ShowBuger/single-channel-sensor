@@ -240,7 +240,10 @@ function productDefaults(product='MA02'){
   if(!Object.hasOwn(PRODUCT_TYPES,product))throw new Error(localize('product 产品型号必须是 MA01（MLX90393）、MA02（TMAG3001）或 MA03（AK09974C）。','Product model must be MA01(MLX90393), MA02(TMAG3001) or MA03(AK09974C).'));
   const config=JSON.parse(JSON.stringify(IMPORT_DEFAULTS));config.product=product;
   if(product==='MA01'){Object.assign(config.sensor,{type:0,gain:7,osr:2,opmode:0});Object.assign(config.algo,{flag:123,xmap:.1,ymap:.1,zmap:-.1});}
-  if(product==='MA03')Object.assign(config.sensor,{type:2,gain:0,osr:1,range:0,opmode:1,mcyc:10});
+  if(product==='MA03'){
+    Object.assign(config.sensor,{type:2,gain:0,osr:1,range:0,opmode:1,mcyc:10});
+    config.algo.profile=1;
+  }
   return config;
 }
 function sensorFieldActive(product,key){
@@ -311,6 +314,7 @@ function prepareImport(input){
   const expectedType=PRODUCT_TYPES[config.product],expectedName=`${SENSOR_NAMES[expectedType]}（${expectedType}）`;
   if(config.sensor.type!==expectedType)throw new Error(localize(`sensor.type 与产品型号不一致：${config.product} 必须为 ${expectedName}。`,`sensor.type does not match the product: ${config.product} must be ${expectedName.replace('（','(').replace('）',')')}.`));
   if(config.product==='MA03'){
+    if(config.algo.profile!==1)throw new Error(localize('MA03 仅支持 v2 算法，algo.profile 必须为 1。','MA03 supports only v2; algo.profile must be 1.'));
     const s=config.sensor;
     if(s.gain!==0||s.osr>3||s.opmode>1)throw new Error(localize('MA03 的 sensor.gain 必须为 0，sensor.osr（驱动模式）必须为 0–3，sensor.opmode 必须为 0–1。','MA03 sensor.gain must be 0, sensor.osr (drive mode) must be 0–3, sensor.opmode must be 0–1.'));
     if(s.opmode===1&&s.mcyc<AK_MIN_MCYC[s.osr])throw new Error(localize(`MA03 连续模式下 sensor.mcyc 不能小于 ${AK_MIN_MCYC[s.osr]}（驱动模式 ${s.osr} 的最小周期）。`,`In MA03 continuous mode sensor.mcyc must be at least ${AK_MIN_MCYC[s.osr]} (minimum cycle for drive mode ${s.osr}).`));

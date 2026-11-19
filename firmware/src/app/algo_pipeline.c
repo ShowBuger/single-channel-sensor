@@ -43,6 +43,7 @@ void Algo_DefaultParams(AlgoParams_t *p)
 }
 void Algo_Reset(AlgoState_t *s) { memset(s,0,sizeof(*s)); s->factor=1.0f; }
 
+#ifndef ALGO_V2_ONLY
 static void legacy_history(Work *w)
 {
     AlgoState_t *s=w->st;
@@ -56,6 +57,7 @@ static void legacy_history(Work *w)
         s->acceleration[j]=s->velocity[j]-prev;
     }
 }
+#endif
 static void zero_bias(Work *w)
 {
     float a0[3],r0[3];
@@ -65,6 +67,7 @@ static void zero_bias(Work *w)
     }
     for(unsigned j=0;j<3;j++) { w->a[j]-=a0[j]; w->r[j]-=r0[j]; }
 }
+#ifndef ALGO_V2_ONLY
 static void legacy_compensate(Work *w)
 {
     AlgoState_t *s=w->st;
@@ -144,6 +147,7 @@ static void legacy_stability(Work *w)
         for(unsigned j=0;j<3;j++) w->a[j]*=s->factor;
     }
 }
+#endif
 static void rotate_one(float v[3],const int8_t r[9])
 {
     float t[3];
@@ -266,12 +270,14 @@ static void stability(Work *w)
         for(unsigned j=0;j<3;j++) w->a[j]*=s->factor;
     }
 }
+#ifndef ALGO_V2_ONLY
 static const Stage legacy[]={
     {2,ALGO_CALIBRATION,true,zero_bias},{4,ALGO_COMPENSATION,true,legacy_compensate},
     {6,ALGO_DEAD_BAND,true,legacy_dead},{7,ALGO_UNIPOLAR,false,legacy_z},
     {5,ALGO_LOW_PASS,true,legacy_average},{8,ALGO_MAPPING,true,legacy_mapping},
     {9,ALGO_STABILITY,true,legacy_stability}
 };
+#endif
 static const Stage v2[]={
     {1,0,false,rotate},{2,ALGO_CALIBRATION,true,zero_bias},{3,ALGO_SPIKE,false,spike},
     {4,ALGO_COMPENSATION,true,compensate},{5,ALGO_LOW_PASS,false,low_pass},
@@ -290,6 +296,12 @@ bool Algo_ProcessTrace(const AlgoPair_t *in,const AlgoTiming_t *t,const AlgoChan
                   const AlgoParams_t *p,uint16_t enable,bool refout,AlgoState_t *s,AlgoOutput_t *out,
                   uint16_t bypass,AlgoTrace_t *trace)
 {
+#ifdef ALGO_V2_ONLY
+    /* Enforce the build policy even for callers bypassing config validation. */
+    AlgoParams_t active=*p;
+    active.config.profile=ALGO_PROFILE_V2;
+    p=&active;
+#endif
     if(trace) {
         memset(trace,0,sizeof(*trace)); trace->seq=t->seq; trace->timestamp_us=t->actual_us;
         trace->profile=p->config.profile;
@@ -307,7 +319,9 @@ bool Algo_ProcessTrace(const AlgoPair_t *in,const AlgoTiming_t *t,const AlgoChan
         if(!out->error) out->error=5;
         if(trace) trace->error=out->error;
         s->stable_elapsed_ms=0;
+#ifndef ALGO_V2_ONLY
         memset(s->legacy_stable_ms,0,sizeof(s->legacy_stable_ms));
+#endif
         return false;
     }
     Work w={.cc=cc,.p=p,.time=t,.st=s,.out=out,.enable=enable,.bypass=bypass,.reference_output=refout};
@@ -328,9 +342,14 @@ bool Algo_ProcessTrace(const AlgoPair_t *in,const AlgoTiming_t *t,const AlgoChan
         if((enable&ALGO_LOW_PASS) && !(bypass&(1U<<5))) variance*=w.alpha/(2.0f-w.alpha);
         w.sigma[j]=sqrtf(variance); out->sigma_eff[j]=w.sigma[j];
     }
+#ifdef ALGO_V2_ONLY
+    const Stage *stages=v2;
+    unsigned n=sizeof(v2)/sizeof(v2[0]);
+#else
     if(p->config.profile==ALGO_PROFILE_LEGACY && cc->calibration.calibrated) legacy_history(&w);
     const Stage *stages=p->config.profile==ALGO_PROFILE_V2 ? v2 : legacy;
     unsigned n=p->config.profile==ALGO_PROFILE_V2 ? sizeof(v2)/sizeof(v2[0]) : sizeof(legacy)/sizeof(legacy[0]);
+#endif
     out->reference_zero=in->reference;
     for(unsigned i=0;i<n;i++) {
         const Stage *stage=&stages[i];

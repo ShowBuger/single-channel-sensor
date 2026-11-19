@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.22)
 set(CMAKE_TOOLCHAIN_FILE ${CMAKE_CURRENT_SOURCE_DIR}/cmake/arm-none-eabi-gcc.cmake)
 
 project(single_channel_sensor
-    VERSION 1.2.0
+    VERSION 1.3.0
     LANGUAGES C ASM
 )
 
@@ -94,6 +94,9 @@ add_compile_definitions(
     ${MCU_DEFINES}
     FW_VERSION="${PROJECT_VERSION}"   # reported by ML VERSION
 )
+if(BOARD STREQUAL "ma03_h743")
+    add_compile_definitions(ALGO_V2_ONLY=1)
+endif()
 
 # ── Compile options ───────────────────────────────────────────────────────────
 add_compile_options(

@@ -484,6 +484,7 @@ void print_processed_sensor_data(uint8_t sensor_index)
  *   3. 将均值保存为标定偏移量,标准差用于评估传感器稳定性
  *   4. 标定前需确保传感器已启动，并保持无载静止
  */
+#ifndef ALGO_V2_ONLY
 static uint8_t perform_legacy_calibration(void)
 {
     enum { CALIBRATION_SAMPLES = 300 };
@@ -549,6 +550,7 @@ static uint8_t perform_legacy_calibration(void)
     return 0;
 }
 
+#endif
 SensorCalibrationMetadata sensor_calibration_metadata;
 static SensorCalibrationExecutor s_calibration_executor;
 void Sensor_SetCalibrationExecutor(SensorCalibrationExecutor executor) { s_calibration_executor=executor; }
@@ -561,10 +563,13 @@ static uint8_t perform_timed_calibration(void)
     float means[2][4]={{0}}, m2[2][4]={{0}};
     uint16_t n=0, attempts=0;
     uint32_t start=plat_tick_ms(), started_us=plat_time_us();
+#ifndef ALGO_V2_ONLY
     uint16_t duration=g_algo.config.calib_ms;
+#endif
     uint32_t period=drv()->settle_ms>=20 ? 50U : 10U;
     sensor_calibration[0].calibrated=0;
     do {
+        if(!SENSOR_Run[0]) { sensor_calibration_metadata.failure=1; return 1; }
         uint32_t tick=plat_tick_ms();
         attempts++;
         if(!get_sensor_data() && sensor_data[0].valid) {
@@ -583,11 +588,20 @@ static uint8_t perform_timed_calibration(void)
         IWDG_Feed();
         uint32_t elapsed=plat_tick_ms()-tick;
         if(elapsed<period) Delay_ms(period-elapsed);
+#ifdef ALGO_V2_ONLY
+    /* MA03 always calibrates 300 valid pairs. Bound failure time below the
+     * command timeout, and cap attempts to enforce >=90% valid input. */
+    } while(n<300U && attempts<334U && (uint32_t)(plat_tick_ms()-start)<10000U);
+#else
     } while((uint32_t)(plat_tick_ms()-start)<duration);
+#endif
     sensor_calibration_metadata.samples=n; sensor_calibration_metadata.attempts=attempts;
     sensor_calibration_metadata.timestamp_us=started_us;
     sensor_calibration_metadata.duration_us=(plat_tick_ms()-start)*1000U;
     if(n<2) { sensor_calibration_metadata.failure=2; return 1; }
+#ifdef ALGO_V2_ONLY
+    if(n<300U) { sensor_calibration_metadata.failure=3; return 1; }
+#endif
     if((uint32_t)n*10U<(uint32_t)attempts*9U) { sensor_calibration_metadata.failure=3; return 1; }
     SensorPair_Calibration result={0};
     result.actual_offset=(AlgoVector_t){means[0][0],means[0][1],means[0][2],means[0][3]};
@@ -617,7 +631,11 @@ static uint8_t perform_timed_calibration(void)
 uint8_t Sensor_CalibrateOwned(void)
 {
     memset(&sensor_calibration_metadata,0,sizeof(sensor_calibration_metadata));
+#ifdef ALGO_V2_ONLY
+    uint8_t failed=perform_timed_calibration();
+#else
     uint8_t failed=g_algo.config.profile==ALGO_PROFILE_V2 ? perform_timed_calibration() : perform_legacy_calibration();
+#endif
     Sensor_ResetAlgorithm();
     return failed;
 }

@@ -7,10 +7,12 @@ import math
 import random
 import statistics
 from pathlib import Path
-from test_algo_pipeline import Pipeline
+from test_algo_pipeline import Pipeline,V2_ONLY
 
 
 def measure(profile):
+    if V2_ONLY and profile==0:
+        raise RuntimeError('MA03 no longer contains legacy; use historical commit 2597b35 for profile comparisons')
     p=Pipeline(profile=profile,flags=0x0D)
     rng=random.Random(20261119)
     noise=[]

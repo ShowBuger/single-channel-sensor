@@ -1,5 +1,7 @@
 # FIELD · 本地 Web 上位机
 
+MA03 新固件（1.3.0）仅支持 v2，算法工作台自动锁定配置档；MA03 导入文件省略 profile 时补入 1，显式 legacy 会被拒绝。标定固定 300 个有效样本。MA01/MA02 保留档位选择，详见 [MA03 说明](../../docs/MA03_V2_ONLY.md)。
+
 双击 `启动上位机.cmd`（或 `FIELD.exe`）。本地服务自动打开 HTML 界面，串口窗口自动扫描 Windows COM 端口，只需选择端口号与波特率。无需安装 Python、Node.js、npm 或网络依赖；通信程序使用 Windows .NET Framework。
 
 更新程序后请关闭旧的 FIELD 窗口，再重新启动。`FIELD.exe` 与 `index.html`、`core.js`、`app.js`、`bridge-client.js`、`import-ui.js` 必须放在同一目录。单独双击 HTML 可以离线预览，但不能枚举或连接设备。

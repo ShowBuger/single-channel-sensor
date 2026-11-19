@@ -11,6 +11,9 @@ void AlgoParams_Load(const Config_TypeDef *cfg)
 {
     Algo_DefaultParams(&g_algo);
     g_algo.config = cfg->algo;
+#ifdef ALGO_V2_ONLY
+    g_algo.config.profile=ALGO_PROFILE_V2;
+#endif
     g_algo.dead_value          = cfg->dead_value;
     g_algo.spike_multiplier    = cfg->spike_multiplier;
     g_algo.stability_threshold = cfg->stability_threshold;

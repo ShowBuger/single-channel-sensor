@@ -24,8 +24,10 @@ test('malformed v2 metadata is rejected and unknown extension fields are accepte
   assert.equal(C.parseLine(valid+' future=some-value').kind,'sample');
 });
 test('new algorithm configuration round-trips without adding fields to old files',()=>{
-  const old=C.prepareImport({product:'MA03'});
+  const old=C.prepareImport({product:'MA01'});
   assert(!Object.hasOwn(JSON.parse(old.wire).algo,'profile'));
+  assert.equal(C.prepareImport({product:'MA03'}).config.algo.profile,1);
+  assert.throws(()=>C.prepareImport({product:'MA03',algo:{profile:'legacy'}}),/MA03/);
   const p=C.prepareImport({product:'MA03',algo:{profile:'v2',window_ms:500,tau_lp_ms:220,kx:1.2,ky:-1,kz:-1,spike_k:5}});
   assert.equal(p.config.algo.profile,1);assert.equal(p.config.algo.kx,1.2);
   assert.equal(C.prepareImport(p.wire).wire,p.wire);assert(p.bytes<=1023);

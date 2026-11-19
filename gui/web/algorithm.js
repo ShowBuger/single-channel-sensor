@@ -24,7 +24,11 @@ function controls(){
   $('connectionDot').classList.toggle('connected',connected);
   $('sourceBadge').className='source-badge'+(demo?' demo':connected&&supported?' live':'');
   $('sourceBadge').textContent=demo?'● 演示数据':connected?(supported?'● 设备已连接':'● 固件待更新'):'● 离线';
-  $('profile').value=String(state?.profile??0);$('profile').disabled=busy||demo||!connected||!supported;
+  const v2only=!!state?.v2_only;
+  const legacyOption=$('profile').querySelector('option[value="0"]');
+  legacyOption.hidden=v2only;legacyOption.disabled=v2only;
+  $('profile').value=String(state?.profile??0);$('profile').disabled=busy||demo||!connected||!supported||v2only;
+  $('profile').title=v2only?'MA03 仅支持 v2 算法':'';
   $('enabledCount').textContent=state?`${M.order(state.profile).filter(id=>['on','fixed'].includes(M.availability(state,id))).length} / ${M.order(state.profile).length} 节点已启用`:'等待设备状态';
   $('export').disabled=!frames.history.length;
   renderNodes();

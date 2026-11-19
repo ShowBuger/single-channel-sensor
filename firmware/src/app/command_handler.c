@@ -435,7 +435,11 @@ static void Handle_Restore(const char *cmd)
 static void Handle_Version(const char *cmd)
 {
     (void)cmd;
-    SendResponsef("VERSION proto=2 fw=%s board=%s mcu=%s sensors=%s channels=1 features=algo_v2,prof,status,fmt_v2,refout,nodes,trace\r\n",
+    SendResponsef("VERSION proto=2 fw=%s board=%s mcu=%s sensors=%s channels=1 features=algo_v2,prof,status,fmt_v2,refout,nodes,trace"
+#ifdef ALGO_V2_ONLY
+        ",v2_only"
+#endif
+        "\r\n",
                   FW_VERSION, BOARD_NAME, plat_mcu_name(), Sensor_GetName());
 }
 
@@ -482,7 +486,11 @@ static void Handle_Status(const char *cmd)
 static void Handle_Nodes(const char *cmd)
 {
     (void)cmd;
-    SendResponsef("NODES profile=%u flags=%u bypass=%u calibrated=%u trace=%u running=%u\r\n",
+    SendResponsef("NODES profile=%u flags=%u bypass=%u calibrated=%u trace=%u running=%u"
+#ifdef ALGO_V2_ONLY
+        " v2_only=1"
+#endif
+        "\r\n",
         g_algo.config.profile,FLAG_RES,Sensor_GetNodeBypass(),sensor_calibration[0].calibrated,
         Sensor_GetTrace(),SENSOR_Run[0]);
 }

@@ -152,10 +152,12 @@ uint8_t Config_ParseSingleKV(Config_TypeDef *cfg, const char *key, const char *v
     }
 
     if (!strcmp(key,"algo.profile")) {
-        if (!strcmp(value,"legacy")) cfg->algo.profile=ALGO_PROFILE_LEGACY;
-        else if (!strcmp(value,"v2")) cfg->algo.profile=ALGO_PROFILE_V2;
-        else if (parse_uint8(value,&tmp_u8) && tmp_u8<=1) cfg->algo.profile=tmp_u8;
+        if (!strcmp(value,"legacy")) tmp_u8=ALGO_PROFILE_LEGACY;
+        else if (!strcmp(value,"v2")) tmp_u8=ALGO_PROFILE_V2;
+        else if (parse_uint8(value,&tmp_u8) && tmp_u8<=1) { }
         else return 2;
+        if(cfg->sensor_type==SENSOR_TYPE_AK09974C && tmp_u8!=ALGO_PROFILE_V2) return 2;
+        cfg->algo.profile=tmp_u8;
         return 0;
     }
     struct { const char *key; uint16_t *field; } times[]={
@@ -269,6 +271,7 @@ uint8_t Config_Validate(const Config_TypeDef *cfg)
         !isfinite(cfg->dead_value) || !isfinite(cfg->spike_multiplier) || !isfinite(cfg->stability_threshold)) return 31;
 
     const AlgoConfig_t *a=&cfg->algo;
+    if(type==SENSOR_TYPE_AK09974C && a->profile!=ALGO_PROFILE_V2) return 50;
     if(a->profile>ALGO_PROFILE_V2 || !a->window_ms || a->window_ms>500 ||
        !a->stable_ms || a->stable_ms>60000 || !a->tau_ms || a->tau_ms>60000 ||
        !a->tau_lp_ms || a->tau_lp_ms>60000 || a->calib_ms<100 || a->calib_ms>10000 ||

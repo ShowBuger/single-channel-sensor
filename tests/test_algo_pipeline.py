@@ -14,6 +14,7 @@ from unicorn.arm_const import (UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_PC,
 
 BASE = 0x20010000
 IN, TIME, CC, PARAMS, STATE, OUT, TRACE = (BASE+x for x in (0, 64, 128, 256, 512, 4608, 4864))
+V2_ONLY='v2_only' in fw.Firmware().command('ML VERSION')
 
 
 class Pipeline:
@@ -59,8 +60,16 @@ class Pipeline:
 
 
 class AlgorithmTests(unittest.TestCase):
+    @unittest.skipUnless(V2_ONLY,'MA03 build policy')
+    def test_ma03_cannot_execute_legacy_even_with_unvalidated_parameters(self):
+        p,q=Pipeline(profile=0,flags=255),Pipeline(profile=1,flags=255)
+        for i in range(8):
+            self.assertEqual(p.step((i,2,-3),(1,0,0),trace=True),q.step((i,2,-3),(1,0,0),trace=True))
+        self.assertEqual(bytes(p.f.u.mem_read(TRACE+252,1)),b'\x01')
+        self.assertEqual(struct.unpack('<H',p.f.u.mem_read(TRACE+248,2))[0],1023)
+
     def test_trace_does_not_change_outputs_in_either_profile(self):
-        for profile in (0, 1):
+        for profile in ((1,) if V2_ONLY else (0,1)):
             normal, traced = Pipeline(profile=profile, flags=255), Pipeline(profile=profile, flags=255)
             for i in range(20):
                 a, r = (math.sin(i)*4, 2, -3), (i*.1, 1, -.5)
@@ -190,11 +199,13 @@ class AlgorithmTests(unittest.TestCase):
         self.assertEqual(p.step((11,22,33))[1],(2,1,-3))
         self.assertEqual(struct.unpack('<3f',bytes(p.f.u.mem_read(OUT+52,12))),(2,1,3))
 
+    @unittest.skipIf(V2_ONLY,'MA03 no longer contains legacy stages')
     def test_legacy_time_scaled_window(self):
         p=Pipeline(profile=0,flags=4,rate=100)
         for _ in range(50): p.step()
         self.assertAlmostEqual(p.step((50,0,0))[1][0],1)
 
+    @unittest.skipIf(V2_ONLY,'MA03 no longer contains legacy windows')
     def test_timed_window_expires_old_samples_after_gap(self):
         p=Pipeline(profile=0,flags=4)
         p.step((100,0,0),actual_us=10000)
@@ -212,7 +223,40 @@ class AlgorithmTests(unittest.TestCase):
 
 
 class FirmwareIntegrationTests(unittest.TestCase):
-    def test_legacy_calibration_uses_300_valid_samples_without_counter_wrap(self):
+    @unittest.skipUnless(V2_ONLY,'MA03 build policy')
+    def test_ma03_rejects_legacy_commands_and_config_import_without_mutating_state(self):
+        f=self.f
+        original=bytes(f.u.mem_read(f.sym['g_config'],96))
+        self.assertIn('v2_only',f.command('ML VERSION'))
+        for value in ('0','legacy'):
+            self.assertIn('Error:',f.command('ML SET algo.profile '+value))
+            self.assertEqual(bytes(f.u.mem_read(f.sym['g_config'],96)),original)
+            self.assertNotEqual(f.parse({'product':'MA03','algo':{'profile':value}}),0)
+        f.u.mem_write(f.sym['g_config']+52,b'\x00')
+        self.assertNotEqual(f.call('Config_Validate',f.sym['g_config']),0)
+
+    @unittest.skipUnless(V2_ONLY,'MA03 build policy')
+    def test_schema6_legacy_migration_preserves_configuration_and_does_not_write_flash(self):
+        f=self.f
+        record=bytearray(f.u.mem_read(f.sym['g_config'],96))
+        record[52]=0
+        struct.pack_into('<f',record,80,1.75)  # Kx
+        record[2]=0x3B
+        struct.pack_into('<I',record,92,sum(record[:92]))
+        flash=0x081E0000
+        f.u.mem_map(flash,0x20000)
+        payload=struct.pack('<I',0x52454C57)+record
+        f.u.mem_write(flash,payload)
+        f.stub('plat_cfgstore_ptr',lambda:flash)
+        self.assertEqual(f.call('Config_Load',f.sym['g_config']),0)
+        loaded=bytes(f.u.mem_read(f.sym['g_config'],96))
+        self.assertEqual(loaded[52],1)
+        self.assertEqual(loaded[2],0x3B)
+        self.assertEqual(struct.unpack_from('<f',loaded,80)[0],1.75)
+        self.assertEqual(bytes(f.u.mem_read(flash,100)),payload)
+        self.assertEqual(f.call('Config_Validate',f.sym['g_config']),0)
+
+    def test_calibration_uses_300_valid_samples_without_counter_wrap(self):
         f=self.f
         f.u.mem_write(f.sym['SENSOR_Run'],b'\x01')
         attempts=0
@@ -244,7 +288,11 @@ class FirmwareIntegrationTests(unittest.TestCase):
         original=bytes(f.u.mem_read(f.sym['g_config'],96))
         self.assertIn('trace=0',f.command('ML NODES'))
         self.assertIn('Error:',f.command('ML NODE 0 0'))
-        self.assertIn('Error:',f.command('ML NODE 3 1'))  # absent in legacy
+        if V2_ONLY:
+            self.assertIn('v2_only=1',f.command('ML NODES'))
+            self.assertIn('NODE s=3 enabled=1',f.command('ML NODE 3 1'))
+        else:
+            self.assertIn('Error:',f.command('ML NODE 3 1'))
         self.assertIn('Error:',f.command('ML NODE 999 0'))
         self.assertIn('NODE s=4 enabled=0',f.command('ML NODE 4 0'))
         self.assertIn('bypass=16',f.command('ML NODES'))
@@ -256,7 +304,7 @@ class FirmwareIntegrationTests(unittest.TestCase):
         self.assertIn('TRACE 0',f.command('ML TRACE 0'))
         self.assertEqual(bytes(f.u.mem_read(f.sym['g_config'],96)),original)
 
-    def test_schema5_migration_preserves_parameters_and_defaults_to_legacy(self):
+    def test_schema5_migration_preserves_parameters_and_selects_supported_profile(self):
         f=self.f
         old=bytearray(f.u.mem_read(f.sym['g_config'],52))
         old[0]=5; old[2]=0x3B
@@ -269,7 +317,7 @@ class FirmwareIntegrationTests(unittest.TestCase):
         result=bytes(f.u.mem_read(f.sym['g_config'],96))
         self.assertEqual(result[:3],bytes([6,2,0x3B]))
         self.assertEqual(struct.unpack_from('<f',result,16)[0],1.25)
-        self.assertEqual(result[52],0)
+        self.assertEqual(result[52],1 if V2_ONLY else 0)
         self.assertEqual(struct.unpack_from('<H',result,54)[0],500)
         self.assertEqual(f.call('Config_Validate',f.sym['g_config']),0)
         # Corrupt old payload must never be treated as a successful migration.
@@ -319,7 +367,7 @@ class FirmwareIntegrationTests(unittest.TestCase):
         self.assertEqual(f.call('sensor_start'),0)
         status=f.command('ML STATUS')
         self.assertIn('calibrated=1',status)
-        self.assertIn('CALIB version=1 samples=100 attempts=100',status)
+        self.assertIn('CALIB version=1 samples=300 attempts=300' if V2_ONLY else 'CALIB version=1 samples=100 attempts=100',status)
         self.assertIn('temp_valid=0',status)
         self.assertEqual(f.floats(f.sym['sensor_calibration'],3),(110,-220,330))
         record=bytes(f.u.mem_read(f.sym['sensor_calibration'],68))
@@ -335,7 +383,7 @@ class FirmwareIntegrationTests(unittest.TestCase):
         f=self.f
         f.command('ML SET algo.profile v2')
         f.u.mem_write(f.sym['SENSOR_Run'],b'\x01')
-        for failures,expected in [(10,0),(11,1)]:
+        for failures,expected in ([(33,0),(34,1)] if V2_ONLY else [(10,0),(11,1)]):
             calls=[0]
             def read():
                 calls[0]+=1
@@ -344,7 +392,7 @@ class FirmwareIntegrationTests(unittest.TestCase):
                 return 0 if valid else 1
             f.stub('get_sensor_data',read)
             self.assertEqual(f.call('Sensor_CalibrateOwned'),expected)
-            self.assertEqual(calls[0],100)
+            self.assertEqual(calls[0],min(300+failures,334) if V2_ONLY else 100)
 
     def test_wire_format_exports_invalid_samples_and_reference_fields(self):
         f=self.f

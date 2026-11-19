@@ -243,18 +243,18 @@ class TmagTests(unittest.TestCase):
         self.assertEqual(self.f.u.mem_read(self.f.symbols['SENSOR_Run'], 1)[0], 0)
         self.assertEqual(self.f.u.mem_read(self.f.symbols['SENSOR_List'], 1)[0], 0)
 
-    def test_continuous_calibration_waits_for_ten_distinct_samples(self):
+    def test_continuous_calibration_waits_for_300_distinct_samples(self):
         f, bus = self.f, self.bus
         self.assertEqual(f.call('sensor_start'), 0)
-        self.assertGreaterEqual(bus.now, 50)
-        self.assertEqual(bus.state[0x36]['count'], 10 % 8)
+        self.assertGreaterEqual(bus.now, 1500)
+        self.assertEqual(bus.state[0x36]['count'], 300 % 8)
         self.assertEqual(f.u.mem_read(f.symbols['sensor_calibration'] + 64, 1)[0], 1)
         self.assertTrue(all(b-a <= 3 for a,b in zip(bus.feeds, bus.feeds[1:])))
 
     def test_standby_calibration_uses_control_byte_triggers(self):
         self.assertEqual(self.f.parse({'product': 'MA02', 'sensor': {'opmode': 0}}), 0)
         self.assertEqual(self.f.call('sensor_start'), 0)
-        self.assertEqual(len(self.bus.transactions), 20)
+        self.assertEqual(len(self.bus.transactions), 600)
         self.assertEqual(set(self.bus.transactions), {(0x6c, 0x98), (0x6a, 0x98)})
         self.assertEqual(self.bus.regs[0x36, 0] & 3, 0)  # I2C read mode was not modified
 

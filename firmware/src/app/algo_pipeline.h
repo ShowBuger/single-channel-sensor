@@ -37,7 +37,12 @@ typedef struct {
     float spike_k, stab_k;
     float gain[3];
 } AlgoConfig_t;
-#define ALGO_CONFIG_DEFAULTS { .profile=ALGO_PROFILE_LEGACY, .window_ms=500, \
+#ifdef ALGO_V2_ONLY
+#define ALGO_DEFAULT_PROFILE ALGO_PROFILE_V2
+#else
+#define ALGO_DEFAULT_PROFILE ALGO_PROFILE_LEGACY
+#endif
+#define ALGO_CONFIG_DEFAULTS { .profile=ALGO_DEFAULT_PROFILE, .window_ms=500, \
     .stable_ms=1000, .tau_ms=950, .tau_lp_ms=220, .calib_ms=1000, \
     .spike_med_ms=50, .spike_mad_ms=500, .spike_confirm_ms=30, \
     .spike_hold_ms=300, .spike_k=5.0f, .stab_k=3.0f, .gain={1.0f,-1.0f,-1.0f} }
@@ -77,6 +82,7 @@ typedef struct {
 } AlgoCounters_t;
 typedef struct {
     /* Legacy state deliberately keeps its evaluation/summation order. */
+#ifndef ALGO_V2_ONLY
     float ref_history[3][3], velocity[3], acceleration[3];
     uint8_t ref_index, ref_count;
     float window[3][ALGO_WINDOW_MAX];
@@ -86,6 +92,7 @@ typedef struct {
     uint16_t window_index, window_count, window_size;
     uint16_t legacy_stable[3];
     float legacy_stable_ms[3];
+#endif
     AlgoSpikeState_t spike[2][3];
     float previous_ref[3], lp[3], reference_lp[3];
     float stable_elapsed_ms, factor;

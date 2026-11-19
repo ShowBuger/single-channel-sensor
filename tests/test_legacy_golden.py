@@ -112,6 +112,8 @@ def runs():
 
 
 def record():
+    if 'v2_only' in fw.Firmware().command('ML VERSION'):
+        raise RuntimeError('Cannot record legacy golden samples from a v2-only build')
     sc = scenarios()
     data = {
         "meta": {
@@ -138,6 +140,8 @@ def unbits(u32):
 class LegacyGolden(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        if 'v2_only' in fw.Firmware().command('ML VERSION'):
+            raise unittest.SkipTest('MA03 legacy pipeline removed; golden archive is historical')
         cls.data = json.loads(GOLDEN.read_text(encoding="utf-8"))
 
     def test_bit_exact(self):
